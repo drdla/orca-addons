@@ -1,5 +1,5 @@
 // The panel's Ended tab (#7, #28): one card per Ended Review Request that still has its Review
-// Workspace. Its only action is Remove workspace: the worker checks what removal would lose, the
+// Workspace. Its actions are Review draft (post what is left, #30) and Remove workspace: the worker checks what removal would lose, the
 // card asks to confirm (Remove, or Remove anyway when it would force), and on failure shows
 // Orca's error with Open workspace. Also the banner shown while the orca CLI is broken (#15).
 import {
@@ -21,6 +21,7 @@ import {
   update
 } from 'orca'
 import type { EndedCard, EndedReason, RemovalCheck, ReviewRequestsSnapshot } from './protocol'
+import { openReviewDraft } from './review-draft-view'
 import { ErrorDetails } from './setup-checklist'
 
 /** Open confirmations, by Review Request URL: what removal would lose. */
@@ -159,6 +160,9 @@ function EndedCardView(props: {
               onPress={() => askToRemove(card.url)}
             >
               Remove workspace
+            </Button>
+            <Button size="xs" variant="outline" icon="edit" onPress={() => openReviewDraft(card.url)}>
+              Review draft
             </Button>
             {working && <Spinner label="Working" labelHidden />}
           </Row>

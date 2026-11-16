@@ -23,6 +23,7 @@ import {
   update
 } from 'orca'
 import type { ReviewCommentView, ReviewDraftView } from './protocol'
+import { PostSection, resetPosting, setupPosting } from './review-post-view'
 
 /** The Review Request whose draft is open (its MR URL), or null for the tabs. Kept across reloads. */
 const draftUrl = atom<string | null>('rr.draftUrl', null, { persist: 'plugin' })
@@ -46,7 +47,9 @@ export function isReviewDraftOpen(): boolean {
 
 /** For the panel's setup: reload the draft that was open before a reload. */
 export function setupReviewDraft(): void {
-  if (read(draftUrl) !== null) importDraft()
+  if (read(draftUrl) === null) return
+  setupPosting()
+  importDraft()
 }
 
 export function openReviewDraft(url: string): void {
@@ -54,10 +57,12 @@ export function openReviewDraft(url: string): void {
   set(draft, null)
   set(edits, {})
   set(commentErrors, {})
+  resetPosting()
   importDraft()
 }
 
 function closeReviewDraft(): void {
+  resetPosting()
   set(draftUrl, null)
   set(draft, null)
   set(draftFailure, null)
@@ -149,6 +154,7 @@ export function ReviewDraftScreen() {
             <Text weight="semibold">{current.title}</Text>
             <Text muted size="xs">{`${checked} of ${current.comments.length} checked`}</Text>
           </Stack>
+          <PostSection draft={current} onDraft={(answer) => set(draft, answer)} />
           {current.warnings.length > 0 && (
             <Callout tone="warning" icon="warning" title="Some things were not imported">
               <Stack gap="xs">
@@ -233,6 +239,11 @@ function CommentCard({ comment }: { comment: ReviewCommentView }) {
             </Text>
           )}
         </Stack>
+      )}
+      {comment.failure !== undefined && (
+        <Text tone="danger" size="xs">
+          {`Not posted: ${comment.failure}`}
+        </Text>
       )}
       {error !== undefined && (
         <Text tone="danger" size="xs">

@@ -8,6 +8,11 @@ import type { ConnectionView } from './protocol'
 
 /** The worker's last answer about the connection; null until it answers. */
 const connection = atom<ConnectionView | null>(null)
+/** Can the connection post reviews (#30)? null until the worker answers, or when unknown. */
+export function canPostReviews(): boolean | null {
+  return read(connection)?.canPost ?? null
+}
+
 /** What is typed into the token field. */
 const tokenDraft = atom('')
 /** Why the last save or remove didn't work. */
