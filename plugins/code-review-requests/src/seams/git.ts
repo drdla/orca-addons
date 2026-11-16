@@ -10,4 +10,9 @@ export interface Git {
    * to start a workspace from.
    */
   fetchMergeRequestHead(repoPath: string, iid: number): Promise<string>
+  /**
+   * `git status --porcelain` in the workspace at `path`: one line per uncommitted change
+   * (untracked files included), empty when clean (#28; no Orca API exposes it).
+   */
+  statusPorcelain(path: string): Promise<string[]>
 }

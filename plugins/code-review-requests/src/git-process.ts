@@ -18,6 +18,19 @@ export function fetchMergeRequestHeadArgs(repoPath: string, iid: number): string
 }
 
 export const systemGit: Git = {
+  statusPorcelain(path) {
+    return new Promise((resolve, reject) =>
+      execFile(
+        'git',
+        ['-C', path, 'status', '--porcelain'],
+        { timeout: TIMEOUT_MS, env: process.env, encoding: 'utf8' },
+        (error, stdout, stderr) =>
+          error
+            ? reject(new Error(`git status failed: ${(stderr || error.message).trim()}`))
+            : resolve(stdout.split('\n').filter((line) => line.trim() !== ''))
+      )
+    )
+  },
   fetchMergeRequestHead(repoPath, iid) {
     return new Promise((resolve, reject) =>
       execFile(

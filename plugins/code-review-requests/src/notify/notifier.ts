@@ -35,6 +35,11 @@ export type NotifierOptions = {
    * so it is never notified as new or ended, and a hidden one that drops off is never looked up.
    */
   isShown?(view: ReviewRequestView): boolean
+  /**
+   * Every dropped Review Request once its reason is known, with the poll's time (made draft
+   * included; see isEnded). The Ended tab (#28) keeps the Ended ones.
+   */
+  onDropped?(dropped: Dropped[], at: number): void | Promise<void>
   log?(message: string): void
 }
 
@@ -90,6 +95,7 @@ export function createNotifier(options: NotifierOptions) {
         intervalMs: await options.intervalMs()
       })
       await save({ reviewRequests: [...reviewRequests, ...unexplained], lastSuccessAt: at })
+      if (explained.length > 0) await options.onDropped?.(explained, at)
       await send(catchUp ? [catchUpNote(added, explained)] : [...added.map(newNote), ...explained.map(droppedNote)])
     }
   }

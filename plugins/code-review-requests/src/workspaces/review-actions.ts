@@ -57,12 +57,8 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     return found
   }
 
-  async function hostWorkspaceId(worktree: Worktree): Promise<string> {
-    const { workspaces } = await deps.host.call('workspace.list')
-    const row = workspaces.find((w) => w.path === worktree.path)
-    if (!row) throw new Error(`Orca doesn't list the workspace ${worktree.displayName}.`)
-    return row.id
-  }
+  const hostWorkspaceId = (worktree: Worktree) =>
+    hostWorkspaceIdOf(deps.host, { name: worktree.displayName, path: worktree.path })
 
   async function agentReview(worktree: Worktree, rr: ReviewRequestView): Promise<void> {
     const workspaceId = await hostWorkspaceId(worktree)
@@ -110,6 +106,17 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
       await agentReview(await existingWorkspace(rr), rr)
     }
   }
+}
+
+/** The host's id (`workspace.list`) for a workspace the orca CLI lists, matched by path. */
+export async function hostWorkspaceIdOf(
+  host: OrcaWorkerApi['host'],
+  workspace: { name: string; path: string }
+): Promise<string> {
+  const { workspaces } = await host.call('workspace.list')
+  const row = workspaces.find((w) => w.path === workspace.path)
+  if (!row) throw new Error(`Orca doesn't list the workspace ${workspace.name}.`)
+  return row.id
 }
 
 function messageOf(error: unknown): string {
