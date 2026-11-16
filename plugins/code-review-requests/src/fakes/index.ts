@@ -33,7 +33,7 @@ export function fakeDeps(options: { start?: number; gitlab?: FakeGitLabOptions }
   const deps: Deps = {
     gitLab: (connection) => {
       connections.push(connection)
-      return gitlab
+      return connection.token === null ? gitlab : gitlab.withToken(connection.token)
     },
     orcaCli: () => cli,
     clock,

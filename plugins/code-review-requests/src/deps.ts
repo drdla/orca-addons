@@ -3,10 +3,11 @@
 // and activates the real worker, so nothing here may spawn or reach the network on load.
 import { isExecutable, spawnGlab } from './gitlab/glab-process'
 import { createGlabTransport, locateGlab } from './gitlab/glab-transport'
+import { createTokenTransport } from './gitlab/token-transport'
 import { systemClock, type Clock } from './seams/clock'
 import { systemDesktop } from './desktop-process'
 import type { Desktop } from './seams/desktop'
-import { GitLabError, type GitLabConnection, type GitLabTransport } from './seams/gitlab'
+import type { GitLabConnection, GitLabTransport } from './seams/gitlab'
 import { OrcaCliError, type OrcaCli } from './seams/orca-cli'
 
 export type Deps = {
@@ -27,20 +28,14 @@ export function realDeps(): Deps {
             run: spawnGlab,
             locate: () => locateGlab(process.env, isExecutable)
           })
-        : notYetBuiltTransport,
+        : createTokenTransport({ host: connection.host, token: connection.token, fetch: globalThis.fetch }),
     orcaCli: () => notYetBuiltCli,
     clock: systemClock,
     desktop: systemDesktop
   }
 }
 
-// Placeholders until the real adapters land: the token transport (#25) and the CLI adapter
-// (#27). They only reject, so nothing calls out by accident.
-const notYetBuiltTransport: GitLabTransport = {
-  graphql: () => Promise.reject(new GitLabError('needs-you', 'GitLab transport not built yet')),
-  rest: () => Promise.reject(new GitLabError('needs-you', 'GitLab transport not built yet'))
-}
-
+// Placeholder until the CLI adapter lands (#27). It only rejects, so nothing calls out by accident.
 const notYetBuiltCli: OrcaCli = {
   listWorktrees: () => Promise.reject(cliMissing()),
   showWorktree: () => Promise.reject(cliMissing()),
