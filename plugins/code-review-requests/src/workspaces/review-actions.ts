@@ -6,19 +6,15 @@
 // `workspace.list` gives), so host calls map a worktree to its host id by path.
 import type { OrcaWorkerApi } from 'orca/worker'
 import type { ReviewRequestView } from '../protocol'
-import type { Git } from '../seams/git'
-import type { OrcaCli, Worktree } from '../seams/orca-cli'
+import type { Worktree } from '../seams/orca-cli'
 import type { Settings } from '../settings'
 import { reviewCommandFor, reviewPromptFor } from './review-prompt'
 import { findRepo, findReviewWorkspace } from './review-workspaces'
-import type { WorkspaceState, WorkspaceTracker } from './workspace-tracker'
+import type { WorkspaceContext } from './workspace-context'
+import type { WorkspaceState } from './workspace-tracker'
 import { messageOf } from '../errors'
 
-export type ReviewActionsDeps = {
-  cli: () => OrcaCli
-  git: Git
-  host: OrcaWorkerApi['host']
-  workspaces: WorkspaceTracker
+export type ReviewActionsDeps = WorkspaceContext & {
   settings: () => Promise<Settings>
   /** The listed Review Request with this URL, if any. */
   reviewRequest: (url: string) => ReviewRequestView | undefined

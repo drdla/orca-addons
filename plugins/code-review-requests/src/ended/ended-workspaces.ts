@@ -12,14 +12,10 @@
 // open terminals (host `workspace.list {includeStatus}`), and unposted Review Comments (a hook
 // #30 fills: `unpostedReviewComments`). Manual removal lists them for the confirmation and forces
 // only for the first two; auto-removal never forces and skips (and retries next tick) on any.
-import type { OrcaWorkerApi } from 'orca/worker'
 import type { EndedCard, EndedReason, RemovalCheck, ReviewRequestView } from '../protocol'
-import type { Clock } from '../seams/clock'
-import type { Git } from '../seams/git'
-import type { OrcaCli } from '../seams/orca-cli'
 import { isEnded, type Dropped } from '../notify/changes'
 import { findReviewWorkspace } from '../workspaces/review-workspaces'
-import type { WorkspaceTracker } from '../workspaces/workspace-tracker'
+import type { WorkspaceContext } from '../workspaces/workspace-context'
 import { messageOf } from '../errors'
 
 export const ENDED_KEY = 'ended.entries'
@@ -28,13 +24,8 @@ const DAY = 24 * 60 * 60_000
 
 type Storage = { get(key: string): Promise<unknown>; set(key: string, value: never): Promise<void> }
 
-export type EndedWorkspacesDeps = {
+export type EndedWorkspacesDeps = WorkspaceContext & {
   storage: Storage
-  cli: () => OrcaCli
-  git: Git
-  host: OrcaWorkerApi['host']
-  clock: Clock
-  workspaces: WorkspaceTracker
   /** "Auto-remove ended Review Workspaces after (days)"; 0 turns auto-removal off. */
   autoRemoveDays: () => Promise<number>
   /**
@@ -50,7 +41,6 @@ export type EndedWorkspacesDeps = {
    * (no valid URL yet) scopes nothing.
    */
   forgeHost?: () => string | null
-  log: (message: string) => void
 }
 
 /** The GitLab host of an MR web URL. */

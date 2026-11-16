@@ -12,6 +12,7 @@ import type { ConnectionView } from './protocol'
 import { GitLabError, type GitLabConnection, type GitLabTransport } from './seams/gitlab'
 import type { Settings } from './settings'
 import { messageOf } from './errors'
+import { connectionKeyOf, type ConnectionKey } from './connection-key'
 
 export type TokenModeOptions = {
   deps: Pick<Deps, 'gitLab'>
@@ -54,7 +55,7 @@ export async function checkConnection(transport: GitLabTransport): Promise<Check
 }
 
 export function createTokenMode(options: TokenModeOptions) {
-  const checked = new Map<string, Checked>()
+  const checked = new Map<ConnectionKey, Checked>()
 
   function view(over: Partial<ConnectionView>, tokenStorage: ConnectionView['tokenStorage']): ConnectionView {
     return {
@@ -94,7 +95,7 @@ export function createTokenMode(options: TokenModeOptions) {
     } catch (error) {
       return view({ problem: messageOf(error) }, tokenStorage)
     }
-    const key = keyOf(connection)
+    const key = connectionKeyOf(connection)
     let result = test ? undefined : checked.get(key)
     if (result === undefined) {
       try {
@@ -144,7 +145,7 @@ export function createTokenMode(options: TokenModeOptions) {
       return 'The token needs the read_api scope (or api, to post reviews too). Nothing was saved.'
     }
     await options.secrets.set(tokenKey(host), token)
-    checked.set(keyOf(connection), result)
+    checked.set(connectionKeyOf(connection), result)
     await options.onTokenChanged()
     return null
   }
@@ -179,9 +180,4 @@ export function createTokenMode(options: TokenModeOptions) {
       return current(false)
     }
   }
-}
-
-/** Identifies a connection; the same key the worker caches its transport under. */
-export function keyOf(connection: GitLabConnection | null): string {
-  return connection === null ? '' : `${connection.host}\n${connection.token ?? ''}`
 }
