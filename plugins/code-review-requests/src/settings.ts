@@ -33,6 +33,114 @@ export const DEFAULT_SETTINGS = {
 
 export type Settings = { [K in keyof typeof DEFAULT_SETTINGS]: (typeof DEFAULT_SETTINGS)[K] }
 
+/** How the panel's Settings view edits a setting. */
+export type SettingControl = 'text' | 'multiline' | 'integer'
+
+/** One setting as the panel's Settings view shows it: the manifest's words and limits. */
+export type SettingField = {
+  key: keyof Settings
+  title: string
+  description?: string
+  placeholder?: string
+  control: SettingControl
+  minimum?: number
+  maximum?: number
+}
+
+/**
+ * The manifest's `contributes.settings`, for the panel's Settings view (the plugin API can't read
+ * a setting's title or description, so they are repeated here). settings.test.ts keeps this list
+ * and the manifest equal, in the same order.
+ */
+export const SETTING_FIELDS: readonly SettingField[] = [
+  {
+    key: 'instanceUrl',
+    title: 'GitLab instance URL',
+    description:
+      'The GitLab instance to read Review Requests from, for example https://gitlab.com or https://gitlab.example.com.',
+    placeholder: 'https://gitlab.com',
+    control: 'text'
+  },
+  {
+    key: 'glabPath',
+    title: 'glab path',
+    description:
+      'The full path of the glab command, for example /opt/homebrew/bin/glab. Blank looks for it on PATH and in the usual install folders (/opt/homebrew/bin, /usr/local/bin, ~/.local/bin).',
+    placeholder: '/opt/homebrew/bin/glab',
+    control: 'text'
+  },
+  { key: 'pollMinutes', title: 'Refresh every (minutes)', control: 'integer', minimum: 1, maximum: 1440 },
+  {
+    key: 'overdueHours',
+    title: 'Overdue after (working hours)',
+    description: 'A Review Request waiting longer than this, counting Monday to Friday only, is marked overdue.',
+    control: 'integer',
+    minimum: 1
+  },
+  {
+    key: 'pathAllowlist',
+    title: 'Only these groups or projects',
+    description:
+      'Group or project paths, separated by commas, spaces or new lines, for example acme/backend or acme/*/api (* is one path segment). A path matches itself and everything below it; case does not matter. Empty means all.',
+    control: 'multiline'
+  },
+  {
+    key: 'pathBlocklist',
+    title: 'Never these groups or projects',
+    description:
+      'Group or project paths, written like the allowlist. A Review Request matching one is hidden, even if the allowlist matches it, unless it already has a review workspace.',
+    control: 'multiline'
+  },
+  {
+    key: 'authorBlocklist',
+    title: 'Never these authors',
+    description: 'GitLab usernames, separated by commas, spaces or new lines, for example renovate-bot or @dependabot.',
+    control: 'multiline'
+  },
+  {
+    key: 'reviewAgent',
+    title: 'Review agent',
+    description: 'The Orca agent that runs an Agent Review, for example claude or codex.',
+    control: 'text'
+  },
+  {
+    key: 'reviewPrompt',
+    title: 'Review Prompt',
+    description:
+      'The prompt that starts an Agent Review. Placeholders: {mrUrl}, {title}, {project}, {sourceBranch}, {targetBranch}, {author}.',
+    control: 'multiline'
+  },
+  {
+    key: 'reviewCommand',
+    title: 'Custom review command',
+    description:
+      'Optional. A command to run in the review workspace instead of launching the review agent, for example claude --model opus {prompt}. {prompt} is the filled Review Prompt; the Review Prompt\'s placeholders work too.',
+    control: 'text'
+  },
+  {
+    key: 'autoRemoveDays',
+    title: 'Remove ended review workspaces after (days)',
+    description: 'Clean workspaces of Ended Review Requests are removed after this many days. 0 turns it off.',
+    control: 'integer',
+    minimum: 0
+  }
+]
+
+/** What a field's typed text saves as, or why it can't be saved (Orca refuses wrong types). */
+export function parseSettingInput(field: SettingField, text: string): { value: string | number } | { error: string } {
+  if (field.control !== 'integer') return { value: text }
+  const trimmed = text.trim()
+  const value = /^-?\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN
+  const tooLow = field.minimum !== undefined && value < field.minimum
+  const tooHigh = field.maximum !== undefined && value > field.maximum
+  if (Number.isInteger(value) && !tooLow && !tooHigh) return { value }
+  if (field.minimum !== undefined && field.maximum !== undefined) {
+    return { error: `Enter a whole number from ${field.minimum} to ${field.maximum}.` }
+  }
+  if (field.minimum !== undefined) return { error: `Enter a whole number, ${field.minimum} or more.` }
+  return { error: 'Enter a whole number.' }
+}
+
 type SettingsSource = { get(): Promise<Record<string, unknown>> }
 
 /** All settings, each falling back to its default when unset or of the wrong type. */

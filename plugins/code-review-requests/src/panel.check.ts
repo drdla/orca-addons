@@ -217,12 +217,17 @@ function connection(over: Partial<ConnectionView> = {}): ConnectionView {
   }
 }
 
+/** The Settings view open (the gear next to Refresh). */
+const settingsOpen = { plugin: { 'rr.settingsOpen': true } }
+
 export default defineCheck({
   /** No stub: the real, unconfigured worker answers. */
   fresh: {},
   empty: { requests: { 'rr.snapshot': { reviewRequests: [], refreshedAt: null } } },
-  // Failure states (#24): the setup checklist per Needs-you reason, and the transient line.
-  setupLoggedOut: { requests: { 'rr.snapshot': needsYou('logged-out') } },
+  // Failure states (#24): Needs you warns above the tabs; the setup checklist per Needs-you reason
+  // is in the Settings view; the transient line sits above the tabs.
+  listBrokenConnection: { requests: { 'rr.snapshot': needsYou('logged-out'), 'rr.connection': connection({ user: null }) } },
+  setupLoggedOut: { requests: { 'rr.snapshot': needsYou('logged-out') }, persisted: settingsOpen },
   /** Logged out here, but glab is logged in to other hosts: "Use <host>" buttons (#8). */
   setupLoggedOutOtherHosts: {
     requests: {
@@ -230,36 +235,55 @@ export default defineCheck({
         const snapshot = needsYou('logged-out')
         return { ...snapshot, gitlab: { ...snapshot.gitlab!, glabHosts: ['gitlab.com', 'gitlab.other.com'] } }
       })()
-    }
+    },
+    persisted: settingsOpen
   },
-  setupGlabMissing: { requests: { 'rr.snapshot': needsYou('glab-missing') } },
+  setupGlabMissing: { requests: { 'rr.snapshot': needsYou('glab-missing') }, persisted: settingsOpen },
   setupTokenRejected: {
     requests: {
       'rr.snapshot': needsYou('token-rejected'),
       'rr.connection': connection({ source: 'token', user: null, canList: false, problem: 'gitlab.example.com: 401 Unauthorized' })
-    }
+    },
+    persisted: settingsOpen
   },
-  setupTooOld: { requests: { 'rr.snapshot': needsYou('gitlab-too-old', '17.2.0') } },
-  setupBadUrl: { requests: { 'rr.snapshot': needsYou('bad-url') } },
+  setupTooOld: { requests: { 'rr.snapshot': needsYou('gitlab-too-old', '17.2.0') }, persisted: settingsOpen },
+  setupBadUrl: { requests: { 'rr.snapshot': needsYou('bad-url') }, persisted: settingsOpen },
   retrying: { requests: { 'rr.snapshot': retrying(null, false) } },
   offline: { requests: { 'rr.snapshot': retrying(null, true) } },
   rateLimited: { requests: { 'rr.snapshot': retrying('09:10', false) } },
-  // The Connection section (#25): collapsed while healthy, open while GitLab fails.
-  connectionHealthy: { requests: { 'rr.snapshot': toReview, 'rr.connection': connection() } },
+  // The connection (#25): nothing in the list while healthy; the top of the Settings view.
+  listHealthy: { requests: { 'rr.snapshot': toReview, 'rr.connection': connection() } },
+  settingsHealthy: {
+    requests: { 'rr.snapshot': toReview, 'rr.connection': connection() },
+    settings: { pollMinutes: 10, authorBlocklist: 'renovate-bot' },
+    persisted: settingsOpen
+  },
+  settingsSetupChecklist: {
+    requests: { 'rr.snapshot': needsYou('glab-missing'), 'rr.connection': connection({ user: null, canList: false }) },
+    persisted: settingsOpen
+  },
+  settingsInvalidFilters: {
+    requests: { 'rr.snapshot': { ...toReview, invalidFilterEntries: ['acme//api'] }, 'rr.connection': connection() },
+    settings: { pathAllowlist: 'acme//api' },
+    persisted: settingsOpen
+  },
   connectionTokenReadOnly: {
     requests: {
-      'rr.snapshot': retrying(null, false),
+      'rr.snapshot': toReview,
       'rr.connection': connection({ source: 'token', scopes: ['read_api'], canList: true, canPost: false })
-    }
+    },
+    persisted: settingsOpen
   },
+  /** The connection check fails while polls work: the warning above the tabs. */
   connectionProblem: {
     requests: {
-      'rr.snapshot': retrying(null, true),
-      'rr.connection': connection({ user: null, canList: null, problem: 'No response from gitlab.example.com: fetch failed' })
+      'rr.snapshot': toReview,
+      'rr.connection': connection({ user: null, canList: null, problem: 'gitlab.example.com: 403 Forbidden' })
     }
   },
   connectionNoKeyStore: {
-    requests: { 'rr.snapshot': retrying(null, false), 'rr.connection': connection({ tokenStorage: 'unavailable' }) }
+    requests: { 'rr.snapshot': toReview, 'rr.connection': connection({ tokenStorage: 'unavailable' }) },
+    persisted: settingsOpen
   },
   workerDown: {
     requests: {

@@ -226,8 +226,6 @@ declare module 'orca' {
      * GitLab rate-limits us it answers without polling.
      */
     'rr.refresh': { output: ReviewRequestsSnapshot }
-    /** Puts a Review Request's link on the clipboard (panels have no clipboard API). */
-    'rr.copyLink': { input: { url: string }; output: { copied: true } }
     /** Puts any text on the clipboard, such as the setup checklist's glab login command (#8). */
     'rr.copyText': { input: { text: string }; output: { copied: true } }
     /**

@@ -284,10 +284,6 @@ export function createWorker(deps: Deps) {
       await statusBar.render(current)
       return { seen: true as const }
     })
-    orca.panels.handle('rr.copyLink', async ({ url }) => {
-      await deps.desktop.copyText(url)
-      return { copied: true as const }
-    })
     // Review Workspace actions (#27) and removal (#28).
     const removedWatch = registerWorkspaceRequests(orca, {
       context,

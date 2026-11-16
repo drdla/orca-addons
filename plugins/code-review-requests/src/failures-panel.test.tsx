@@ -1,6 +1,7 @@
-// The panel's failure states (#24): the setup checklist for Needs you, and the "Couldn't
-// refresh" line over the last list for transient failures.
-import { assert, mockHost, mount, test } from 'orca/testing'
+// The panel's failure states (#24): for Needs you, a warning above the tabs that opens the
+// Settings view, where the setup checklist is; the "Couldn't refresh" line over the last list for
+// transient failures.
+import { assert, mockHost, mount, test, type TestPanel } from 'orca/testing'
 import * as panel from './panel'
 import type { GitLabProblemView, ReviewRequestsSnapshot } from './protocol'
 
@@ -37,8 +38,29 @@ function retrying(over: Partial<Extract<GitLabProblemView, { status: 'retrying' 
   }
 }
 
+async function openSettings(view: TestPanel): Promise<void> {
+  await view.press(view.find({ type: 'IconButton', label: 'Settings' })!)
+}
+
+test('Needs you warns above the tabs, and Open Settings leads to the setup checklist', async () => {
+  const view = await mount(panel, { host: mockHost({ requests: { 'rr.snapshot': needsYou() } }) })
+
+  const warning = view.find({ type: 'Callout', text: /GitLab connection needs attention/ })
+  assert.ok(warning)
+  assert.match(warning!.text, /glab is not logged in to gitlab\.example\.com/)
+  assert.ok(view.find({ type: 'Tabs' }))
+  assert.equal(view.find({ type: 'Callout', text: /Connect GitLab/ }), null)
+
+  await view.press(view.find({ type: 'Button', text: 'Open Settings' })!)
+  assert.ok(view.find({ type: 'Heading', text: 'Settings' }))
+  assert.ok(view.find({ type: 'Callout', text: /Connect GitLab/ }))
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
 test('Needs you shows the setup checklist with the glab login command for the host', async () => {
   const view = await mount(panel, { host: mockHost({ requests: { 'rr.snapshot': needsYou() } }) })
+  await openSettings(view)
 
   assert.ok(view.find({ type: 'Callout', text: /Connect GitLab/ }))
   assert.ok(view.find({ text: /glab is not logged in to gitlab\.example\.com/ }))
@@ -61,11 +83,14 @@ test('Check again asks the worker to retry and shows what it answers', async () 
     }
   })
   const view = await mount(panel, { host })
+  await openSettings(view)
 
   await view.press(view.find({ type: 'Button', text: 'Check again' })!)
 
   assert.equal(retries, 1)
   assert.equal(view.find({ type: 'Callout', text: /Connect GitLab/ }), null)
+  await view.press(view.find({ type: 'Button', text: /Back/ })!)
+  assert.equal(view.find({ type: 'Callout', text: /GitLab connection needs attention/ }), null)
   assert.ok(view.find({ text: 'Nothing to review' }))
   assert.deepEqual(view.errors, [])
   await view.unmount()
@@ -83,6 +108,7 @@ test('Copy puts the glab login command on the clipboard', async () => {
     }
   })
   const view = await mount(panel, { host })
+  await openSettings(view)
 
   await view.press(view.find({ type: 'IconButton', label: 'Copy the glab login command' })!)
 
@@ -103,6 +129,7 @@ test('logged out here but in to other hosts: one click switches the instance URL
     }
   })
   const view = await mount(panel, { host })
+  await openSettings(view)
 
   assert.ok(view.find({ type: 'Button', text: 'Use gitlab.com' }))
   await view.press(view.find({ type: 'Button', text: 'Use gitlab.other.com' })!)
@@ -122,6 +149,7 @@ test('the checklist names the missing step for each kind of Needs you', async ()
   ]
   for (const [problem, text] of cases) {
     const view = await mount(panel, { host: mockHost({ requests: { 'rr.snapshot': needsYou(problem) } }) })
+    await openSettings(view)
     assert.ok(view.find({ text }), `${problem.reason}: ${text}`)
     assert.deepEqual(view.errors, [])
     await view.unmount()
@@ -130,6 +158,7 @@ test('the checklist names the missing step for each kind of Needs you', async ()
 
 test('the raw error is behind a Details disclosure', async () => {
   const view = await mount(panel, { host: mockHost({ requests: { 'rr.snapshot': needsYou() } }) })
+  await openSettings(view)
 
   assert.equal(view.find({ type: 'Code', text: 'gitlab.example.com: 401 Unauthorized' }), null)
   await view.toggle(view.find({ type: 'Collapsible' })!)
@@ -141,7 +170,8 @@ test('a transient failure says it couldn’t refresh, keeps the list, and offers
   const view = await mount(panel, { host: mockHost({ requests: { 'rr.snapshot': retrying() } }) })
 
   assert.ok(view.find({ text: /Couldn't refresh/ }))
-  assert.ok(view.find({ type: 'RelativeTime' }))
+  assert.ok(view.find({ text: /last updated \d+[mhd] ago/ }))
+  assert.equal(view.find({ type: 'RelativeTime' }), null)
   const retry = view.find({ type: 'Button', text: 'Retry' })
   assert.ok(retry)
   assert.equal(retry!.disabled, false)

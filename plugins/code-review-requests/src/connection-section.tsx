@@ -1,6 +1,6 @@
-// The panel's Connection section and token entry (#8, #25): the active source, the signed-in user,
-// what the scopes allow, Test connection, and a token field to save, replace or remove a token.
-// Collapsed while GitLab works, open while it fails. TokenEntry is also the setup checklist's
+// The Connection part of the panel's Settings view and the token entry (#8, #25): the active
+// source, the signed-in user, what the scopes allow, Test connection, and a token field to save,
+// replace or remove a token. TokenEntry is also the setup checklist's
 // second path. The worker validates and stores tokens (rr.saveToken); the panel never keeps one
 // beyond the field it is typed into, and clears that once it is stored.
 import { atom, Button, Code, Collapsible, Input, Link, plugin, read, Row, set, Stack, Text } from 'orca'
@@ -20,8 +20,6 @@ const tokenDraft = atom('')
 const tokenError = atom<string | null>(null)
 /** True while a save, remove or test runs. */
 const busy = atom(false)
-/** The person opened or closed the section; null follows the connection's health. */
-const openOverride = atom<boolean | null>(null)
 
 /** Asks the worker about the connection; `test` re-checks the user and scopes. */
 export function loadConnection(test = false): Promise<void> {
@@ -132,46 +130,66 @@ export function TokenEntry(props: { host: string | null }) {
   )
 }
 
-/** The Connection section under the list. `healthy`: the last poll worked. */
-export function ConnectionSection(props: { healthy: boolean }) {
+/** Why the connection check failed, or null (also null until the worker answers). */
+export function connectionProblem(): string | null {
+  return read(connection)?.problem ?? null
+}
+
+/** "glab · signed in as me", or where it connects while nobody is signed in. */
+export function connectionSummary(): string | null {
   const view = read(connection)
   if (view === null || !view.configured) return null
+  return view.user === null ? sourceLine(view) : `${view.source === 'token' ? 'Token' : 'glab'} · signed in as ${view.user}`
+}
+
+/**
+ * The Settings view's Connection part: the source and signed-in user, what the scopes allow, the
+ * problem if any, the token field and Test connection. `withActions: false` leaves out the problem,
+ * the token field and Test connection, for when the setup checklist below offers them.
+ */
+export function ConnectionDetails(props: { withActions: boolean }) {
+  const view = read(connection)
+  if (view === null) return null
+  if (!view.configured) {
+    return (
+      <Text muted size="sm">
+        Set the GitLab instance URL below to connect.
+      </Text>
+    )
+  }
   const scopes = scopeLine(view)
-  const description =
-    view.user === null ? sourceLine(view) : `${view.source === 'token' ? 'Token' : 'glab'} · signed in as ${view.user}`
   return (
-    <Collapsible
-      title="Connection"
-      description={description}
-      open={read(openOverride) ?? !(props.healthy && view.problem === null)}
-      onChange={(open) => set(openOverride, open)}
-    >
-      <Stack gap="sm">
-        <Text>{sourceLine(view)}</Text>
-        {view.user !== null && <Text muted size="sm">{`Signed in as ${view.user}`}</Text>}
-        {scopes !== null && <Text size="sm">{scopes}</Text>}
-        {view.canPost === false && (
-          <Text muted size="xs">
-            Posting reviews needs a token with the api scope.
+    <Stack gap="sm">
+      <Text>{connectionSummary()}</Text>
+      {view.user !== null && (
+        <Text muted size="sm">
+          {sourceLine(view)}
+        </Text>
+      )}
+      {scopes !== null && <Text size="sm">{scopes}</Text>}
+      {view.canPost === false && (
+        <Text muted size="xs">
+          Posting reviews needs a token with the api scope.
+        </Text>
+      )}
+      {props.withActions && view.problem !== null && (
+        <Stack gap="xs">
+          <Text tone="danger" size="sm">
+            {view.problem}
           </Text>
-        )}
-        {view.problem !== null && (
-          <Stack gap="xs">
-            <Text tone="danger" size="sm">
-              {view.problem}
-            </Text>
-            <Collapsible title="Details">
-              <Code block>{view.problem}</Code>
-            </Collapsible>
-          </Stack>
-        )}
-        <TokenEntry host={view.host} />
+          <Collapsible title="Details">
+            <Code block>{view.problem}</Code>
+          </Collapsible>
+        </Stack>
+      )}
+      {props.withActions && <TokenEntry host={view.host} />}
+      {props.withActions && (
         <Row gap="sm">
           <Button icon="refresh" variant="ghost" size="sm" disabled={read(busy)} onPress={testConnection}>
             Test connection
           </Button>
         </Row>
-      </Stack>
-    </Collapsible>
+      )}
+    </Stack>
   )
 }

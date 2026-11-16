@@ -44,6 +44,20 @@ test('the Ended tab counts and draws Ended Review Requests with their reason', a
   await view.unmount()
 })
 
+test("an Ended card's MR reference opens it in the browser, and its time has no seconds", async () => {
+  const host = mockHost({
+    requests: { 'rr.snapshot': snapshot({ ended: [ended(7, { endedAt: Date.now() - 2 * HOUR - 30_000 })] }) }
+  })
+  const view = await mount(panel, { host, persisted: ON_ENDED })
+
+  assert.ok(view.find({ text: /ended 2h ago/ }))
+  assert.equal(view.find({ type: 'IconButton', label: 'Open in GitLab' }), null)
+  await view.press(view.find({ type: 'Link', text: 'acme/api !7' })!)
+  assert.deepEqual(host.callsOf('shell.openExternal'), [{ url: ended(7).url }])
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
 test('a card says why auto-removal skipped it', async () => {
   const host = mockHost({
     requests: {
