@@ -8,6 +8,8 @@ import { systemClock, type Clock } from './seams/clock'
 import { systemDesktop } from './desktop-process'
 import type { Desktop } from './seams/desktop'
 import type { Git } from './seams/git'
+import type { Files } from './seams/files'
+import { systemFiles } from './files-process'
 import { systemGit } from './git-process'
 import type { GitLabConnection, GitLabTransport } from './seams/gitlab'
 import type { OrcaCli } from './seams/orca-cli'
@@ -22,6 +24,8 @@ export type Deps = {
   desktop: Desktop
   /** Fetching an MR head for a Review Workspace (#27). */
   git: Git
+  /** Reading an Agent Review's findings.json (#29). */
+  files: Files
 }
 
 export function realDeps(): Deps {
@@ -37,7 +41,8 @@ export function realDeps(): Deps {
     orcaCli: () => systemOrcaCli,
     clock: systemClock,
     desktop: systemDesktop,
-    git: systemGit
+    git: systemGit,
+    files: systemFiles
   }
 }
 

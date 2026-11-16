@@ -15,4 +15,6 @@ export interface Git {
    * (untracked files included), empty when clean (#28; no Orca API exposes it).
    */
   statusPorcelain(path: string): Promise<string[]>
+  /** The commit checked out in the worktree at `worktreePath` (`git rev-parse HEAD`), for #29. */
+  headSha(worktreePath: string): Promise<string>
 }

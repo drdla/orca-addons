@@ -30,6 +30,7 @@ import { overdueRefiner, type OverdueContext } from './to-review'
 import { createWorkspaceTracker, hasWorkspace, withWorkspaces } from './workspaces/workspace-tracker'
 import { createReviewActions, hostWorkspaceIdOf } from './workspaces/review-actions'
 import { createEndedWorkspaces } from './ended/ended-workspaces'
+import { registerDraftRequests } from './review-draft/draft-requests'
 
 export const REFRESH_COMMAND = 'code-review-requests.refresh'
 export const OPEN_COMMAND = 'code-review-requests.open'
@@ -259,6 +260,13 @@ export function createWorker(deps: Deps) {
     orca.panels.handle('rr.runAgentReview', async ({ url }) => {
       await reviewActions.runAgentReview(url)
       return { started: true as const }
+    })
+    // The Review Draft (#29): import and curation. #28/#30 can keep the returned store
+    // (createReviewDrafts) for hasUnposted / toPost / markPosted.
+    registerDraftRequests(orca, {
+      deps,
+      cards: () => snapshot().reviewRequests,
+      workspaceState: () => workspaces.current()
     })
 
     // Token mode and the Connection section (#25).

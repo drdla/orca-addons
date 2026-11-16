@@ -1,5 +1,6 @@
 import { assert, test } from 'orca/testing'
 import type { ReviewRequestView } from '../protocol'
+import { parseFindings } from '../review-draft/findings'
 import { DEFAULT_SETTINGS } from '../settings'
 import { reviewCommandFor, reviewPromptFor } from './review-prompt'
 
@@ -30,6 +31,19 @@ test('the default Review Prompt names the MR and where the findings go', () => {
   assert.match(prompt, /merge_requests\/7/)
   assert.match(prompt, /\.orca-review\/findings\.json/)
   assert.equal(/\{\w+\}/.test(prompt), false)
+})
+
+test('the default Review Prompt shows a findings.json example the import accepts (#29)', () => {
+  const example = /`(\{.*\})`/.exec(DEFAULT_SETTINGS.reviewPrompt)?.[1]
+  assert.ok(example, 'the prompt quotes an example in backticks')
+  const parsed = parseFindings(example!)
+  assert.deepEqual(parsed.warnings, [])
+  assert.ok(parsed.headSha !== null)
+  assert.deepEqual(
+    parsed.findings.map((f) => f.filePath === null),
+    [false, true],
+    'one line finding and one general one'
+  )
 })
 
 test('the custom command gets the prompt as one shell word, quotes included', () => {

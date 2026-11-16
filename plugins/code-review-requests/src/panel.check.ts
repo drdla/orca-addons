@@ -4,7 +4,7 @@
 // Never seed `settings.instanceUrl` in a scenario: the worker treats it as "configured" and the
 // real worker would then poll GitLab through the real glab (src/worker.ts).
 import { defineCheck, hostError } from 'orca/testing'
-import type { ConnectionView, ReviewRequestCard, ReviewRequestsSnapshot, SetupReason } from './protocol'
+import type { ConnectionView, ReviewDraftView, ReviewRequestCard, ReviewRequestsSnapshot, SetupReason } from './protocol'
 
 const HOUR = 3_600_000
 const NOW = Date.UTC(2026, 10, 16, 9, 0)
@@ -75,6 +75,67 @@ const withOverdue: ReviewRequestsSnapshot = {
   reviewRequests: [card(9, 'Migrate billing to the new API', 72, true), ...toReview.reviewRequests],
   refreshedAt: NOW
 }
+
+const DRAFT_URL = `https://gitlab.example.com/acme/api/-/merge_requests/12`
+
+/** A curated Review Draft (#29): a note range, a posted note, an edited range finding, a general one. */
+const reviewDraft: ReviewDraftView = {
+  url: DRAFT_URL,
+  title: 'Add login with SSO',
+  workspace: WORKSPACE,
+  comments: [
+    {
+      id: 'note:n1',
+      origin: 'diff-note',
+      filePath: 'src/auth/sso.ts',
+      startLine: 40,
+      line: 44,
+      body: 'Why not reuse the session helper here?',
+      checked: true,
+      editable: false,
+      sha: 'a1b2c3d',
+      posted: false
+    },
+    {
+      id: 'note:n2',
+      origin: 'diff-note',
+      filePath: 'src/auth/sso.ts',
+      line: 12,
+      body: 'Typo in the error message.',
+      checked: true,
+      editable: false,
+      sha: 'a1b2c3d',
+      posted: true
+    },
+    {
+      id: 'finding:0f3a9c21',
+      origin: 'agent-finding',
+      filePath: 'src/auth/token.ts',
+      line: 88,
+      body: 'The token expiry is never checked, so an expired token is accepted.',
+      checked: false,
+      editable: true,
+      sha: 'a1b2c3d',
+      posted: false
+    },
+    {
+      id: 'finding:77d0e412',
+      origin: 'agent-finding',
+      filePath: null,
+      line: null,
+      body: 'Consider splitting the SSO provider config into its own MR.',
+      checked: true,
+      editable: true,
+      sha: 'a1b2c3d',
+      posted: false
+    }
+  ],
+  warnings: ['Agent Finding 3 skipped: no body.', '1 diff-view note on uncommitted changes skipped: GitLab only has committed code.'],
+  importedAt: NOW
+}
+
+/** The Review Draft view is open on MR 12 (it stays open across reloads). */
+const draftOpen = { plugin: { 'rr.tab': 'in', 'rr.draftUrl': DRAFT_URL } }
 
 function needsYou(reason: SetupReason, version: string | null = null): ReviewRequestsSnapshot {
   return {
@@ -191,6 +252,32 @@ export default defineCheck({
     requests: {
       'rr.snapshot': { ...toReview, hiddenByFilters: 3, invalidFilterEntries: ['acme//api'] }
     }
+  },
+  /** The Review Draft drill-in (#29) with notes, findings, a posted comment and import warnings. */
+  reviewDraft: { requests: { 'rr.snapshot': inReview, 'rr.draft': reviewDraft }, persisted: draftOpen },
+  /** A Review Draft with nothing imported: no workspace to read, both sections empty. */
+  reviewDraftEmpty: {
+    requests: {
+      'rr.snapshot': inReview,
+      'rr.draft': {
+        ...reviewDraft,
+        workspace: null,
+        comments: [],
+        warnings: ['This Review Request has no Review Workspace, so there is nothing to import.'],
+        importedAt: null
+      }
+    },
+    persisted: draftOpen
+  },
+  /** The worker couldn't answer the Review Draft. */
+  reviewDraftFailed: {
+    requests: {
+      'rr.snapshot': inReview,
+      'rr.draft': () => {
+        throw hostError('unavailable', 'The worker is not running.')
+      }
+    },
+    persisted: draftOpen
   }
   // `events` only delivers Orca events, not worker posts, so rr.changed is covered by
   // panel.test.tsx instead.

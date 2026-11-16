@@ -1,5 +1,5 @@
-// A Git that only records: which MR heads were fetched where, and answers `git status` from
-// setStatus(). failNext() makes the next call fail.
+// A Git that only records: which MR heads were fetched where; answers `git status` from
+// setStatus() and `rev-parse HEAD` from setHead(). failNext() makes the next call fail.
 import type { Git } from '../seams/git'
 
 export class FakeGit implements Git {
@@ -18,6 +18,13 @@ export class FakeGit implements Git {
     return [...(this.#status.get(path) ?? [])]
   }
 
+  #heads = new Map<string, string>()
+
+  /** What headSha answers for a worktree; unset ones answer FAKE_HEAD_SHA. */
+  setHead(worktreePath: string, sha: string): void {
+    this.#heads.set(worktreePath, sha)
+  }
+
   failNext(...errors: Error[]): void {
     this.#failures.push(...errors)
   }
@@ -28,4 +35,12 @@ export class FakeGit implements Git {
     if (failure) throw failure
     return `origin/merge-requests/${iid}`
   }
+
+  async headSha(worktreePath: string): Promise<string> {
+    const failure = this.#failures.shift()
+    if (failure) throw failure
+    return this.#heads.get(worktreePath) ?? FAKE_HEAD_SHA
+  }
 }
+
+export const FAKE_HEAD_SHA = '0000000000000000000000000000000000000000'

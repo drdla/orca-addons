@@ -100,6 +100,41 @@ export type GitLabProblemView =
       offline: boolean
     }
 
+/** One Review Comment in a Review Draft, as the panel shows it (#29). */
+export type ReviewCommentView = {
+  /** `note:<Orca note id>` or `finding:<hash of what the Agent Review wrote>`. */
+  id: string
+  /** An Orca diff-view note (read-only here: edit it in Orca) or an Agent Finding (editable). */
+  origin: 'diff-note' | 'agent-finding'
+  /** Relative to the workspace; null for a general comment. */
+  filePath: string | null
+  /** The new-file line, or null for a general comment; startLine is set for a range. */
+  line: number | null
+  startLine?: number
+  body: string
+  /** Kept for posting. Diff-view notes start checked, Agent Findings unchecked. */
+  checked: boolean
+  /** True for Agent Findings that aren't posted yet. */
+  editable: boolean
+  /** The commit the comment was made against, or null if unknown. */
+  sha: string | null
+  /** Posted to GitLab and not changed since. */
+  posted: boolean
+}
+
+/** A Review Request's Review Draft (#29): what the drill-in panel view curates. */
+export type ReviewDraftView = {
+  url: string
+  title: string
+  workspace: ReviewWorkspaceView | null
+  /** Diff-view notes first (in Orca's order), then Agent Findings (in the file's order). */
+  comments: ReviewCommentView[]
+  /** What the last import skipped or couldn't read, one line each. */
+  warnings: string[]
+  /** When the last import ran (ms), or null if never. */
+  importedAt: number | null
+}
+
 /**
  * The panel's Connection section (#8, #25): which source reaches GitLab and what it may do. It
  * never carries the token itself.
@@ -152,6 +187,16 @@ declare module 'orca' {
      * `--force` only when `force`, after the person confirmed). Answers the new snapshot.
      */
     'rr.removeWorkspace': { input: { url: string; force: boolean }; output: ReviewRequestsSnapshot }
+    /**
+     * Imports the Review Request's diff-view notes and Agent Findings into its Review Draft, then
+     * answers the draft (#29). Import is cheap and has no side effects outside plugin storage.
+     */
+    'rr.draft': { input: { url: string }; output: ReviewDraftView }
+    /** Checks or unchecks a Review Comment, or edits an Agent Finding's body. */
+    'rr.updateDraftComment': {
+      input: { url: string; id: string; checked?: boolean; body?: string }
+      output: ReviewDraftView
+    }
     /** The Connection section (#25). `test` re-checks the user and scopes instead of the cached answer. */
     'rr.connection': { input: { test: boolean }; output: ConnectionView }
     /**
