@@ -220,7 +220,7 @@ function PrimaryActions(props: { rr: ReviewRequest; size?: 'xs' | 'sm' }) {
   const size = props.size ?? 'xs'
   if (!rr.workspace)
     return (
-      <Row gap="none">
+      <Row gap="xs">
         <Button size={size} tone="accent" icon="play" onPress={act(`Start review !${rr.iid}`)}>
           Start review
         </Button>
@@ -260,7 +260,6 @@ function SecondaryIcons(props: { rr: ReviewRequest }) {
     <Row gap="none">
       <IconButton size="xs" variant="ghost" icon="open-external" label="Open in GitLab" onPress={act(`Open in browser !${rr.iid}`)} />
       <IconButton size="xs" variant="ghost" icon="copy" label="Copy link" onPress={act(`Copy link !${rr.iid}`)} />
-      <IconButton size="xs" variant="ghost" icon="remove" label={`Mute ${rr.project}`} tooltip={`Mute ${rr.project}`} onPress={act(`Mute ${rr.project}`)} />
     </Row>
   )
 }
