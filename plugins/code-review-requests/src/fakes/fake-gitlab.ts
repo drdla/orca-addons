@@ -32,6 +32,8 @@ export type MergeRequestSeed = {
   sourceBranch?: string
   targetBranch?: string
   labels?: string[]
+  /** When the seeded reviewers were added (ms); defaults to now. */
+  requestedAt?: number
 }
 
 export type FakeMergeRequest = {
@@ -45,6 +47,8 @@ export type FakeMergeRequest = {
   reviewers: string[]
   approvedBy: string[]
   reviewStates: Record<string, ReviewState>
+  /** When each reviewer was added (ms), what `GET …/reviewers` reports as `created_at`. */
+  reviewersAddedAt: Record<string, number>
   sourceBranch: string
   targetBranch: string
   labels: string[]
@@ -113,6 +117,7 @@ export class FakeGitLab implements GitLabTransport {
       reviewStates: Object.fromEntries(
         reviewers.map((r) => [r, approvedBy.includes(r) ? 'APPROVED' : 'UNREVIEWED'])
       ),
+      reviewersAddedAt: Object.fromEntries(reviewers.map((r) => [r, seed.requestedAt ?? now])),
       sourceBranch: seed.sourceBranch ?? `feature-${id}`,
       targetBranch: seed.targetBranch ?? 'main',
       labels: seed.labels ?? [],
@@ -149,6 +154,7 @@ export class FakeGitLab implements GitLabTransport {
     const mr = this.#find(projectPath, iid)
     if (!mr.reviewers.includes(username)) mr.reviewers.push(username)
     mr.reviewStates[username] = 'UNREVIEWED'
+    mr.reviewersAddedAt[username] = this.#clock.now()
     this.#touch(mr)
   }
 
@@ -156,6 +162,7 @@ export class FakeGitLab implements GitLabTransport {
     const mr = this.#find(projectPath, iid)
     mr.reviewers = mr.reviewers.filter((r) => r !== username)
     delete mr.reviewStates[username]
+    delete mr.reviewersAddedAt[username]
     this.#touch(mr)
   }
 
@@ -268,6 +275,7 @@ export class FakeGitLab implements GitLabTransport {
       const rest = m[3] ?? ''
       const draft = /^\/draft_notes\/(\d+)$/.exec(rest)
       if (method === 'GET' && rest === '') return this.#restMergeRequest(mr)
+      if (method === 'GET' && rest === '/reviewers') return this.#restReviewers(mr)
       if (method === 'POST' && rest === '/approve') {
         if (typeof body.sha === 'string' && body.sha !== mr.diffRefs.headSha) {
           throw new GitLabError('rejected', 'SHA does not match HEAD of source branch', {
@@ -339,6 +347,24 @@ export class FakeGitLab implements GitLabTransport {
       author: { username: mr.author, name: mr.author },
       reviewers: mr.reviewers.map((username) => ({ username, name: username }))
     }
+  }
+
+  /** In the captured shape (src/fixtures/gitlab-reviewers-capture.ts). */
+  #restReviewers(mr: FakeMergeRequest): Json {
+    return mr.reviewers.map((username, index) => ({
+      user: {
+        id: username === this.me ? FAKE_USER_ID : 1000 + index,
+        username,
+        public_email: '',
+        name: username,
+        state: 'active',
+        locked: false,
+        avatar_url: `https://${this.host}/uploads/${username}.png`,
+        web_url: `https://${this.host}/${username}`
+      },
+      state: (mr.reviewStates[username] ?? 'UNREVIEWED').toLowerCase(),
+      created_at: new Date(mr.reviewersAddedAt[username] ?? mr.createdAt).toISOString()
+    }))
   }
 
   #webUrl(mr: FakeMergeRequest): string {

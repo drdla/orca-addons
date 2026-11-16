@@ -22,6 +22,6 @@ test('the panel gets an empty snapshot from a fresh worker', async () => {
   const fakes = fakeDeps()
   const worker = await mountWorker(createWorker(fakes.deps), { host: mockHost() })
 
-  assert.deepEqual(await worker.request('rr.snapshot'), { reviewRequests: [] })
+  assert.deepEqual(await worker.request('rr.snapshot'), { reviewRequests: [], refreshedAt: null })
   await worker.deactivate()
 })
