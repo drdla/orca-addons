@@ -134,7 +134,7 @@ export function createWorker(deps: Deps) {
     }
 
     // applySettings() sets the real interval before the first start.
-    let intervalMs = 5 * MINUTE
+    let intervalMs = DEFAULT_SETTINGS.pollMinutes * MINUTE
     const poller: Poller = createPoller({ clock: deps.clock, intervalMs, poll })
     const failures = createFailureHandling({
       clock: deps.clock,
