@@ -31,6 +31,7 @@ test('while transient failures last, the bell keeps the count until the last goo
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api' })
   const { host, worker } = await startWorker(fakes)
   const lastGood = fakes.clock.now()
+  const firstRunNotes = host.callsOf('notifications.show').length
   fakes.gitlab.failNext(...Array.from({ length: 6 }, down))
 
   // Polls fail at 5, 6, 8 and 12 minutes.
@@ -52,7 +53,7 @@ test('while transient failures last, the bell keeps the count until the last goo
   assert.equal(lastStatusBar(host)?.icon, 'warning')
   assert.equal(lastStatusBar(host)?.visible, true)
   assert.equal((await worker.request('rr.snapshot')).gitlab?.status, 'retrying')
-  assert.deepEqual(host.callsOf('notifications.show'), [])
+  assert.equal(host.callsOf('notifications.show').length, firstRunNotes)
 
   // 17 and 22 fail too; 27 works.
   await fakes.clock.advance(15 * MINUTE)

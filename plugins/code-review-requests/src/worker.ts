@@ -16,7 +16,9 @@ import { fetchReviewRequests, fetchUsername } from './gitlab/fetch-review-reques
 import { clockTime, createFailureHandling } from './poll/failures'
 import { createPollState, snapshotOf, type PollState } from './poll/poll-state'
 import { createPoller, type Poller } from './poll/poller'
-import type { ReviewRequestsSnapshot } from './protocol'
+import { explainDropped } from './notify/explain-dropped'
+import { createNotifier } from './notify/notifier'
+import type { ReviewRequestsSnapshot, ReviewRequestView } from './protocol'
 import type { GitLabConnection, GitLabTransport } from './seams/gitlab'
 import { readSettings, type Settings } from './settings'
 import { createStatusBar } from './status-bar'
@@ -80,6 +82,15 @@ export function createWorker(deps: Deps) {
     // onSucceeded/onFailed one, so the bell always draws a fully handled outcome.
     state.onFailed(failures.onFailed)
     state.onSucceeded(failures.onSucceeded)
+    const notifier = createNotifier({
+      storage: orca.storage,
+      show: (note) => orca.host.call('notifications.show', note),
+      intervalMs: async () => intervalMsOf(await readSettings(orca.settings)),
+      explainDropped: async (dropped) =>
+        gitLab.explainDropped(await connectionFor(await readSettings(orca.settings)), dropped),
+      log: (message) => orca.log(message)
+    })
+    state.onSucceeded((_previous, next) => notifier.onGoodPoll(next.reviewRequests, next.lastSuccessAt!))
     state.onChange((current) => statusBar.render(current))
 
     /** Starts, stops or re-times polling to match the settings. */
@@ -148,13 +159,21 @@ export function createWorker(deps: Deps) {
 /** One transport and username per connection, rebuilt when the connection changes. */
 function createGitLabSource(deps: Deps) {
   let cached: { key: string; transport: GitLabTransport; me: string | null } | null = null
+  async function sourceFor(connection: GitLabConnection) {
+    const key = keyOf(connection)
+    if (cached?.key !== key) cached = { key, transport: deps.gitLab(connection), me: null }
+    const source = cached
+    source.me ??= await fetchUsername(source.transport)
+    return { transport: source.transport, me: source.me }
+  }
   return {
     async reviewRequests(connection: GitLabConnection) {
-      const key = keyOf(connection)
-      if (cached?.key !== key) cached = { key, transport: deps.gitLab(connection), me: null }
-      const source = cached
-      source.me ??= await fetchUsername(source.transport)
-      return fetchReviewRequests(source.transport, source.me)
+      const { transport, me } = await sourceFor(connection)
+      return fetchReviewRequests(transport, me)
+    },
+    async explainDropped(connection: GitLabConnection, dropped: ReviewRequestView[]) {
+      const { transport, me } = await sourceFor(connection)
+      return explainDropped(transport, me, dropped)
     }
   }
 }
