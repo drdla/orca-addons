@@ -51,7 +51,7 @@ function hasTokenPath(problem: NeedsYouView): boolean {
   return problem.reason === 'glab-missing' || problem.reason === 'logged-out' || problem.reason === 'token-rejected'
 }
 
-function headline(problem: NeedsYouView): string {
+export function headline(problem: NeedsYouView): string {
   const host = problem.host ?? 'GitLab'
   switch (problem.reason) {
     case 'glab-missing':

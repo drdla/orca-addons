@@ -102,53 +102,36 @@ test('the other tabs say there is nothing there yet', async () => {
   await view.unmount()
 })
 
-test('opens a Review Request in the browser', async () => {
+test("the card's MR reference is a link that opens the Review Request in the browser", async () => {
   const host = mockHost({ requests: { 'rr.snapshot': snapshot(card(7)) } })
   const view = await mount(panel, { host })
 
-  await view.press(view.find({ type: 'IconButton', label: 'Open in GitLab' })!)
+  const link = view.find({ type: 'Link', text: 'acme/api !7' })
+  assert.ok(link)
+  await view.press(link!)
 
   assert.deepEqual(host.callsOf('shell.openExternal'), [{ url: card(7).url }])
+  assert.equal(view.find({ type: 'IconButton', label: 'Open in GitLab' }), null)
+  assert.equal(view.find({ type: 'IconButton', label: 'Copy link' }), null)
   assert.deepEqual(view.errors, [])
+  assert.deepEqual(view.warnings, [])
   await view.unmount()
 })
 
-test('copies a Review Request link through the worker', async () => {
-  const copied: string[] = []
-  const host = mockHost({
-    requests: {
-      'rr.snapshot': snapshot(card(7)),
-      'rr.copyLink': ({ url }) => {
-        copied.push(url)
-        return { copied: true }
-      }
-    }
+test('the last refresh time never shows seconds: "just now", then whole minutes', async () => {
+  const now = Date.now()
+  const fresh = await mount(panel, {
+    host: mockHost({ requests: { 'rr.snapshot': { reviewRequests: [], refreshedAt: now - 20_000 } } })
   })
-  const view = await mount(panel, { host })
+  assert.ok(fresh.find({ text: 'just now' }))
+  assert.equal(fresh.find({ type: 'RelativeTime' }), null)
+  await fresh.unmount()
 
-  await view.press(view.find({ type: 'IconButton', label: 'Copy link' })!)
-
-  assert.deepEqual(copied, [card(7).url])
-  assert.deepEqual(view.errors, [])
-  await view.unmount()
-})
-
-test('says so on the card when the link could not be copied', async () => {
-  const host = mockHost({
-    requests: {
-      'rr.snapshot': snapshot(card(7)),
-      'rr.copyLink': () => {
-        throw hostError('action_failed', 'pbcopy missing')
-      }
-    }
+  const older = await mount(panel, {
+    host: mockHost({ requests: { 'rr.snapshot': { reviewRequests: [], refreshedAt: now - 5 * 60_000 - 20_000 } } })
   })
-  const view = await mount(panel, { host })
-
-  await view.press(view.find({ type: 'IconButton', label: 'Copy link' })!)
-
-  assert.ok(view.find({ text: /Couldn't copy the link/ }))
-  assert.deepEqual(view.errors, [])
-  await view.unmount()
+  assert.ok(older.find({ text: '5m ago' }))
+  await older.unmount()
 })
 
 test('the refresh button asks the worker to poll and shows the new list', async () => {

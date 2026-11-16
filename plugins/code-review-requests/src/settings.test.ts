@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { assert, test } from 'orca/testing'
-import { DEFAULT_SETTINGS, readSettings } from './settings'
+import { DEFAULT_SETTINGS, parseSettingInput, readSettings, SETTING_FIELDS } from './settings'
 
 function settingsOf(stored: Record<string, unknown>) {
   return { get: async () => stored } as Parameters<typeof readSettings>[0]
@@ -30,4 +30,41 @@ test('the manifest declares every setting with the same default as the code', ()
   }
   const declared = Object.fromEntries(manifest.contributes.settings.map((s) => [s.key, s.default]))
   assert.deepEqual(declared, { ...DEFAULT_SETTINGS })
+})
+
+test("the panel's Settings fields are the manifest's settings, in its order, with its words and limits", () => {
+  const manifest = JSON.parse(readFileSync(new URL('../orca-plugin.json', import.meta.url), 'utf8')) as {
+    contributes: { settings: Record<string, unknown>[] }
+  }
+  const declared = manifest.contributes.settings.map((s) => ({
+    key: s.key,
+    title: s.title,
+    description: s.description,
+    placeholder: s.placeholder,
+    control: s.type === 'integer' ? 'integer' : s.multiline === true ? 'multiline' : 'text',
+    minimum: s.minimum,
+    maximum: s.maximum
+  }))
+  const fields = SETTING_FIELDS.map((f) => ({
+    key: f.key,
+    title: f.title,
+    description: f.description,
+    placeholder: f.placeholder,
+    control: f.control,
+    minimum: f.minimum,
+    maximum: f.maximum
+  }))
+  assert.deepEqual(fields, declared)
+})
+
+test('a typed setting value is checked against its field before it is saved', () => {
+  const poll = SETTING_FIELDS.find((f) => f.key === 'pollMinutes')!
+  const url = SETTING_FIELDS.find((f) => f.key === 'instanceUrl')!
+  assert.deepEqual(parseSettingInput(poll, ' 15 '), { value: 15 })
+  assert.deepEqual(parseSettingInput(poll, '0'), { error: 'Enter a whole number from 1 to 1440.' })
+  assert.deepEqual(parseSettingInput(poll, '2.5'), { error: 'Enter a whole number from 1 to 1440.' })
+  assert.deepEqual(parseSettingInput(SETTING_FIELDS.find((f) => f.key === 'overdueHours')!, 'soon'), {
+    error: 'Enter a whole number, 1 or more.'
+  })
+  assert.deepEqual(parseSettingInput(url, 'https://gitlab.acme.dev '), { value: 'https://gitlab.acme.dev ' })
 })

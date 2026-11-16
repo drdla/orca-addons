@@ -6,8 +6,9 @@
 //
 // Tabs: To review holds Review Requests without a Review Workspace, In review those with one
 // (#27), Ended the Ended Review Requests (#28). Later slices fill a tab by changing what
-// stagesOf() returns for it. #24: in Body(), the setup checklist replaces the tabs while GitLab
-// needs setting up, and the refresh problem sits above them on a failed poll.
+// stagesOf() returns for it. #24: in Body(), a broken connection gets a warning above the tabs
+// that opens the Settings view (settings-view.tsx: the connection with the setup checklist, then
+// every setting), and the refresh problem sits above them on a failed poll.
 import {
   atom,
   Badge,
@@ -18,9 +19,9 @@ import {
   Heading,
   host,
   IconButton,
+  Link,
   plugin,
   read,
-  RelativeTime,
   Row,
   set,
   Skeleton,
@@ -37,10 +38,11 @@ import {
   type PanelContext
 } from 'orca'
 import type { CiStatus, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
-import { canPostReviews, ConnectionSection, loadConnection } from './connection-section'
+import { canPostReviews, connectionProblem, loadConnection } from './connection-section'
 import { messageOf } from './errors'
+import { MinuteTime, setupClock } from './minute-time'
 import { RefreshProblem } from './refresh-problem'
-import { SetupChecklist } from './setup-checklist'
+import { headline, type NeedsYouView } from './setup-checklist'
 import { EndedList, WorkspacesUnavailable } from './ended-tab'
 import {
   isReviewDraftOpen,
@@ -50,6 +52,7 @@ import {
   setupReviewDraft
 } from './review-draft-view'
 import { API_SCOPE_HINT } from './review-post-view'
+import { isSettingsOpen, openSettings, SettingsScreen, setupSettings } from './settings-view'
 
 type TabId = 'todo' | 'in' | 'ended'
 
@@ -80,6 +83,8 @@ export function setup(ctx: PanelContext): void {
   // Opening the panel shows its Review Requests: the bell stops counting them as new (#10).
   plugin.request('rr.markSeen').catch(() => {})
   setupReviewDraft()
+  setupSettings(ctx)
+  setupClock(ctx)
   void loadConnection()
 }
 
@@ -149,16 +154,21 @@ function runAgentReview(url: string): void {
   )
 }
 
-function copyLink(url: string): void {
-  plugin
-    .request('rr.copyLink', { url })
-    .then(() => setCardError(url, null))
-    .catch((error: unknown) => setCardError(url, `Couldn't copy the link: ${messageOf(error)}`))
-}
-
 export default function Panel() {
   // #29: an open Review Draft takes the whole panel; its Back button returns here.
   if (isReviewDraftOpen()) return <ReviewDraftScreen />
+  if (isSettingsOpen()) {
+    const current = read(snapshot)
+    return (
+      <SettingsScreen
+        needsYou={needsYouOf(current)}
+        checking={read(refreshing)}
+        onCheckAgain={refresh}
+        onSnapshot={received}
+        invalidFilterEntries={current?.invalidFilterEntries ?? []}
+      />
+    )
+  }
   return (
     <Stack gap="md">
       <Header />
@@ -188,6 +198,7 @@ function Header() {
           )
         )}
         <IconButton icon="refresh" label="Refresh" variant="ghost" size="sm" onPress={refresh} />
+        <IconButton icon="settings" label="Settings" variant="ghost" size="sm" onPress={openSettings} />
       </Row>
     </Row>
   )
@@ -204,15 +215,58 @@ function FilterNotes() {
     <Stack gap="xs">
       {invalid.length > 0 && (
         <Callout tone="warning" icon="filter" title="Some filter entries are ignored">
-          {`Not a valid path or username: ${invalid.join(', ')}. Fix them in Settings → Code Review Requests.`}
+          <Stack gap="xs">
+            <Text>{`Not a valid path or username: ${invalid.join(', ')}.`}</Text>
+            <Row>
+              <Button size="xs" variant="outline" icon="settings" onPress={openSettings}>
+                Fix in Settings
+              </Button>
+            </Row>
+          </Stack>
         </Callout>
       )}
       {hidden > 0 && (
-        <Text muted size="xs">
-          {`${hidden} hidden by filters · change them in Settings → Code Review Requests`}
-        </Text>
+        <Row gap="xs" align="center">
+          <Text muted size="xs">
+            {`${hidden} hidden by filters ·`}
+          </Text>
+          <Link onPress={openSettings}>change them in Settings</Link>
+        </Row>
       )}
     </Stack>
+  )
+}
+
+/** GitLab needs setting up (#24): polling stopped until the person fixes the connection. */
+function needsYouOf(current: ReviewRequestsSnapshot | null): NeedsYouView | null {
+  const gitlab = current?.gitlab
+  return gitlab?.status === 'needs-you' ? gitlab : null
+}
+
+/**
+ * What is wrong with the connection, while it is broken: GitLab needs setting up, or the
+ * connection check failed. A transient failure has its own line (RefreshProblem) instead.
+ */
+function brokenConnection(current: ReviewRequestsSnapshot): string | null {
+  const needsYou = needsYouOf(current)
+  if (needsYou !== null) return headline(needsYou)
+  if (current.gitlab?.status === 'retrying') return null
+  return connectionProblem()
+}
+
+/** A broken connection, above the tabs: the details and the fix are in the Settings view. */
+function ConnectionWarning(props: { problem: string }) {
+  return (
+    <Callout tone="warning" icon="plug" title="GitLab connection needs attention">
+      <Stack gap="xs">
+        <Text>{props.problem}</Text>
+        <Row>
+          <Button size="xs" variant="outline" icon="settings" onPress={openSettings}>
+            Open Settings
+          </Button>
+        </Row>
+      </Stack>
+    </Callout>
   )
 }
 
@@ -227,24 +281,15 @@ function Body() {
   }
   const current = read(snapshot)
   if (current === null) return <Skeleton lines={6} label="Loading Review Requests" />
-  // #24: GitLab needs setting up: the setup checklist replaces the tabs.
   const gitlab = current.gitlab
-  if (gitlab?.status === 'needs-you') {
-    return <SetupChecklist problem={gitlab} checking={read(refreshing)} onCheckAgain={refresh} onSnapshot={received} />
-  }
-  if (gitlab?.status === 'retrying') {
-    return (
-      <Stack gap="md">
-        <RefreshProblem problem={gitlab} retrying={read(refreshing)} onRetry={refresh} />
-        <StageTabs snapshot={current} />
-        <ConnectionSection healthy={false} />
-      </Stack>
-    )
-  }
+  const broken = brokenConnection(current)
   return (
     <Stack gap="md">
+      {broken !== null && <ConnectionWarning problem={broken} />}
+      {gitlab?.status === 'retrying' && (
+        <RefreshProblem problem={gitlab} retrying={read(refreshing)} onRetry={refresh} />
+      )}
       <StageTabs snapshot={current} />
-      <ConnectionSection healthy />
     </Stack>
   )
 }
@@ -331,10 +376,9 @@ function StageTabsOnly({ snapshot: current }: { snapshot: ReviewRequestsSnapshot
   )
 }
 
-/** "3d ago", kept current by Orca, or a fixed date where RelativeTime isn't drawn. */
+/** "3d ago", "just now": never seconds (minute-time.tsx). */
 function When({ at, overdue = false }: { at: number; overdue?: boolean }) {
-  if (!ui.has('RelativeTime')) return <>{new Date(at).toLocaleString()}</>
-  return <RelativeTime at={at} format="short" tone={overdue ? 'danger' : undefined} />
+  return <MinuteTime at={at} tone={overdue ? 'danger' : undefined} />
 }
 
 /** Start review (plus its Agent Review button), or Open workspace and Run Agent Review (#6). */
@@ -442,7 +486,8 @@ function Card({ card }: { card: ReviewRequestCard }) {
         {isNew && <Badge tone="accent">New</Badge>}
       </Row>
       <Text muted size="xs">
-        {`${card.projectPath} !${card.iid} · ${card.author} · requested `}
+        <Link onPress={() => openInGitLab(card.url)}>{`${card.projectPath} !${card.iid}`}</Link>
+        {` · ${card.author} · requested `}
         <When at={card.requestedAt} overdue={card.overdue} />
       </Text>
       <StatusBadges card={card} />
@@ -452,19 +497,7 @@ function Card({ card }: { card: ReviewRequestCard }) {
           <Text size="xs">{agentLine}</Text>
         </Row>
       )}
-      <Row justify="between" gap="xs">
-        <WorkspaceActions card={card} />
-        <Row gap="xs">
-          <IconButton
-          icon="open-external"
-          label="Open in GitLab"
-          variant="ghost"
-          size="xs"
-          onPress={() => openInGitLab(card.url)}
-        />
-          <IconButton icon="copy" label="Copy link" variant="ghost" size="xs" onPress={() => copyLink(card.url)} />
-        </Row>
-      </Row>
+      <WorkspaceActions card={card} />
       {blocked !== null && (
         <Text muted size="xs">
           {blocked}

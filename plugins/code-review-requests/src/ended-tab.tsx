@@ -9,21 +9,20 @@ import {
   Button,
   Callout,
   host,
-  IconButton,
+  Link,
   plugin,
   read,
-  RelativeTime,
   Row,
   Spinner,
   Stack,
   Text,
-  ui,
   update
 } from 'orca'
 import type { EndedCard, EndedReason, RemovalCheck, ReviewRequestsSnapshot } from './protocol'
 import { openReviewDraft } from './review-draft-view'
 import { ErrorDetails } from './setup-checklist'
 import { messageOf } from './errors'
+import { MinuteTime } from './minute-time'
 
 /** Open confirmations, by Review Request URL: what removal would lose. */
 const confirming = atom<Record<string, RemovalCheck>>({})
@@ -137,38 +136,26 @@ function EndedCardView(props: {
         </Badge>
       </Row>
       <Text muted size="xs">
-        {`${card.projectPath} !${card.iid} · ${card.author} · ended `}
-        {ui.has('RelativeTime') ? (
-          <RelativeTime at={card.endedAt} format="short" />
-        ) : (
-          new Date(card.endedAt).toLocaleString()
-        )}
+        <Link onPress={() => openInGitLab(card.url)}>{`${card.projectPath} !${card.iid}`}</Link>
+        {` · ${card.author} · ended `}
+        <MinuteTime at={card.endedAt} />
         {` · ${card.workspace.name}`}
       </Text>
       {check === undefined && (
-        <Row justify="between" gap="xs">
-          <Row gap="xs">
-            <Button
-              size="xs"
-              icon="delete"
-              disabled={props.disabled || working}
-              tooltip="Remove this Review Workspace from Orca"
-              onPress={() => askToRemove(card.url)}
-            >
-              Remove workspace
-            </Button>
-            <Button size="xs" variant="outline" icon="edit" onPress={() => openReviewDraft(card.url)}>
-              Review draft
-            </Button>
-            {working && <Spinner label="Working" labelHidden />}
-          </Row>
-          <IconButton
-            icon="open-external"
-            label="Open in GitLab"
-            variant="ghost"
+        <Row gap="xs">
+          <Button
             size="xs"
-            onPress={() => openInGitLab(card.url)}
-          />
+            icon="delete"
+            disabled={props.disabled || working}
+            tooltip="Remove this Review Workspace from Orca"
+            onPress={() => askToRemove(card.url)}
+          >
+            Remove workspace
+          </Button>
+          <Button size="xs" variant="outline" icon="edit" onPress={() => openReviewDraft(card.url)}>
+            Review draft
+          </Button>
+          {working && <Spinner label="Working" labelHidden />}
         </Row>
       )}
       {check !== undefined && (

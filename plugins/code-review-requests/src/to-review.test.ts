@@ -146,17 +146,6 @@ test('the panel can ask for a refresh and gets the new snapshot back', async () 
   await worker.deactivate()
 })
 
-test('copying a link puts the Review Request URL on the clipboard', async () => {
-  const fakes = fakeDeps()
-  const { worker } = await startWorker(fakes)
-
-  const answer = await worker.request('rr.copyLink', { url: 'https://gitlab.example.com/acme/api/-/merge_requests/7' })
-
-  assert.deepEqual(answer, { copied: true })
-  assert.deepEqual(fakes.desktop.clipboard, ['https://gitlab.example.com/acme/api/-/merge_requests/7'])
-  await worker.deactivate()
-})
-
 test('pressing the bell opens the Review Requests panel', async () => {
   const fakes = fakeDeps()
   const { worker } = await startWorker(fakes)
