@@ -105,6 +105,7 @@ export default function Panel() {
     <Stack gap="md">
       <Header />
       <Body />
+      <FilterNotes />
     </Stack>
   )
 }
@@ -131,6 +132,29 @@ function Header() {
         <IconButton icon="refresh" label="Refresh" variant="ghost" size="sm" onPress={refresh} />
       </Row>
     </Row>
+  )
+}
+
+/** The footer about the filter settings (#26): ignored entries, and how many it hides. */
+function FilterNotes() {
+  const current = read(snapshot)
+  if (current === null) return null
+  const hidden = current.hiddenByFilters ?? 0
+  const invalid = current.invalidFilterEntries ?? []
+  if (hidden === 0 && invalid.length === 0) return null
+  return (
+    <Stack gap="xs">
+      {invalid.length > 0 && (
+        <Callout tone="warning" icon="filter" title="Some filter entries are ignored">
+          {`Not a valid path or username: ${invalid.join(', ')}. Fix them in Settings → Code Review Requests.`}
+        </Callout>
+      )}
+      {hidden > 0 && (
+        <Text muted size="xs">
+          {`${hidden} hidden by filters · change them in Settings → Code Review Requests`}
+        </Text>
+      )}
+    </Stack>
   )
 }
 

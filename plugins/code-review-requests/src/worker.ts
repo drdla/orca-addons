@@ -22,6 +22,7 @@ import type { ReviewRequestsSnapshot, ReviewRequestView } from './protocol'
 import type { GitLabConnection, GitLabTransport } from './seams/gitlab'
 import { DEFAULT_SETTINGS, readSettings, type Settings } from './settings'
 import { createStatusBar } from './status-bar'
+import { applyFilters, parseFilters, passesFilters } from './filters'
 import { createRequestedAtCache } from './gitlab/requested-at'
 import { overdueRefiner, type OverdueContext } from './to-review'
 
@@ -51,6 +52,13 @@ export function createWorker(deps: Deps) {
     const overdue: OverdueContext = { now: () => deps.clock.now(), overdueHours: () => overdueHours }
     const gitLab = createGitLabSource(deps)
     let connectionKey: string | null = null
+    // Filters (#26). `hasReviewWorkspace` is the "never hide one with a Review Workspace" rule:
+    // #27 replaces this no-op with a lookup of the workspaces it finds per poll.
+    const hasReviewWorkspace = (_view: ReviewRequestView): boolean => false
+    let filters = parseFilters(DEFAULT_SETTINGS)
+    let filtersKey = ''
+    /** Shown in the list and allowed to notify: has a Review Workspace or passes the filters. */
+    const isShown = (view: ReviewRequestView) => hasReviewWorkspace(view) || passesFilters(view, filters.filters)
     /** The host the last poll tried, or null if the instance URL is no URL. */
     let host: string | null = null
 
@@ -61,8 +69,10 @@ export function createWorker(deps: Deps) {
         host = null
         const connection = await connectionFor(settings)
         host = connection.host
-        const reviewRequests = await gitLab.reviewRequests(connection)
-        await state.record({ ok: true, at, reviewRequests })
+        const all = await gitLab.reviewRequests(connection)
+        filters = parseFilters(settings)
+        const { visible, hidden } = applyFilters(all, filters.filters, hasReviewWorkspace)
+        await state.record({ ok: true, at, reviewRequests: visible, hidden })
       } catch (error) {
         orca.log(`poll failed: ${error instanceof Error ? error.message : String(error)}`)
         await state.record({ ok: false, at, error })
@@ -95,15 +105,24 @@ export function createWorker(deps: Deps) {
       intervalMs: async () => intervalMsOf(await readSettings(orca.settings)),
       explainDropped: async (dropped) =>
         gitLab.explainDropped(await connectionFor(await readSettings(orca.settings)), dropped),
+      isShown,
       log: (message) => orca.log(message)
     })
-    state.onSucceeded((_previous, next) => notifier.onGoodPoll(next.reviewRequests, next.lastSuccessAt!))
+    // The notifier diffs the whole list (shown and hidden), so changing a filter never looks like
+    // a new or an Ended Review Request; isShown keeps hidden ones out of the notifications.
+    state.onSucceeded((_previous, next) =>
+      notifier.onGoodPoll([...next.reviewRequests, ...next.hidden], next.lastSuccessAt!)
+    )
     state.onChange((current) => statusBar.render(current))
     state.onChange(() => orca.panels.post('rr.changed', snapshot()))
 
     /** Starts, stops or re-times polling to match the settings. */
     async function applySettings(): Promise<void> {
-      overdueHours = (await readSettings(orca.settings)).overdueHours
+      const current = await readSettings(orca.settings)
+      overdueHours = current.overdueHours
+      filters = parseFilters(current)
+      const previousFiltersKey = filtersKey
+      filtersKey = [current.pathAllowlist, current.pathBlocklist, current.authorBlocklist].join('\n')
       if (!(await isConfigured(orca))) {
         poller.stop()
         connectionKey = null
@@ -118,7 +137,8 @@ export function createWorker(deps: Deps) {
         if (failures.needsYou() && key === connectionKey) return
         connectionKey = key
         poller.start()
-      } else if (key !== connectionKey) {
+      } else if (key !== connectionKey || (filtersKey !== previousFiltersKey && failures.rateLimitedUntil() === null)) {
+        // A changed filter polls too (unless rate-limited), so the list and the bell follow it at once.
         connectionKey = key
         await poller.pollNow()
       }
@@ -128,7 +148,11 @@ export function createWorker(deps: Deps) {
     function snapshot(): ReviewRequestsSnapshot {
       const current = state.current()
       const problem = failures.problemView(current)
-      return { ...snapshotOf(current, overdue), ...(problem === undefined ? {} : { gitlab: problem }) }
+      return {
+        ...snapshotOf(current, overdue),
+        ...(problem === undefined ? {} : { gitlab: problem }),
+        ...(filters.invalid.length === 0 ? {} : { invalidFilterEntries: filters.invalid })
+      }
     }
 
     orca.panels.handle('rr.snapshot', async () => snapshot())
