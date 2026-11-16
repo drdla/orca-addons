@@ -10,4 +10,6 @@ export interface Git {
    * to start a workspace from.
    */
   fetchMergeRequestHead(repoPath: string, iid: number): Promise<string>
+  /** The commit checked out in the worktree at `worktreePath` (`git rev-parse HEAD`), for #29. */
+  headSha(worktreePath: string): Promise<string>
 }

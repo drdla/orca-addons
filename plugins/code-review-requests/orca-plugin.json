@@ -97,7 +97,7 @@
         "title": "Review Prompt",
         "type": "string",
         "description": "The prompt that starts an Agent Review. Placeholders: {mrUrl}, {title}, {project}, {sourceBranch}, {targetBranch}, {author}.",
-        "default": "Review the GitLab merge request {mrUrl} (\"{title}\" by {author}, {sourceBranch} into {targetBranch}) in {project}. The workspace has the MR's changes checked out. Write your findings to .orca-review/findings.json.",
+        "default": "Review the GitLab merge request {mrUrl} (\"{title}\" by {author}, {sourceBranch} into {targetBranch}) in {project}. The workspace has the MR's changes checked out. Don't post anything to GitLab. Write your findings to .orca-review/findings.json as JSON like `{\"headSha\": \"<output of git rev-parse HEAD>\", \"findings\": [{\"path\": \"src/file.ts\", \"line\": 42, \"body\": \"What is wrong and how to fix it.\"}, {\"body\": \"A comment on the merge request as a whole.\"}]}`. \"line\" is the line in the new version of the file; add \"startLine\" for a range of lines.",
         "multiline": true
       },
       {

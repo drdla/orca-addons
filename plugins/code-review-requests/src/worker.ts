@@ -27,6 +27,7 @@ import { createRequestedAtCache } from './gitlab/requested-at'
 import { overdueRefiner, type OverdueContext } from './to-review'
 import { createWorkspaceTracker, hasWorkspace, withWorkspaces } from './workspaces/workspace-tracker'
 import { createReviewActions } from './workspaces/review-actions'
+import { registerDraftRequests } from './review-draft/draft-requests'
 
 export const REFRESH_COMMAND = 'code-review-requests.refresh'
 export const OPEN_COMMAND = 'code-review-requests.open'
@@ -197,6 +198,13 @@ export function createWorker(deps: Deps) {
     orca.panels.handle('rr.runAgentReview', async ({ url }) => {
       await reviewActions.runAgentReview(url)
       return { started: true as const }
+    })
+    // The Review Draft (#29): import and curation. #28/#30 can keep the returned store
+    // (createReviewDrafts) for hasUnposted / toPost / markPosted.
+    registerDraftRequests(orca, {
+      deps,
+      cards: () => snapshot().reviewRequests,
+      workspaceState: () => workspaces.current()
     })
     orca.commands.register(OPEN_COMMAND, async () => {
       // A string result is shown as-is; nothing to say when it worked.

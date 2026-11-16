@@ -30,5 +30,18 @@ export const systemGit: Git = {
             : resolve(`origin/merge-requests/${iid}`)
       )
     )
+  },
+  headSha(worktreePath) {
+    return new Promise((resolve, reject) =>
+      execFile(
+        'git',
+        ['-C', worktreePath, 'rev-parse', 'HEAD'],
+        { timeout: TIMEOUT_MS, env: process.env, encoding: 'utf8' },
+        (error, stdout, stderr) =>
+          error
+            ? reject(new Error(`git rev-parse HEAD failed: ${(stderr || error.message).trim()}`))
+            : resolve(stdout.trim())
+      )
+    )
   }
 }

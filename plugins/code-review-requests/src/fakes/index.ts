@@ -9,12 +9,14 @@ import { FakeGitLab, type FakeGitLabOptions } from './fake-gitlab'
 import { FakeOrcaCli } from './fake-orca-cli'
 import { FakeDesktop } from './fake-desktop'
 import { FakeGit } from './fake-git'
+import { FakeFiles } from './fake-files'
 
 export { FakeClock } from './fake-clock'
 export { FakeGitLab } from './fake-gitlab'
 export { FakeOrcaCli } from './fake-orca-cli'
 export { FakeDesktop } from './fake-desktop'
 export { FakeGit } from './fake-git'
+export { FakeFiles } from './fake-files'
 
 export type Fakes = {
   deps: Deps
@@ -23,6 +25,7 @@ export type Fakes = {
   clock: FakeClock
   desktop: FakeDesktop
   git: FakeGit
+  files: FakeFiles
   /** Every connection the worker built a transport for, in order. */
   connections: GitLabConnection[]
 }
@@ -34,6 +37,7 @@ export function fakeDeps(options: { start?: number; gitlab?: FakeGitLabOptions }
   const connections: GitLabConnection[] = []
   const desktop = new FakeDesktop()
   const git = new FakeGit()
+  const files = new FakeFiles()
   const deps: Deps = {
     gitLab: (connection) => {
       connections.push(connection)
@@ -42,7 +46,8 @@ export function fakeDeps(options: { start?: number; gitlab?: FakeGitLabOptions }
     orcaCli: () => cli,
     clock,
     desktop,
-    git
+    git,
+    files
   }
-  return { deps, gitlab, cli, clock, desktop, git, connections }
+  return { deps, gitlab, cli, clock, desktop, git, files, connections }
 }
