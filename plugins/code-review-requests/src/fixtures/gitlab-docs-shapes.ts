@@ -45,3 +45,42 @@ export const personalAccessTokenFromDocs = {
   active: true,
   expires_at: null
 }
+
+/**
+ * One MR diff version, as in the example of "Retrieve merge request diff versions"
+ * (`GET /projects/:id/merge_requests/:iid/versions`, newest first) on
+ * https://docs.gitlab.com/api/merge_requests/ (checked 2026-11-16). Posting (#30) looks up a
+ * Review Comment's commit here to post against that version's SHAs.
+ */
+export const mergeRequestVersionFromDocs = {
+  id: 110,
+  head_commit_sha: '33e2ee8579fda5bc36accc9c6fbd0b4fefda9e30',
+  base_commit_sha: 'eeb57dffe83deb686a60a71c16c32f71046868fd',
+  start_commit_sha: 'eeb57dffe83deb686a60a71c16c32f71046868fd',
+  created_at: '2016-07-26T14:44:48.926Z',
+  merge_request_id: 105,
+  state: 'collected',
+  real_size: '1',
+  patch_id_sha: 'd504412d5b6e6739647e752aff8e468dde093f2f'
+}
+
+/**
+ * A merge request note, as in the example of "Retrieve a merge request note" on
+ * https://docs.gitlab.com/api/notes/ (checked 2026-11-16). `POST …/notes` (the `/submit_review`
+ * note on GitLab 17.4–19.1, #30) answers a note; the plugin reads nothing from it.
+ */
+export const mergeRequestNoteFromDocs = {
+  id: 301,
+  body: 'Comment for MR',
+  author: { id: 1, username: 'pipin', name: 'Pip', state: 'active', created_at: '2013-09-30T13:46:01Z' },
+  created_at: '2013-10-02T08:57:14Z',
+  updated_at: '2013-10-02T08:57:14Z',
+  system: false,
+  noteable_id: 2,
+  noteable_type: 'MergeRequest',
+  noteable_iid: 2,
+  project_id: 5,
+  resolvable: false,
+  confidential: false,
+  internal: false
+}

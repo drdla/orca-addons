@@ -94,6 +94,66 @@ test('draft notes are listed, then published as one review', async () => {
   ])
 })
 
+test('each push adds an MR diff version, newest first', async () => {
+  const gitlab = new FakeGitLab({ me: 'me' })
+  gitlab.addMergeRequest({ iid: 7, projectPath: 'acme/api' })
+  const base = '/projects/acme%2Fapi/merge_requests/7'
+  const first = await gitlab.rest<{ diff_refs: { head_sha: string } }>('GET', base)
+  gitlab.push('acme/api', 7)
+  const second = await gitlab.rest<{ diff_refs: { head_sha: string; base_sha: string } }>('GET', base)
+
+  const versions = await gitlab.rest<{ head_commit_sha: string; base_commit_sha: string }[]>('GET', `${base}/versions`)
+
+  assert.deepEqual(versions.map((v) => v.head_commit_sha), [second.diff_refs.head_sha, first.diff_refs.head_sha])
+  assert.equal(versions[0]!.base_commit_sha, second.diff_refs.base_sha)
+})
+
+test('a draft on a line outside the diff fails to publish and stays a draft; the rest publishes', async () => {
+  const gitlab = new FakeGitLab({ me: 'me' })
+  gitlab.addMergeRequest({ iid: 7, projectPath: 'acme/api' })
+  gitlab.outsideDiff('acme/api', 7, 'a.ts', 99)
+  const base = '/projects/acme%2Fapi/merge_requests/7'
+  await gitlab.rest('POST', `${base}/draft_notes`, { note: 'fine' })
+  await gitlab.rest('POST', `${base}/draft_notes`, {
+    note: 'stale',
+    position: { position_type: 'text', new_path: 'a.ts', new_line: 99 }
+  })
+
+  await gitlab.rest('POST', `${base}/draft_notes/bulk_publish`)
+
+  const left = await gitlab.rest<{ note: string }[]>('GET', `${base}/draft_notes`)
+  assert.deepEqual(left.map((d) => d.note), ['stale'])
+  assert.deepEqual(gitlab.reviewsOf('acme/api', 7).map((r) => r.notes), [['fine']])
+})
+
+test('GitLab before 19.2 ignores the summary and state on bulk_publish; a /submit_review note publishes instead', async () => {
+  const gitlab = new FakeGitLab({ me: 'me', version: '18.11.0' })
+  gitlab.addMergeRequest({ iid: 7, projectPath: 'acme/api' })
+  const base = '/projects/acme%2Fapi/merge_requests/7'
+  await gitlab.rest('POST', `${base}/draft_notes`, { note: 'one' })
+  await gitlab.rest('POST', `${base}/draft_notes/bulk_publish`, { note: 'ignored', reviewer_state: 'requested_changes' })
+  await gitlab.rest('POST', `${base}/draft_notes`, { note: 'two' })
+
+  await gitlab.rest('POST', `${base}/notes`, { body: 'Looks good overall.\n\n/submit_review requested_changes' })
+
+  assert.deepEqual(gitlab.reviewsOf('acme/api', 7), [
+    { summary: null, reviewerState: null, notes: ['one'] },
+    { summary: 'Looks good overall.', reviewerState: 'requested_changes', notes: ['two'] }
+  ])
+  assert.deepEqual(gitlab.notesOf('acme/api', 7), ['Looks good overall.'])
+})
+
+test('a token without the api scope may read but not write', async () => {
+  const gitlab = new FakeGitLab({ me: 'me' })
+  gitlab.addMergeRequest({ iid: 7, projectPath: 'acme/api' })
+  gitlab.issueToken('glpat-READ', ['read_api'])
+  const viaToken = gitlab.withToken('glpat-READ')
+  const base = '/projects/acme%2Fapi/merge_requests/7'
+
+  assert.deepEqual(await viaToken.rest('GET', `${base}/draft_notes`), [])
+  await assert.rejects(viaToken.rest('POST', `${base}/draft_notes`, { note: 'x' }), /403/)
+})
+
 test('the current user and version answer over REST', async () => {
   const gitlab = new FakeGitLab({ me: 'me', version: '17.4.0' })
   assert.deepEqual(await gitlab.rest('GET', '/user'), { id: 1, username: 'me', name: 'me' })

@@ -55,9 +55,17 @@ export type FakeMergeRequest = {
   createdAt: number
   updatedAt: number
   diffRefs: { baseSha: string; startSha: string; headSha: string }
+  /** MR diff versions, oldest first (`GET …/versions` answers newest first). */
+  versions: FakeVersion[]
   draftNotes: FakeDraftNote[]
   reviews: FakeReview[]
+  /** `path:line` positions whose drafts fail to publish (a line outside the diff). */
+  outsideDiff: Set<string>
+  /** Bodies of the plain notes posted (`POST …/notes`), quick actions removed. */
+  notes: string[]
 }
+
+export type FakeVersion = { id: number; baseSha: string; startSha: string; headSha: string; createdAt: number }
 
 export type FakeDraftNote = { id: number; author: string; note: string; position: Json | null }
 export type FakeReview = { summary: string | null; reviewerState: string | null; notes: string[] }
@@ -131,9 +139,13 @@ export class FakeGitLab implements GitLabTransport {
       createdAt: now,
       updatedAt: now,
       diffRefs: { baseSha: this.#sha(), startSha: this.#sha(), headSha: this.#sha() },
+      versions: [],
       draftNotes: [],
-      reviews: []
+      reviews: [],
+      outsideDiff: new Set(),
+      notes: []
     }
+    this.#addVersion(mr)
     this.#mergeRequests.push(mr)
     return mr
   }
@@ -177,12 +189,28 @@ export class FakeGitLab implements GitLabTransport {
   push(projectPath: string, iid: number): void {
     const mr = this.#find(projectPath, iid)
     mr.diffRefs = { ...mr.diffRefs, headSha: this.#sha() }
+    this.#addVersion(mr)
     this.#touch(mr)
   }
 
-  /** Reviews published with `bulk_publish`, oldest first. */
+  /** Drafts on this line fail to publish (GitLab can't find it in the diff) and stay drafts. */
+  outsideDiff(projectPath: string, iid: number, path: string, line: number): void {
+    this.#find(projectPath, iid).outsideDiff.add(`${path}:${line}`)
+  }
+
+  /** Reviews published with `bulk_publish` or a `/submit_review` note, oldest first. */
   reviewsOf(projectPath: string, iid: number): FakeReview[] {
     return this.#find(projectPath, iid).reviews
+  }
+
+  /** The plain notes posted on the MR (quick actions removed), oldest first. */
+  notesOf(projectPath: string, iid: number): string[] {
+    return this.#find(projectPath, iid).notes
+  }
+
+  /** The draft notes on the MR (anyone's), for assertions. */
+  draftNotesOf(projectPath: string, iid: number): FakeDraftNote[] {
+    return this.#find(projectPath, iid).draftNotes
   }
 
   /** Makes this GitLab accept a personal access token with these scopes. */
@@ -207,6 +235,10 @@ export class FakeGitLab implements GitLabTransport {
       },
       rest: (method, path, body) => {
         this.#checkToken(token, path)
+        if (method !== 'GET' && !this.#tokens.get(token)!.includes('api')) {
+          this.requests.push({ operation: `token refused ${method} ${path}` })
+          return Promise.reject(new GitLabError('rejected', `${this.host}: 403 insufficient_scope`, { status: 403 }))
+        }
         if (method === 'GET' && path === '/personal_access_tokens/self') {
           this.requests.push({ operation: `${method} ${path}` })
           return Promise.resolve(this.#personalAccessToken(this.#tokens.get(token)!) as never)
@@ -381,23 +413,82 @@ export class FakeGitLab implements GitLabTransport {
         return null
       }
       if (method === 'POST' && rest === '/draft_notes/bulk_publish') {
-        const mine = mr.draftNotes.filter((d) => d.author === this.me)
-        mr.draftNotes = mr.draftNotes.filter((d) => d.author !== this.me)
-        const reviewerState = typeof body.reviewer_state === 'string' ? body.reviewer_state : null
-        mr.reviews.push({
-          summary: typeof body.note === 'string' ? body.note : null,
-          reviewerState,
-          notes: mine.map((d) => d.note)
-        })
-        if (mr.reviewers.includes(this.me)) {
-          mr.reviewStates[this.me] =
-            reviewerState === 'requested_changes' ? 'REQUESTED_CHANGES' : 'REVIEWED'
-        }
-        this.#touch(mr)
+        // `note` and `reviewer_state` are declared from 19.2 on; older GitLab ignores them.
+        const takesSummary = atLeast(this.version, 19, 2)
+        this.#publish(
+          mr,
+          takesSummary && typeof body.note === 'string' ? body.note : null,
+          takesSummary && typeof body.reviewer_state === 'string' ? body.reviewer_state : null
+        )
         return null
+      }
+      if (method === 'GET' && rest === '/versions') {
+        return [...mr.versions].reverse().map((v) => ({
+          id: v.id,
+          head_commit_sha: v.headSha,
+          base_commit_sha: v.baseSha,
+          start_commit_sha: v.startSha,
+          created_at: new Date(v.createdAt).toISOString(),
+          merge_request_id: mr.id,
+          state: 'collected',
+          real_size: '1',
+          patch_id_sha: v.headSha
+        }))
+      }
+      if (method === 'POST' && rest === '/notes') {
+        if (typeof body.body !== 'string' || body.body.trim() === '') {
+          throw new GitLabError('rejected', 'body is missing', { status: 400 })
+        }
+        // Quick actions run and leave the body; `/submit_review [state]` publishes the drafts (17.0+).
+        const submit = /^\/submit_review(?:[ \t]+(\S+))?[ \t]*$/m.exec(body.body)
+        const text = body.body.replace(/^\/\w+.*$/gm, '').trim()
+        if (submit) {
+          this.#publish(mr, text === '' ? null : text, submit[1] ?? 'reviewed')
+        }
+        if (text !== '') mr.notes.push(text)
+        return this.#restNote(mr, text)
       }
     }
     throw notFound(path)
+  }
+
+  /** Publishes my drafts as one review; those on a line outside the diff stay drafts. */
+  #publish(mr: FakeMergeRequest, summary: string | null, reviewerState: string | null): void {
+    const fails = (d: FakeDraftNote) => {
+      const p = d.position as { new_path?: unknown; new_line?: unknown } | null
+      return p !== null && mr.outsideDiff.has(`${String(p.new_path)}:${String(p.new_line)}`)
+    }
+    const mine = mr.draftNotes.filter((d) => d.author === this.me && !fails(d))
+    mr.draftNotes = mr.draftNotes.filter((d) => !mine.includes(d))
+    mr.reviews.push({ summary, reviewerState, notes: mine.map((d) => d.note) })
+    if (mr.reviewers.includes(this.me)) {
+      mr.reviewStates[this.me] = reviewerState === 'requested_changes' ? 'REQUESTED_CHANGES' : 'REVIEWED'
+    }
+    this.#touch(mr)
+  }
+
+  /** In the documented note shape (src/fixtures/gitlab-docs-shapes.ts). */
+  #restNote(mr: FakeMergeRequest, body: string): Json {
+    const at = new Date(this.#clock.now()).toISOString()
+    return {
+      id: this.#nextId++,
+      body,
+      author: { id: FAKE_USER_ID, username: this.me, name: this.me, state: 'active', created_at: at },
+      created_at: at,
+      updated_at: at,
+      system: false,
+      noteable_id: mr.id,
+      noteable_type: 'MergeRequest',
+      noteable_iid: mr.iid,
+      project_id: 1,
+      resolvable: false,
+      confidential: false,
+      internal: false
+    }
+  }
+
+  #addVersion(mr: FakeMergeRequest): void {
+    mr.versions.push({ id: this.#nextId++, ...mr.diffRefs, createdAt: this.#clock.now() })
   }
 
   #restMergeRequest(mr: FakeMergeRequest): Json {
@@ -492,6 +583,11 @@ const GENERAL_NOTE_POSITION: Json = {
   old_line: null,
   new_line: null,
   line_range: null
+}
+
+function atLeast(version: string, major: number, minor: number): boolean {
+  const [a = 0, b = 0] = version.split('.').map(Number)
+  return a > major || (a === major && b >= minor)
 }
 
 function notFound(what: string): GitLabError {
