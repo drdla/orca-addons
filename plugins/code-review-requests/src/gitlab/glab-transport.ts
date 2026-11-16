@@ -2,6 +2,7 @@
 // run, spawned by absolute path. `--include` puts the HTTP status line and headers before the
 // body on stdout, which is how failures are told apart (glab itself only exits 1).
 import { GitLabError, type GitLabTransport, type HttpMethod, type Json } from '../seams/gitlab'
+import { messageOf, parseBody, retryAfter } from './http-response'
 
 /** One finished glab run. Rejects only when glab could not be started (errno error). */
 export type GlabRun = { exitCode: number; stdout: string; stderr: string }
@@ -47,7 +48,7 @@ export function createGlabTransport(options: GlabTransportOptions): GitLabTransp
       })
     }
     if (status === 429 || status >= 500) {
-      const retryAfterMs = retryAfter(response.headers)
+      const retryAfterMs = retryAfter((name) => response.headers.get(name))
       throw new GitLabError('transient', message, { status, ...(retryAfterMs === undefined ? {} : { retryAfterMs }) })
     }
     throw new GitLabError('rejected', message, { status })
@@ -115,42 +116,6 @@ function splitIncluded(stdout: string): Included | null {
     headers,
     body: separator ? stdout.slice(separator.index + separator[0].length) : ''
   }
-}
-
-/** JSON when it parses, the raw text otherwise (an HTML error page), null when empty. */
-function parseBody(body: string): unknown {
-  if (body.trim() === '') return null
-  try {
-    return JSON.parse(body)
-  } catch {
-    return body
-  }
-}
-
-/** GitLab's error text: `{"message": …}` (a string or a field → errors object) or `{"error": …}`. */
-function messageOf(body: unknown): string | undefined {
-  if (!body || typeof body !== 'object') return undefined
-  const { message, error } = body as { message?: unknown; error?: unknown }
-  const value = message ?? error
-  if (value === undefined) return undefined
-  return typeof value === 'string' ? value : JSON.stringify(value)
-}
-
-/**
- * `Retry-After` in seconds, or as an HTTP date measured against the response's `Date`. Without it,
- * GitLab's `RateLimit-Reset` (Unix seconds), also measured against `Date`.
- */
-function retryAfter(headers: Map<string, string>): number | undefined {
-  const now = Date.parse(headers.get('date') ?? '')
-  const value = headers.get('retry-after')
-  if (value) {
-    if (/^\d+$/.test(value)) return Number(value) * 1000
-    const at = Date.parse(value)
-    return Number.isNaN(at) || Number.isNaN(now) ? undefined : Math.max(0, at - now)
-  }
-  const reset = headers.get('ratelimit-reset')
-  if (!reset || !/^\d+$/.test(reset) || Number.isNaN(now)) return undefined
-  return Math.max(0, Number(reset) * 1000 - now)
 }
 
 function oneLine(text: string): string {

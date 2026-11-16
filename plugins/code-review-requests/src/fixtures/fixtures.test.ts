@@ -4,7 +4,7 @@ import { assert, test } from 'orca/testing'
 import { REVIEW_REQUESTS_QUERY, type ReviewRequestsResponse } from '../gitlab/review-requests-query'
 import { FakeGitLab, FakeOrcaCli } from '../fakes'
 import type { Worktree, WorktreeDetail } from '../seams/orca-cli'
-import { draftNoteFromDocs } from './gitlab-docs-shapes'
+import { draftNoteFromDocs, personalAccessTokenFromDocs } from './gitlab-docs-shapes'
 import { mergeRequestBody, reviewRequestsBody } from './gitlab-captures'
 import { mergeRequestReviewersBody } from './gitlab-reviewers-capture'
 import { worktreeListEnvelope, worktreeShowEnvelope, worktreeShowErrorEnvelope } from './orca-cli-captures'
@@ -48,6 +48,19 @@ test('the fake draft notes look like the documented draft note', async () => {
 
   assert.deepEqual(shapeMismatches(created, draftNoteFromDocs, { exact: true }), [])
   assert.deepEqual(shapeMismatches(listed, [draftNoteFromDocs], { exact: true }), [])
+})
+
+test('the fake describes a personal access token in the documented shape, for token mode and glab alike', async () => {
+  const gitlab = seeded()
+  gitlab.issueToken('glpat-FAKE', ['read_api'])
+  gitlab.glabScopes = ['api']
+
+  const viaToken = await gitlab.withToken('glpat-FAKE').rest('GET', '/personal_access_tokens/self')
+  const viaGlab = await gitlab.rest('GET', '/personal_access_tokens/self')
+
+  assert.deepEqual(shapeMismatches(viaToken, personalAccessTokenFromDocs, { exact: true }), [])
+  assert.deepEqual(shapeMismatches(viaGlab, personalAccessTokenFromDocs, { exact: true }), [])
+  assert.deepEqual([(viaToken as { scopes: string[] }).scopes, (viaGlab as { scopes: string[] }).scopes], [['read_api'], ['api']])
 })
 
 test('the fake orca CLI lists and shows worktrees in the shape Orca does', async () => {

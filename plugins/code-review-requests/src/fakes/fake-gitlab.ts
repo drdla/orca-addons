@@ -88,6 +88,13 @@ export class FakeGitLab implements GitLabTransport {
   #failures: GitLabError[] = []
   #nextId = 1
   #nextSha = 1
+  /** Personal access tokens this GitLab accepts, with their scopes (#25). */
+  #tokens = new Map<string, string[]>()
+  /**
+   * What `GET /personal_access_tokens/self` tells glab's own login: its scopes, or null for a
+   * 404 (an OAuth login, which has no personal access token behind it).
+   */
+  glabScopes: string[] | null = null
 
   constructor(options: FakeGitLabOptions = {}) {
     this.me = options.me ?? 'me'
@@ -178,6 +185,37 @@ export class FakeGitLab implements GitLabTransport {
     return this.#find(projectPath, iid).reviews
   }
 
+  /** Makes this GitLab accept a personal access token with these scopes. */
+  issueToken(token: string, scopes: string[] = ['api', 'read_api']): void {
+    this.#tokens.set(token, scopes)
+  }
+
+  /** The token expires or is revoked: from now on it gets a 401. */
+  revokeToken(token: string): void {
+    this.#tokens.delete(token)
+  }
+
+  /**
+   * This GitLab as a token-mode connection sees it: unknown or revoked tokens get a 401, and a
+   * token without `read_api`/`api` may only read `/user` and itself. The calls land in `requests`.
+   */
+  withToken(token: string): GitLabTransport {
+    return {
+      graphql: (query, variables) => {
+        this.#checkToken(token, null)
+        return this.graphql(query, variables)
+      },
+      rest: (method, path, body) => {
+        this.#checkToken(token, path)
+        if (method === 'GET' && path === '/personal_access_tokens/self') {
+          this.requests.push({ operation: `${method} ${path}` })
+          return Promise.resolve(this.#personalAccessToken(this.#tokens.get(token)!) as never)
+        }
+        return this.rest(method, path, body)
+      }
+    }
+  }
+
   /** The next calls reject with these errors, one each, before calls succeed again. */
   failNext(...errors: GitLabError[]): void {
     this.#failures.push(...errors)
@@ -206,6 +244,36 @@ export class FakeGitLab implements GitLabTransport {
   }
 
   // --- internals ---------------------------------------------------------------------------
+
+  #checkToken(token: string, restPath: string | null): void {
+    const scopes = this.#tokens.get(token)
+    const operation = restPath === null ? 'graphql' : restPath
+    if (scopes === undefined) {
+      this.requests.push({ operation: `token rejected ${operation}` })
+      throw new GitLabError('needs-you', `${this.host}: 401 Unauthorized`, { status: 401, reason: 'token-rejected' })
+    }
+    const readsAnything = scopes.includes('api') || scopes.includes('read_api')
+    if (!readsAnything && restPath !== '/user' && restPath !== '/personal_access_tokens/self') {
+      this.requests.push({ operation: `token refused ${operation}` })
+      throw new GitLabError('rejected', `${this.host}: 403 insufficient_scope`, { status: 403 })
+    }
+  }
+
+  /** `GET /personal_access_tokens/self`, in the documented shape. */
+  #personalAccessToken(scopes: string[]): Json {
+    return {
+      id: 4,
+      name: 'Orca Review Requests',
+      revoked: false,
+      created_at: '2026-11-01T09:00:00.000Z',
+      description: null,
+      scopes,
+      user_id: FAKE_USER_ID,
+      last_used_at: null,
+      active: true,
+      expires_at: null
+    }
+  }
 
   #reviewRequests(variables: Record<string, Json>): ReviewRequestsResponse {
     const me = typeof variables.me === 'string' ? variables.me : this.me
@@ -268,6 +336,10 @@ export class FakeGitLab implements GitLabTransport {
       return { id: FAKE_USER_ID, username: this.me, name: this.me }
     }
     if (method === 'GET' && path === '/version') return { version: this.version }
+    if (method === 'GET' && path === '/personal_access_tokens/self') {
+      if (this.glabScopes === null) throw new GitLabError('rejected', `${this.host}: 404 Not Found`, { status: 404 })
+      return this.#personalAccessToken(this.glabScopes)
+    }
 
     const m = /^\/projects\/([^/]+)\/merge_requests\/(\d+)(\/.*)?$/.exec(path)
     if (m) {

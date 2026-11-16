@@ -36,6 +36,7 @@ import {
   type PanelContext
 } from 'orca'
 import type { ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
+import { ConnectionSection, loadConnection } from './connection-section'
 import { RefreshProblem } from './refresh-problem'
 import { SetupChecklist } from './setup-checklist'
 import { EndedList, WorkspacesUnavailable } from './ended-tab'
@@ -70,6 +71,7 @@ export function setup(ctx: PanelContext): void {
     .request('rr.snapshot')
     .then(received)
     .catch((error: unknown) => set(failure, messageOf(error)))
+  void loadConnection()
 }
 
 function refresh(): void {
@@ -79,6 +81,7 @@ function refresh(): void {
     .then(received)
     .catch((error: unknown) => set(failure, messageOf(error)))
     .finally(() => set(refreshing, false))
+  void loadConnection()
 }
 
 function setCardError(url: string, message: string | null): void {
@@ -223,10 +226,16 @@ function Body() {
       <Stack gap="md">
         <RefreshProblem problem={gitlab} retrying={read(refreshing)} onRetry={refresh} />
         <StageTabs snapshot={current} />
+        <ConnectionSection healthy={false} />
       </Stack>
     )
   }
-  return <StageTabs snapshot={current} />
+  return (
+    <Stack gap="md">
+      <StageTabs snapshot={current} />
+      <ConnectionSection healthy />
+    </Stack>
+  )
 }
 
 type Stage = { id: TabId; title: string; count: number; overdue: boolean; body: OrcaNode }
