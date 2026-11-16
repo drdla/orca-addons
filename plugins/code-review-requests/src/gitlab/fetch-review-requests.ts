@@ -1,0 +1,57 @@
+// Reads the user's Review Requests from GitLab through the transport seam: who am I, then every
+// page of the Review Requests query, mapped to the views the rest of the plugin uses.
+import type { ReviewRequestView } from '../protocol'
+import type { GitLabTransport } from '../seams/gitlab'
+import {
+  REVIEW_REQUESTS_QUERY,
+  type ReviewRequestNode,
+  type ReviewRequestsResponse
+} from './review-requests-query'
+
+/** The logged-in user's username, which the query needs as `$me`. */
+export async function fetchUsername(transport: GitLabTransport): Promise<string> {
+  const user = await transport.rest<{ username: string }>('GET', '/user')
+  return user.username
+}
+
+/** Every Review Request of `me`, following the query's pages. */
+export async function fetchReviewRequests(
+  transport: GitLabTransport,
+  me: string
+): Promise<ReviewRequestView[]> {
+  const views: ReviewRequestView[] = []
+  let after: string | null = null
+  for (;;) {
+    const variables: Record<string, string> = after === null ? { me } : { me, after }
+    const data: ReviewRequestsResponse = await transport.graphql<ReviewRequestsResponse>(
+      REVIEW_REQUESTS_QUERY,
+      variables
+    )
+    const page = data.currentUser.reviewRequestedMergeRequests
+    for (const node of page.nodes) {
+      if (isReviewRequest(node, me)) views.push(toView(node))
+    }
+    if (!page.pageInfo.hasNextPage || page.pageInfo.endCursor === null) return views
+    after = page.pageInfo.endCursor
+  }
+}
+
+/**
+ * The query already filters these out, but `not: { approvedBy }` is experimental, so check the
+ * user's own reviewer node too (research #5).
+ */
+function isReviewRequest(node: ReviewRequestNode, me: string): boolean {
+  if (node.draft || node.state !== 'opened') return false
+  const mine = node.reviewers.nodes.find((r) => r.username === me)
+  return mine?.mergeRequestInteraction?.approved !== true
+}
+
+function toView(node: ReviewRequestNode): ReviewRequestView {
+  return {
+    url: node.webUrl,
+    title: node.title,
+    projectPath: node.project.fullPath,
+    iid: Number(node.iid),
+    author: node.author.username
+  }
+}

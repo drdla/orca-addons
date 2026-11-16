@@ -1,6 +1,6 @@
 // Test doubles for every outside seam, wired into a Deps the worker accepts:
 //   const fakes = fakeDeps()
-//   const worker = await mountWorker({ default: createActivate(fakes.deps) }, { host })
+//   const worker = await mountWorker(createWorker(fakes.deps), { host })
 //   fakes.gitlab.addMergeRequest(...); await fakes.clock.advance(5 * 60_000)
 import type { Deps } from '../deps'
 import type { GitLabConnection } from '../seams/gitlab'
