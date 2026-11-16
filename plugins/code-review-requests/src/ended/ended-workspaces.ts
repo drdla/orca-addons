@@ -1,11 +1,12 @@
 // The Ended tab's entries and their Review Workspace removal (#7, #28).
 //
-// An entry is an Ended Review Request (approved, merged, closed, the user removed as Reviewer, or
-// gone) that had a Review Workspace when the notifier explained why it dropped off. Made draft is
-// never an entry. Entries live in orca.storage (ENDED_KEY) and stay until their workspace is gone:
-// removed here, by auto-removal, or outside the plugin (the `workspace.removed` event, or missing
-// from a later `orca worktree list`). One that becomes a Review Request again leaves the tab, which
-// also cancels its auto-removal.
+// An entry is an Ended Review Request (approved, merged, closed, or the user removed as Reviewer)
+// that had a Review Workspace when the notifier explained why it dropped off. Made draft or no
+// longer visible (#7: unknown whether it ended) is never an entry. Entries are scoped to the
+// configured GitLab host (forgeHost). Entries live in orca.storage (ENDED_KEY) and stay until
+// their workspace is gone: removed here, by auto-removal, or outside the plugin (the
+// `workspace.removed` event, or missing from a later `orca worktree list`). One that becomes a
+// Review Request again leaves the tab, which also cancels its auto-removal.
 //
 // Removal checks three things: uncommitted changes (`git status --porcelain`), running agents or
 // open terminals (host `workspace.list {includeStatus}`), and unposted Review Comments (a hook
@@ -42,7 +43,22 @@ export type EndedWorkspacesDeps = {
   unpostedReviewComments?: (entry: EndedCard) => Promise<number>
   /** After its workspace is gone, whoever removed it (#30: discard the Review Draft). */
   onRemoved?: (entry: EndedCard) => void | Promise<void>
+  /**
+   * The configured GitLab host. Entries are scoped to it: those of another host (the instance
+   * URL changed) are neither listed nor auto-removed, and come back when the URL does. Null
+   * (no valid URL yet) scopes nothing.
+   */
+  forgeHost?: () => string | null
   log: (message: string) => void
+}
+
+/** The GitLab host of an MR web URL. */
+function forgeHostOf(url: string): string | null {
+  try {
+    return new URL(url).host
+  } catch {
+    return null
+  }
 }
 
 export function createEndedWorkspaces(deps: EndedWorkspacesDeps) {
@@ -60,6 +76,12 @@ export function createEndedWorkspaces(deps: EndedWorkspacesDeps) {
     for (const entry of gone) await deps.onRemoved?.(entry)
   }
 
+  /** The entries of the configured host. */
+  function inScope(): EndedCard[] {
+    const host = deps.forgeHost?.() ?? null
+    return host === null ? entries : entries.filter((e) => forgeHostOf(e.url) === host)
+  }
+
   function entryOf(url: string): EndedCard {
     const entry = entries.find((e) => e.url === url)
     if (!entry) throw new Error('This Ended Review Request is no longer listed. Refresh and try again.')
@@ -73,9 +95,9 @@ export function createEndedWorkspaces(deps: EndedWorkspacesDeps) {
       entries = Array.isArray(stored) ? (stored as EndedCard[]) : []
     },
 
-    /** The Ended tab, most recently ended first. */
+    /** The Ended tab (the configured host's entries), most recently ended first. */
     entries(): EndedCard[] {
-      return [...entries].sort((a, b) => b.endedAt - a.endedAt)
+      return [...inScope()].sort((a, b) => b.endedAt - a.endedAt)
     },
 
     has(url: string): boolean {
@@ -147,7 +169,7 @@ export function createEndedWorkspaces(deps: EndedWorkspacesDeps) {
       const now = deps.clock.now()
       let removed = false
       if (days > 0) {
-        for (const entry of entries.filter((e) => now >= e.endedAt + days * DAY)) {
+        for (const entry of inScope().filter((e) => now >= e.endedAt + days * DAY)) {
           removed = (await autoRemove(entry)) || removed
         }
       }

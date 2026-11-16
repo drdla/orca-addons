@@ -2,8 +2,12 @@
 // so failure handling (#24) and the panel can reuse the same rules the notifications follow.
 import type { ReviewRequestView } from '../protocol'
 
-/** Why a Review Request dropped off the list. Only 'draft' is not an Ended Review Request. */
-export type DropReason = 'approved' | 'merged' | 'closed' | 'unassigned' | 'gone' | 'draft'
+/**
+ * Why a Review Request dropped off the list. 'draft' and 'not-visible' (GitLab no longer shows
+ * the MR to the user: deleted or access lost, so whether it ended is unknown) are not Ended
+ * Review Requests.
+ */
+export type DropReason = 'approved' | 'merged' | 'closed' | 'unassigned' | 'not-visible' | 'draft'
 
 export type Dropped = ReviewRequestView & { reason: DropReason }
 
@@ -38,5 +42,5 @@ export function isCatchUp(input: {
 }
 
 export function isEnded(dropped: Dropped): boolean {
-  return dropped.reason !== 'draft'
+  return dropped.reason !== 'draft' && dropped.reason !== 'not-visible'
 }

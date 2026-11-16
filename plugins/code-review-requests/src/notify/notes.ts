@@ -31,15 +31,19 @@ export function firstRunNote(waiting: ReviewRequestView[], overdue = 0): Note | 
 /** Catch-up: one summary of what changed while away. Null when nothing did. */
 export function catchUpNote(added: ReviewRequestView[], dropped: Dropped[]): Note | null {
   const ended = dropped.filter(isEnded)
-  const drafts = dropped.filter((d) => !isEnded(d))
+  const drafts = dropped.filter((d) => d.reason === 'draft')
+  const hidden = dropped.filter((d) => d.reason === 'not-visible')
   const parts: string[] = []
   if (added.length > 0) parts.push(`${added.length} new`)
   if (ended.length > 0) parts.push(`${ended.length} ended`)
   if (drafts.length > 0) parts.push(`${drafts.length} made draft`)
+  if (hidden.length > 0) parts.push(`${hidden.length} no longer visible`)
   if (parts.length === 0) return null
+  const iids = (items: Dropped[]) => items.map((d) => `!${d.iid}`).join(', ')
   const lines = [...listed(added)]
-  if (ended.length > 0) lines.push(`Ended: ${ended.map((e) => `!${e.iid}`).join(', ')}`)
-  if (drafts.length > 0) lines.push(`Made draft: ${drafts.map((d) => `!${d.iid}`).join(', ')}`)
+  if (ended.length > 0) lines.push(`Ended: ${iids(ended)}`)
+  if (drafts.length > 0) lines.push(`Made draft: ${iids(drafts)}`)
+  if (hidden.length > 0) lines.push(`No longer visible: ${iids(hidden)}`)
   return { title: `While you were away: ${parts.join(', ')}`, body: lines.join('\n') }
 }
 
@@ -53,7 +57,7 @@ const DROPPED_TITLES: Record<DropReason, string> = {
   merged: 'Review Request ended: merged',
   closed: 'Review Request ended: closed',
   unassigned: 'Review Request ended: you were removed as Reviewer',
-  gone: 'Review Request ended',
+  'not-visible': 'Review Request no longer visible',
   draft: 'Review Request made draft'
 }
 

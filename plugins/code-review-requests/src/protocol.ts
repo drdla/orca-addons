@@ -25,7 +25,7 @@ export type ReviewWorkspaceView = {
 }
 
 /** Why a Review Request ended (#28); a Review Request made draft is not Ended. */
-export type EndedReason = 'approved' | 'merged' | 'closed' | 'unassigned' | 'gone'
+export type EndedReason = 'approved' | 'merged' | 'closed' | 'unassigned'
 
 /** An Ended Review Request that still has its Review Workspace (#7, #28): the Ended tab's cards. */
 export type EndedCard = ReviewRequestView & {

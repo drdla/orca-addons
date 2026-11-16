@@ -17,6 +17,7 @@ import type {
   ReviewRequestsResponse,
   ReviewState
 } from '../gitlab/review-requests-query'
+import type { DroppedMergeRequestResponse } from '../notify/explain-dropped'
 import { FakeClock } from './fake-clock'
 
 export type MergeRequestSeed = {
@@ -65,6 +66,8 @@ export type FakeMergeRequest = {
   refusedTexts: string[]
   /** Bodies of the plain notes posted (`POST …/notes`), quick actions removed. */
   notes: string[]
+  /** GitLab no longer shows it to the user (deleted, access lost). */
+  hidden: boolean
 }
 
 export type FakeVersion = { id: number; baseSha: string; startSha: string; headSha: string; createdAt: number }
@@ -146,7 +149,8 @@ export class FakeGitLab implements GitLabTransport {
       reviews: [],
       outsideDiff: new Set(),
       refusedTexts: [],
-      notes: []
+      notes: [],
+      hidden: false
     }
     this.#addVersion(mr)
     this.#mergeRequests.push(mr)
@@ -166,6 +170,11 @@ export class FakeGitLab implements GitLabTransport {
 
   close(projectPath: string, iid: number): void {
     this.#touch(Object.assign(this.#find(projectPath, iid), { state: 'closed' as const }))
+  }
+
+  /** The user loses access (or the MR is deleted): GitLab no longer shows it to them. */
+  hide(projectPath: string, iid: number): void {
+    this.#find(projectPath, iid).hidden = true
   }
 
   markDraft(projectPath: string, iid: number, draft = true): void {
@@ -270,6 +279,8 @@ export class FakeGitLab implements GitLabTransport {
     switch (name) {
       case 'ReviewRequests':
         return this.#reviewRequests(variables) as T
+      case 'DroppedMergeRequest':
+        return this.#droppedMergeRequest(variables) as T
       default:
         throw new GitLabError('rejected', `fake GitLab does not know the query ${name}`, {
           status: 400
@@ -322,6 +333,7 @@ export class FakeGitLab implements GitLabTransport {
         (mr) =>
           mr.state === 'opened' &&
           !mr.draft &&
+          !mr.hidden &&
           mr.reviewers.includes(this.me) &&
           !mr.approvedBy.includes(me)
       )
@@ -336,6 +348,24 @@ export class FakeGitLab implements GitLabTransport {
           count: all.length,
           pageInfo: { hasNextPage, endCursor: nodes.length ? String(offset + nodes.length) : null },
           nodes: nodes.map((mr) => this.#node(mr))
+        }
+      }
+    }
+  }
+
+  /** One merge request's state, draft, approvals and reviewers (#7); null where it is hidden. */
+  #droppedMergeRequest(variables: Record<string, Json>): DroppedMergeRequestResponse {
+    const mr = this.#mergeRequests.find(
+      (m) => m.projectPath === variables.project && String(m.iid) === variables.iid && !m.hidden
+    )
+    if (!mr) return { project: null }
+    return {
+      project: {
+        mergeRequest: {
+          state: mr.state,
+          draft: mr.draft,
+          approvedBy: { nodes: mr.approvedBy.map((username) => ({ username })) },
+          reviewers: { nodes: mr.reviewers.map((username) => ({ username })) }
         }
       }
     }

@@ -35,8 +35,7 @@ const REASONS: Record<EndedReason, string> = {
   approved: 'Approved',
   merged: 'Merged',
   closed: 'Closed',
-  unassigned: 'Removed as reviewer',
-  gone: 'Ended'
+  unassigned: 'Removed as reviewer'
 }
 
 function messageOf(error: unknown): string {
@@ -137,7 +136,7 @@ function EndedCardView(props: {
       <Row justify="between" align="start">
         <Text weight="semibold">{card.title}</Text>
         <Badge tone={card.reason === 'merged' || card.reason === 'approved' ? 'success' : 'neutral'}>
-          {REASONS[card.reason]}
+          {REASONS[card.reason] ?? 'Ended'}
         </Badge>
       </Row>
       <Text muted size="xs">

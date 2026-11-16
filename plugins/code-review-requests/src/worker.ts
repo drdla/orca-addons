@@ -27,6 +27,7 @@ import { createStatusBar } from './status-bar'
 import { applyFilters, parseFilters, passesFilters } from './filters'
 import { createRequestedAtCache } from './gitlab/requested-at'
 import { overdueRefiner, type OverdueContext } from './to-review'
+import { isOverdue } from './overdue'
 import { createWorkspaceTracker, hasWorkspace, withWorkspaces } from './workspaces/workspace-tracker'
 import { createReviewActions, hostWorkspaceIdOf } from './workspaces/review-actions'
 import { createEndedWorkspaces } from './ended/ended-workspaces'
@@ -80,6 +81,7 @@ export function createWorker(deps: Deps) {
       // workspace is gone, by any route, its Review Draft goes too.
       unpostedReviewComments: async (entry) => (await drafts.toPost(entry.url)).length,
       onRemoved: (entry) => drafts.remove(entry.url),
+      forgeHost: () => host,
       log: (message) => orca.log(message)
     })
     await ended.load()
@@ -103,7 +105,7 @@ export function createWorker(deps: Deps) {
         const all = await gitLab.reviewRequests(connection)
         filters = parseFilters(settings)
         const { visible, hidden } = applyFilters(all, filters.filters, hasReviewWorkspace)
-        await state.record({ ok: true, at, reviewRequests: visible, hidden })
+        await state.record({ ok: true, at, host: connection.host, reviewRequests: visible, hidden })
       } catch (caught) {
         // A token GitLab or the network echoes back must not reach logs, the panel or the bell.
         const error = redactError(caught, token)
@@ -136,9 +138,14 @@ export function createWorker(deps: Deps) {
       storage: orca.storage,
       show: (note) => orca.host.call('notifications.show', note),
       intervalMs: async () => intervalMsOf(await readSettings(orca.settings)),
-      explainDropped: async (dropped) =>
-        gitLab.explainDropped(await connectionFor(await readSettings(orca.settings), orca.secrets), dropped),
+      explainDropped: async (dropped, forHost) => {
+        const connection = await connectionFor(await readSettings(orca.settings), orca.secrets)
+        // Never look an MR up on another host than the one that listed it (#7).
+        if (connection.host !== forHost) return new Map()
+        return gitLab.explainDropped(connection, dropped)
+      },
       isShown,
+      isOverdue: (view) => isOverdue(view.requestedAt, deps.clock.now(), overdueHours),
       // The Ended tab (#28) keeps the Ended ones that have a Review Workspace.
       onDropped: (dropped, at) => ended.onDropped(dropped, at),
       log: (message) => orca.log(message)
@@ -146,7 +153,7 @@ export function createWorker(deps: Deps) {
     // The notifier diffs the whole list (shown and hidden), so changing a filter never looks like
     // a new or an Ended Review Request; isShown keeps hidden ones out of the notifications.
     state.onSucceeded((_previous, next) =>
-      notifier.onGoodPoll([...next.reviewRequests, ...next.hidden], next.lastSuccessAt!)
+      notifier.onGoodPoll([...next.reviewRequests, ...next.hidden], next.lastSuccessAt!, next.host!)
     )
     // Ended tab (#28): Review Requests listed again leave it; each tick (good poll or not) forgets
     // entries whose workspace is gone and auto-removes the clean ones past the deadline.

@@ -21,8 +21,8 @@ test('the first success has no previous list to compare with; later ones do', as
     heard.push([previous?.reviewRequests.map((r) => r.iid) ?? null, next.reviewRequests.map((r) => r.iid)])
   })
 
-  await store.record({ ok: true, at: 1, reviewRequests: [rr(1)] })
-  await store.record({ ok: true, at: 2, reviewRequests: [rr(1), rr(2)] })
+  await store.record({ ok: true, at: 1, host: 'gitlab.example.com', reviewRequests: [rr(1)] })
+  await store.record({ ok: true, at: 2, host: 'gitlab.example.com', reviewRequests: [rr(1), rr(2)] })
 
   assert.deepEqual(heard, [
     [null, [1]],
@@ -41,11 +41,12 @@ test('a failure keeps the last good list, and success listeners do not hear it',
   })
   store.onChange(() => void order.push('changed'))
 
-  await store.record({ ok: true, at: 1, reviewRequests: [rr(1)] })
+  await store.record({ ok: true, at: 1, host: 'gitlab.example.com', reviewRequests: [rr(1)] })
   await store.record({ ok: false, at: 2, error: new Error('offline') })
 
   assert.deepEqual(order, ['succeeded', 'changed', 'failed: offline', 'changed'])
   assert.deepEqual(failedWith, {
+    host: 'gitlab.example.com',
     reviewRequests: [rr(1)],
     hidden: [],
     lastSuccessAt: 1,
@@ -68,7 +69,7 @@ test('a listener that throws is logged and does not stop the others', async () =
   })
   store.onChange(() => void changed++)
 
-  await store.record({ ok: true, at: 1, reviewRequests: [] })
+  await store.record({ ok: true, at: 1, host: 'gitlab.example.com', reviewRequests: [] })
 
   assert.equal(changed, 1)
   assert.equal(logs.length, 1)
@@ -80,6 +81,6 @@ test('a disposed listener hears nothing more', async () => {
   let heard = 0
   store.onChange(() => void heard++).dispose()
 
-  await store.record({ ok: true, at: 1, reviewRequests: [] })
+  await store.record({ ok: true, at: 1, host: 'gitlab.example.com', reviewRequests: [] })
   assert.equal(heard, 0)
 })
