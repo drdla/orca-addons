@@ -1,0 +1,15 @@
+{
+  "name": "code-review-requests",
+  "private": true,
+  "description": "Dev tooling only: Orca loads the plugin from orca-plugin.json, with no build step.",
+  "scripts": {
+    "types": "orca plugin types .",
+    "typecheck": "tsc -p .",
+    "test": "orca plugin test .",
+    "check": "orca plugin check ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

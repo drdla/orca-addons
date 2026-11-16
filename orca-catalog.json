@@ -1,0 +1,47 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stablyai/orca/main/docs/schemas/plugins/orca-catalog.v2.schema.json",
+  "catalogVersion": 2,
+  "name": "orca-addons",
+  "owner": "drdla",
+  "plugins": [
+    {
+      "id": "drdla.code-review-requests",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/drdla/orca-addons.git",
+        "ref": "main",
+        "path": "plugins/code-review-requests"
+      },
+      "description": "Your GitLab Review Requests in Orca: a count in the status bar, a panel, and review workspaces.",
+      "categories": ["productivity"],
+      "releases": [
+        {
+          "version": "0.1.0",
+          "commit": "e8ec03a54ae45452f1227454b83c5267e1b28377",
+          "contentHash": "0ff141aa6ba11544435f7329c7de5b4a4cdb1ce5401620773952ba0333a3d5d5",
+          "execution": "trusted-worker",
+          "minimumOrca": "1.4.259",
+          "name": "Code Review Requests",
+          "contributes": [
+            { "kind": "panels", "name": "Review Requests" },
+            { "kind": "commands", "name": "Review Requests: Open panel" },
+            { "kind": "commands", "name": "Review Requests: Refresh" },
+            { "kind": "events", "name": "workspace.removed" },
+            { "kind": "statusBarItems", "name": "review-requests" }
+          ],
+          "capabilities": [
+            "storage:own",
+            "settings:own",
+            "secrets:own",
+            "notifications:show",
+            "workspace:read",
+            "workspace:write",
+            "workspace:create",
+            "agent:read",
+            "agent:launch"
+          ]
+        }
+      ]
+    }
+  ]
+}
