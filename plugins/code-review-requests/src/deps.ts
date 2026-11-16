@@ -4,6 +4,8 @@
 import { isExecutable, spawnGlab } from './gitlab/glab-process'
 import { createGlabTransport, locateGlab } from './gitlab/glab-transport'
 import { createTokenTransport } from './gitlab/token-transport'
+import { loggedInHosts } from './gitlab/glab-auth-status'
+import type { GlabLogins } from './seams/glab-logins'
 import { systemClock, type Clock } from './seams/clock'
 import { systemDesktop } from './desktop-process'
 import type { Desktop } from './seams/desktop'
@@ -26,6 +28,8 @@ export type Deps = {
   git: Git
   /** Reading an Agent Review's findings.json (#29). */
   files: Files
+  /** The hosts glab is logged in to, for the setup checklist's "Use <host>" (#8). */
+  glab: GlabLogins
 }
 
 export function realDeps(): Deps {
@@ -42,7 +46,18 @@ export function realDeps(): Deps {
     clock: systemClock,
     desktop: systemDesktop,
     git: systemGit,
-    files: systemFiles
+    files: systemFiles,
+    glab: systemGlabLogins
+  }
+}
+
+const systemGlabLogins: GlabLogins = {
+  async loggedInHosts(glabPath) {
+    const glab = locateGlab(process.env, isExecutable, glabPath)
+    if (glab === null) return []
+    // glab writes the status to stderr, and exits 1 when any host's login fails.
+    const run = await spawnGlab(glab, ['auth', 'status'], undefined).catch(() => null)
+    return run === null ? [] : loggedInHosts(`${run.stdout}\n${run.stderr}`)
   }
 }
 

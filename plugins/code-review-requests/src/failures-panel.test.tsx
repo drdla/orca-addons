@@ -71,6 +71,48 @@ test('Check again asks the worker to retry and shows what it answers', async () 
   await view.unmount()
 })
 
+test('Copy puts the glab login command on the clipboard', async () => {
+  const copied: string[] = []
+  const host = mockHost({
+    requests: {
+      'rr.snapshot': needsYou(),
+      'rr.copyText': ({ text }: { text: string }) => {
+        copied.push(text)
+        return { copied: true }
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+
+  await view.press(view.find({ type: 'IconButton', label: 'Copy the glab login command' })!)
+
+  assert.deepEqual(copied, ['glab auth login --hostname gitlab.example.com'])
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('logged out here but in to other hosts: one click switches the instance URL to one of them', async () => {
+  const used: string[] = []
+  const host = mockHost({
+    requests: {
+      'rr.snapshot': needsYou({ glabHosts: ['gitlab.com', 'gitlab.other.com'] }),
+      'rr.useHost': ({ host: picked }: { host: string }) => {
+        used.push(picked)
+        return { reviewRequests: [], refreshedAt: NOW }
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+
+  assert.ok(view.find({ type: 'Button', text: 'Use gitlab.com' }))
+  await view.press(view.find({ type: 'Button', text: 'Use gitlab.other.com' })!)
+
+  assert.deepEqual(used, ['gitlab.other.com'])
+  assert.equal(view.find({ type: 'Callout', text: /Connect GitLab/ }), null)
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
 test('the checklist names the missing step for each kind of Needs you', async () => {
   const cases: [Partial<Extract<GitLabProblemView, { status: 'needs-you' }>>, RegExp][] = [
     [{ reason: 'glab-missing' }, /brew install glab/],

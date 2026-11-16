@@ -223,6 +223,15 @@ export default defineCheck({
   empty: { requests: { 'rr.snapshot': { reviewRequests: [], refreshedAt: null } } },
   // Failure states (#24): the setup checklist per Needs-you reason, and the transient line.
   setupLoggedOut: { requests: { 'rr.snapshot': needsYou('logged-out') } },
+  /** Logged out here, but glab is logged in to other hosts: "Use <host>" buttons (#8). */
+  setupLoggedOutOtherHosts: {
+    requests: {
+      'rr.snapshot': (() => {
+        const snapshot = needsYou('logged-out')
+        return { ...snapshot, gitlab: { ...snapshot.gitlab!, glabHosts: ['gitlab.com', 'gitlab.other.com'] } }
+      })()
+    }
+  },
   setupGlabMissing: { requests: { 'rr.snapshot': needsYou('glab-missing') } },
   setupTokenRejected: {
     requests: {

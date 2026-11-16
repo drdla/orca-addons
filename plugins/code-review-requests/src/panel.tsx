@@ -223,7 +223,7 @@ function Body() {
   // #24: GitLab needs setting up: the setup checklist replaces the tabs.
   const gitlab = current.gitlab
   if (gitlab?.status === 'needs-you') {
-    return <SetupChecklist problem={gitlab} checking={read(refreshing)} onCheckAgain={refresh} />
+    return <SetupChecklist problem={gitlab} checking={read(refreshing)} onCheckAgain={refresh} onSnapshot={received} />
   }
   if (gitlab?.status === 'retrying') {
     return (

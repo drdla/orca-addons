@@ -21,7 +21,7 @@ import { createNotifier } from './notify/notifier'
 import { redactError } from './gitlab/http-response'
 import { createTokenMode } from './token-mode'
 import type { ReviewRequestCard, ReviewRequestsSnapshot, ReviewRequestView } from './protocol'
-import type { GitLabConnection, GitLabTransport } from './seams/gitlab'
+import { GitLabError, type GitLabConnection, type GitLabTransport } from './seams/gitlab'
 import { DEFAULT_SETTINGS, readSettings, type Settings } from './settings'
 import { createStatusBar } from './status-bar'
 import { applyFilters, parseFilters, passesFilters } from './filters'
@@ -91,22 +91,34 @@ export function createWorker(deps: Deps) {
     const isShown = (view: ReviewRequestView) => hasReviewWorkspace(view) || passesFilters(view, filters.filters)
     /** The host the last poll tried, or null if the instance URL is no URL. */
     let host: string | null = null
+    /** While glab is logged out of `host`: the other hosts it is logged in to (#8). */
+    let glabHosts: string[] = []
 
     async function poll(): Promise<void> {
       const at = deps.clock.now()
       await workspaces.refresh()
       let token: string | null = null
+      let glabPath: string | null = null
       try {
         const settings = await readSettings(orca.settings)
         host = null
         const connection = await connectionFor(settings, orca.secrets)
         host = connection.host
         token = connection.token
+        glabPath = connection.glabPath
         const all = await gitLab.reviewRequests(connection)
         filters = parseFilters(settings)
         const { visible, hidden } = applyFilters(all, filters.filters, hasReviewWorkspace)
+        glabHosts = []
         await state.record({ ok: true, at, host: connection.host, reviewRequests: visible, hidden })
       } catch (caught) {
+        // glab is logged out of this host: which others is it logged in to? ("Use <host>", #8)
+        glabHosts = []
+        if (caught instanceof GitLabError && caught.reason === 'logged-out' && token === null && host !== null) {
+          const loggedOutOf = host
+          const others = await deps.glab.loggedInHosts(glabPath).catch(() => [])
+          glabHosts = others.filter((other) => other !== loggedOutOf)
+        }
         // A token GitLab or the network echoes back must not reach logs, the panel or the bell.
         const error = redactError(caught, token)
         orca.log(`poll failed: ${error instanceof Error ? error.message : String(error)}`)
@@ -196,7 +208,10 @@ export function createWorker(deps: Deps) {
     /** The panel's view: the poll state plus, while GitLab fails, the problem (#24). */
     function snapshot(): ReviewRequestsSnapshot {
       const current = state.current()
-      const problem = failures.problemView(current)
+      let problem = failures.problemView(current)
+      if (problem?.status === 'needs-you' && problem.reason === 'logged-out' && glabHosts.length > 0) {
+        problem = { ...problem, glabHosts }
+      }
       return withWorkspaces(
         {
           ...snapshotOf(current, overdue),
@@ -227,6 +242,17 @@ export function createWorker(deps: Deps) {
     orca.panels.handle('rr.copyLink', async ({ url }) => {
       await deps.desktop.copyText(url)
       return { copied: true as const }
+    })
+    orca.panels.handle('rr.copyText', async ({ text }) => {
+      await deps.desktop.copyText(text)
+      return { copied: true as const }
+    })
+    // "Use <host>" (#8): the instance URL is the single source of truth, so this only sets it.
+    orca.panels.handle('rr.useHost', async ({ host: picked }) => {
+      if (!glabHosts.includes(picked)) throw new Error(`glab is not logged in to ${picked}.`)
+      await orca.settings.set('instanceUrl', `https://${picked}`)
+      await applySettings({ pollAtOnce: true })
+      return snapshot()
     })
     // Review Workspace actions (#27). Start review answers the new snapshot and tells open panels.
     const reviewActions = createReviewActions({

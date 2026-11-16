@@ -86,6 +86,11 @@ export type GitLabProblemView =
       version: string | null
       /** The raw error, for the Details disclosure. */
       message: string
+      /**
+       * While glab is logged out of `host`: the other hosts it is logged in to, each offered as
+       * "Use <host>" (#8). Absent or empty means none.
+       */
+      glabHosts?: string[]
     }
   | {
       /** The last poll failed transiently; the list is the last good one and a retry is due. */
@@ -201,6 +206,13 @@ declare module 'orca' {
     'rr.refresh': { output: ReviewRequestsSnapshot }
     /** Puts a Review Request's link on the clipboard (panels have no clipboard API). */
     'rr.copyLink': { input: { url: string }; output: { copied: true } }
+    /** Puts any text on the clipboard, such as the setup checklist's glab login command (#8). */
+    'rr.copyText': { input: { text: string }; output: { copied: true } }
+    /**
+     * The setup checklist's "Use <host>" (#8): points the instance URL setting at `host` (one glab
+     * is logged in to) and polls it at once. Answers the new snapshot.
+     */
+    'rr.useHost': { input: { host: string }; output: ReviewRequestsSnapshot }
     /**
      * Creates the Review Workspace for a Review Request through the orca CLI, linked to its MR,
      * then starts an Agent Review in it if `withAgent` (#27). Answers the new snapshot.
