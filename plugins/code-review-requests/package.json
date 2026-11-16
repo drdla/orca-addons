@@ -6,7 +6,8 @@
     "types": "orca plugin types .",
     "typecheck": "tsc -p .",
     "test": "orca plugin test .",
-    "check": "orca plugin check ."
+    "check": "orca plugin check .",
+    "smoke": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./scripts/resolve-ts.mjs src/smoke/main.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

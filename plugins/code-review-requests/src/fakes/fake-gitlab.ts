@@ -74,6 +74,10 @@ export type FakeMergeRequest = {
   refusedTexts: string[]
   /** Bodies of the plain notes posted (`POST …/notes`), quick actions removed. */
   notes: string[]
+  /** Every published note, oldest first, as `GET …/notes` lists them (newest first). */
+  published: FakePublishedNote[]
+  /** What `GET …/diffs` answers; none by default. */
+  diffs: FakeDiff[]
   /** GitLab no longer shows it to the user (deleted, access lost). */
   hidden: boolean
   pipeline: PipelineStatus | null
@@ -85,6 +89,10 @@ export type FakeVersion = { id: number; baseSha: string; startSha: string; headS
 
 export type FakeDraftNote = { id: number; author: string; note: string; position: Json | null }
 export type FakeReview = { summary: string | null; reviewerState: string | null; notes: string[] }
+/** A published note; `position` makes it a diff note. */
+export type FakePublishedNote = { id: number; body: string; position: Json | null }
+/** One file of `GET …/diffs` (only the fields read). */
+export type FakeDiff = { old_path: string; new_path: string; diff: string; new_file?: boolean; deleted_file?: boolean }
 
 export type FakeRequest = { operation: string; variables?: Record<string, Json>; body?: Json }
 
@@ -165,6 +173,8 @@ export class FakeGitLab implements GitLabTransport {
       outsideDiff: new Set(),
       refusedTexts: [],
       notes: [],
+      published: [],
+      diffs: [],
       hidden: false,
       pipeline: seed.pipeline ?? null,
       approvalsRequired: seed.approvalsRequired ?? 0,
@@ -231,6 +241,11 @@ export class FakeGitLab implements GitLabTransport {
   /** Drafts whose text contains `text` never publish (a refusal the plugin can't work around). */
   refuseToPublish(projectPath: string, iid: number, text: string): void {
     this.#find(projectPath, iid).refusedTexts.push(text)
+  }
+
+  /** The files `GET …/diffs` lists for the MR. */
+  setDiffs(projectPath: string, iid: number, diffs: FakeDiff[]): void {
+    this.#find(projectPath, iid).diffs = diffs
   }
 
   /** Reviews published with `bulk_publish` or a `/submit_review` note, oldest first. */
@@ -505,12 +520,19 @@ export class FakeGitLab implements GitLabTransport {
       if (method === 'POST' && rest === '/draft_notes/bulk_publish') {
         // `note` and `reviewer_state` are declared from 19.2 on; older GitLab ignores them.
         const takesSummary = atLeast(this.version, 19, 2)
-        this.#publish(
-          mr,
-          takesSummary && typeof body.note === 'string' ? body.note : null,
-          takesSummary && typeof body.reviewer_state === 'string' ? body.reviewer_state : null
-        )
+        const summary = takesSummary && typeof body.note === 'string' ? body.note : null
+        this.#publish(mr, summary, takesSummary && typeof body.reviewer_state === 'string' ? body.reviewer_state : null)
+        if (summary !== null) mr.published.push({ id: this.#nextId++, body: summary, position: null })
         return null
+      }
+      if (method === 'GET' && rest === '/diffs') return mr.diffs as unknown as Json
+      if (method === 'GET' && rest === '/notes') {
+        return [...mr.published].reverse().map((n) => ({
+          ...(this.#restNote(mr, n.body) as Record<string, Json>),
+          id: n.id,
+          type: n.position === null ? null : 'DiffNote',
+          ...(n.position === null ? {} : { position: n.position })
+        }))
       }
       if (method === 'GET' && rest === '/versions') {
         return [...mr.versions].reverse().map((v) => ({
@@ -535,8 +557,12 @@ export class FakeGitLab implements GitLabTransport {
         if (submit) {
           this.#publish(mr, text === '' ? null : text, submit[1] ?? 'reviewed')
         }
-        if (text !== '') mr.notes.push(text)
-        return this.#restNote(mr, text)
+        const note = this.#restNote(mr, text) as { id: number }
+        if (text !== '') {
+          mr.notes.push(text)
+          mr.published.push({ id: note.id, body: text, position: null })
+        }
+        return note
       }
     }
     throw notFound(path)
@@ -551,6 +577,7 @@ export class FakeGitLab implements GitLabTransport {
     }
     const mine = mr.draftNotes.filter((d) => d.author === this.me && !fails(d))
     mr.draftNotes = mr.draftNotes.filter((d) => !mine.includes(d))
+    for (const d of mine) mr.published.push({ id: this.#nextId++, body: d.note, position: d.position })
     mr.reviews.push({ summary, reviewerState, notes: mine.map((d) => d.note) })
     if (mr.reviewers.includes(this.me)) {
       mr.reviewStates[this.me] = reviewerState === 'requested_changes' ? 'REQUESTED_CHANGES' : 'REVIEWED'
