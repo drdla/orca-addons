@@ -39,6 +39,7 @@ import type { ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
 import { ConnectionSection, loadConnection } from './connection-section'
 import { RefreshProblem } from './refresh-problem'
 import { SetupChecklist } from './setup-checklist'
+import { EndedList, WorkspacesUnavailable } from './ended-tab'
 
 type TabId = 'todo' | 'in' | 'ended'
 
@@ -237,7 +238,19 @@ function Body() {
   )
 }
 
-type Stage = { id: TabId; title: string; cards: ReviewRequestCard[]; empty: OrcaNode }
+type Stage = { id: TabId; title: string; count: number; overdue: boolean; body: OrcaNode }
+
+function cardStage(id: TabId, title: string, cards: ReviewRequestCard[], empty: OrcaNode): Stage {
+  const body =
+    cards.length === 0 ? empty : (
+      <Stack gap="sm">
+        {cards.map((c) => (
+          <Card key={c.url} card={c} />
+        ))}
+      </Stack>
+    )
+  return { id, title, count: cards.length, overdue: cards.some((c) => c.overdue), body }
+}
 
 function stagesOf(current: ReviewRequestsSnapshot): Stage[] {
   const nothingHere = (
@@ -246,30 +259,42 @@ function stagesOf(current: ReviewRequestsSnapshot): Stage[] {
     </Text>
   )
   const inReview = (c: ReviewRequestCard) => c.workspace != null
+  const ended = current.ended ?? []
   return [
+    cardStage(
+      'todo',
+      'To review',
+      current.reviewRequests.filter((c) => !inReview(c)),
+      <EmptyState icon="check" title="Nothing to review" />
+    ),
+    cardStage('in', 'In review', current.reviewRequests.filter(inReview), nothingHere),
     {
-      id: 'todo',
-      title: 'To review',
-      cards: current.reviewRequests.filter((c) => !inReview(c)),
-      empty: <EmptyState icon="check" title="Nothing to review" />
-    },
-    { id: 'in', title: 'In review', cards: current.reviewRequests.filter(inReview), empty: nothingHere },
-    { id: 'ended', title: 'Ended', cards: [], empty: nothingHere }
+      id: 'ended',
+      title: 'Ended',
+      count: ended.length,
+      overdue: false,
+      body:
+        ended.length === 0 ? nothingHere : (
+          <EndedList cards={ended} disabled={current.workspacesUnavailable !== undefined} received={received} />
+        )
+    }
   ]
 }
 
 function StageTabs({ snapshot: current }: { snapshot: ReviewRequestsSnapshot }) {
+  const unavailable = current.workspacesUnavailable
+  if (unavailable === undefined) return <StageTabsOnly snapshot={current} />
+  return (
+    <Stack gap="md">
+      <WorkspacesUnavailable reason={unavailable} />
+      <StageTabsOnly snapshot={current} />
+    </Stack>
+  )
+}
+
+function StageTabsOnly({ snapshot: current }: { snapshot: ReviewRequestsSnapshot }) {
   const stages = stagesOf(current)
-  const contents = (stage: Stage) =>
-    stage.cards.length === 0 ? stage.empty : (
-      <Stack gap="sm">
-        {stage.cards.map((c) => (
-          <Card key={c.url} card={c} />
-        ))}
-      </Stack>
-    )
-  const icon = (stage: Stage): IconName | undefined =>
-    stage.cards.some((c) => c.overdue) ? 'warning' : undefined
+  const icon = (stage: Stage): IconName | undefined => (stage.overdue ? 'warning' : undefined)
 
   // `Table` taught us the catalog can list what this Orca doesn't draw (#10): check first.
   if (!ui.has('Tabs')) {
@@ -277,8 +302,8 @@ function StageTabs({ snapshot: current }: { snapshot: ReviewRequestsSnapshot }) 
       <Stack gap="md">
         {stages.map((stage) => (
           <Stack key={stage.id} gap="sm">
-            <Heading level={3}>{`${stage.title} ${stage.cards.length}`}</Heading>
-            {contents(stage)}
+            <Heading level={3}>{`${stage.title} ${stage.count}`}</Heading>
+            {stage.body}
           </Stack>
         ))}
       </Stack>
@@ -287,8 +312,8 @@ function StageTabs({ snapshot: current }: { snapshot: ReviewRequestsSnapshot }) 
   return (
     <Tabs label="Stage" value={read(selectedTab)} onChange={(value) => set(selectedTab, value as TabId)}>
       {stages.map((stage) => (
-        <Tab key={stage.id} value={stage.id} label={`${stage.title} ${stage.cards.length}`} icon={icon(stage)}>
-          {contents(stage)}
+        <Tab key={stage.id} value={stage.id} label={`${stage.title} ${stage.count}`} icon={icon(stage)}>
+          {stage.body}
         </Tab>
       ))}
     </Tabs>

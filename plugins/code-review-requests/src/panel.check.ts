@@ -50,6 +50,27 @@ const startBlocked: ReviewRequestsSnapshot = {
   refreshedAt: NOW
 }
 
+/** Two Ended Review Requests with Review Workspaces (#28), one that auto-removal skipped. */
+const ended: ReviewRequestsSnapshot = {
+  ...toReview,
+  ended: [
+    {
+      ...card(10, 'Bump the SDK', 30),
+      reason: 'merged',
+      endedAt: NOW - 2 * HOUR,
+      workspace: { id: 'repo-api::/wt/review-api-10', name: 'review-api-10', path: '/wt/review-api-10' },
+      autoRemoveSkipped: null
+    },
+    {
+      ...card(11, 'Drop the legacy importer', 60),
+      reason: 'unassigned',
+      endedAt: NOW - 50 * HOUR,
+      workspace: { id: 'repo-api::/wt/review-api-11', name: 'review-api-11', path: '/wt/review-api-11' },
+      autoRemoveSkipped: 'Not removed automatically: 2 uncommitted changes, an agent is running.'
+    }
+  ]
+}
+
 const withOverdue: ReviewRequestsSnapshot = {
   reviewRequests: [card(9, 'Migrate billing to the new API', 72, true), ...toReview.reviewRequests],
   refreshedAt: NOW
@@ -154,8 +175,17 @@ export default defineCheck({
   startReview: { requests: { 'rr.snapshot': inReview } },
   /** Start review disabled, with the hint why (#27). */
   startBlocked: { requests: { 'rr.snapshot': startBlocked } },
-  /** The person left the panel on Ended (empty until #28). */
+  /** The person left the panel on Ended, with nothing there. */
   endedTab: { requests: { 'rr.snapshot': toReview }, persisted: { plugin: { 'rr.tab': 'ended' } } },
+  /** Ended cards with Remove workspace, one with why auto-removal skipped it (#28). */
+  ended: { requests: { 'rr.snapshot': ended }, persisted: { plugin: { 'rr.tab': 'ended' } } },
+  /** The orca CLI is broken: the banner above the tabs, Remove workspace disabled (#15, #28). */
+  workspacesUnavailable: {
+    requests: {
+      'rr.snapshot': { ...ended, workspacesUnavailable: 'The orca CLI failed (exit 1): Orca is not running' }
+    },
+    persisted: { plugin: { 'rr.tab': 'ended' } }
+  },
   /** Filters hide some Review Requests and ignore an invalid entry (#26): footer and warning. */
   filtered: {
     requests: {

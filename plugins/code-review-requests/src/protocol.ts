@@ -24,6 +24,27 @@ export type ReviewWorkspaceView = {
   path: string
 }
 
+/** Why a Review Request ended (#28); a Review Request made draft is not Ended. */
+export type EndedReason = 'approved' | 'merged' | 'closed' | 'unassigned' | 'gone'
+
+/** An Ended Review Request that still has its Review Workspace (#7, #28): the Ended tab's cards. */
+export type EndedCard = ReviewRequestView & {
+  reason: EndedReason
+  /** When the plugin first saw it end (ms); auto-removal counts from here. */
+  endedAt: number
+  workspace: ReviewWorkspaceView
+  /** Why auto-removal skipped it last time (uncommitted changes, something running…), or null. */
+  autoRemoveSkipped: string | null
+}
+
+/** What removing a Review Workspace would lose (#28), for the confirmation. */
+export type RemovalCheck = {
+  /** One line each, for example "2 uncommitted changes". Empty when it's clean. */
+  problems: string[]
+  /** True when removal needs `--force` (uncommitted changes, something running). */
+  force: boolean
+}
+
 /** A Review Request as the panel draws it: the view plus what the worker derives for it. */
 export type ReviewRequestCard = ReviewRequestView & {
   /** Waiting longer than the "Overdue after" setting, counting working days only (#22). */
@@ -45,6 +66,10 @@ export type ReviewRequestsSnapshot = {
   invalidFilterEntries?: string[]
   /** Why the last poll failed (#24); absent while polling works. */
   gitlab?: GitLabProblemView
+  /** Ended Review Requests with a Review Workspace, most recently ended first (#28). Absent means none. */
+  ended?: EndedCard[]
+  /** Why the orca CLI can't list workspaces, while it can't (#15): workspace actions are off. */
+  workspacesUnavailable?: string
 }
 
 /** Which setup step is missing; mirrors NeedsYouReason in src/seams/gitlab.ts. */
@@ -116,10 +141,17 @@ declare module 'orca' {
      * then starts an Agent Review in it if `withAgent` (#27). Answers the new snapshot.
      */
     'rr.startReview': { input: { url: string; withAgent: boolean }; output: ReviewRequestsSnapshot }
-    /** Shows a Review Request's Review Workspace in Orca. */
+    /** Shows a Review Request's (or an Ended Review Request's) Review Workspace in Orca. */
     'rr.openWorkspace': { input: { url: string }; output: { opened: true } }
     /** Starts an Agent Review in a Review Request's existing Review Workspace. */
     'rr.runAgentReview': { input: { url: string }; output: { started: true } }
+    /** What removing an Ended Review Request's Review Workspace would lose (#28). */
+    'rr.checkRemoval': { input: { url: string }; output: RemovalCheck }
+    /**
+     * Removes an Ended Review Request's Review Workspace (`orca worktree rm --delete-branch`, plus
+     * `--force` only when `force`, after the person confirmed). Answers the new snapshot.
+     */
+    'rr.removeWorkspace': { input: { url: string; force: boolean }; output: ReviewRequestsSnapshot }
     /** The Connection section (#25). `test` re-checks the user and scopes instead of the cached answer. */
     'rr.connection': { input: { test: boolean }; output: ConnectionView }
     /**

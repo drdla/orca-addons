@@ -28,7 +28,8 @@ import { applyFilters, parseFilters, passesFilters } from './filters'
 import { createRequestedAtCache } from './gitlab/requested-at'
 import { overdueRefiner, type OverdueContext } from './to-review'
 import { createWorkspaceTracker, hasWorkspace, withWorkspaces } from './workspaces/workspace-tracker'
-import { createReviewActions } from './workspaces/review-actions'
+import { createReviewActions, hostWorkspaceIdOf } from './workspaces/review-actions'
+import { createEndedWorkspaces } from './ended/ended-workspaces'
 
 export const REFRESH_COMMAND = 'code-review-requests.refresh'
 export const OPEN_COMMAND = 'code-review-requests.open'
@@ -61,6 +62,20 @@ export function createWorker(deps: Deps) {
     // Filters (#26). A Review Request with a Review Workspace is never hidden; the lookup uses the
     // worktree list poll() refreshed before applyFilters.
     const hasReviewWorkspace = (view: ReviewRequestView): boolean => hasWorkspace(workspaces.current(), view)
+    // Ended Review Requests with a Review Workspace, and removing those workspaces (#28).
+    const ended = createEndedWorkspaces({
+      storage: orca.storage,
+      cli: deps.orcaCli,
+      git: deps.git,
+      host: orca.host,
+      clock: deps.clock,
+      workspaces,
+      autoRemoveDays: async () => (await readSettings(orca.settings)).autoRemoveDays,
+      // #30: count the Review Draft's unposted Review Comments here (and discard it in onRemoved).
+      unpostedReviewComments: async () => 0,
+      log: (message) => orca.log(message)
+    })
+    await ended.load()
     let filters = parseFilters(DEFAULT_SETTINGS)
     let filtersKey = ''
     /** Shown in the list and allowed to notify: has a Review Workspace or passes the filters. */
@@ -117,6 +132,8 @@ export function createWorker(deps: Deps) {
       explainDropped: async (dropped) =>
         gitLab.explainDropped(await connectionFor(await readSettings(orca.settings), orca.secrets), dropped),
       isShown,
+      // The Ended tab (#28) keeps the Ended ones that have a Review Workspace.
+      onDropped: (dropped, at) => ended.onDropped(dropped, at),
       log: (message) => orca.log(message)
     })
     // The notifier diffs the whole list (shown and hidden), so changing a filter never looks like
@@ -124,6 +141,12 @@ export function createWorker(deps: Deps) {
     state.onSucceeded((_previous, next) =>
       notifier.onGoodPoll([...next.reviewRequests, ...next.hidden], next.lastSuccessAt!)
     )
+    // Ended tab (#28): Review Requests listed again leave it; each tick (good poll or not) forgets
+    // entries whose workspace is gone and auto-removes the clean ones past the deadline.
+    state.onSucceeded((_previous, next) => ended.onListed([...next.reviewRequests, ...next.hidden]))
+    state.onChange(async () => {
+      await ended.tick()
+    })
     state.onChange((current) => statusBar.render(current))
     state.onChange(() => orca.panels.post('rr.changed', snapshot()))
 
@@ -164,10 +187,21 @@ export function createWorker(deps: Deps) {
         {
           ...snapshotOf(current, overdue),
           ...(problem === undefined ? {} : { gitlab: problem }),
-          ...(filters.invalid.length === 0 ? {} : { invalidFilterEntries: filters.invalid })
+          ...(filters.invalid.length === 0 ? {} : { invalidFilterEntries: filters.invalid }),
+          ...endedView()
         },
         workspaces.current()
       )
+    }
+
+    /** The Ended tab, and whether workspace actions are off (#28). */
+    function endedView(): Pick<ReviewRequestsSnapshot, 'ended' | 'workspacesUnavailable'> {
+      const current = workspaces.current()
+      const entries = ended.entries()
+      return {
+        ...(entries.length === 0 ? {} : { ended: entries }),
+        ...(current.kind === 'unavailable' ? { workspacesUnavailable: current.reason } : {})
+      }
     }
 
     orca.panels.handle('rr.snapshot', async () => snapshot())
@@ -198,8 +232,29 @@ export function createWorker(deps: Deps) {
       return snapshot()
     })
     orca.panels.handle('rr.openWorkspace', async ({ url }) => {
-      await reviewActions.openWorkspace(url)
+      if (ended.has(url)) {
+        // An Ended Review Request is off the list; open its workspace by path (#28).
+        const workspaceId = await hostWorkspaceIdOf(orca.host, ended.entry(url).workspace)
+        await orca.host.call('workspace.open', { workspaceId })
+      } else {
+        await reviewActions.openWorkspace(url)
+      }
       return { opened: true as const }
+    })
+    orca.panels.handle('rr.checkRemoval', async ({ url }) => ended.checkRemoval(url))
+    orca.panels.handle('rr.removeWorkspace', async ({ url, force }) => {
+      try {
+        await ended.remove(url, force)
+      } finally {
+        await orca.panels.post('rr.changed', snapshot())
+      }
+      return snapshot()
+    })
+    // A workspace removed anywhere (here, in Orca, by the CLI): its Ended entry goes (#7).
+    const removedWatch = orca.events.on('workspace.removed', async ({ path }) => {
+      await workspaces.refresh()
+      await ended.onWorkspaceRemoved(path)
+      await orca.panels.post('rr.changed', snapshot())
     })
     orca.panels.handle('rr.runAgentReview', async ({ url }) => {
       await reviewActions.runAgentReview(url)
@@ -241,6 +296,7 @@ export function createWorker(deps: Deps) {
     )
     stopWorker = () => {
       settingsWatch.dispose()
+      removedWatch.dispose()
       poller.stop()
     }
 
