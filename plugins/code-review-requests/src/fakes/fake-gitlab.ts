@@ -61,6 +61,8 @@ export type FakeMergeRequest = {
   reviews: FakeReview[]
   /** `path:line` positions whose drafts fail to publish (a line outside the diff). */
   outsideDiff: Set<string>
+  /** Drafts containing one of these never publish. */
+  refusedTexts: string[]
   /** Bodies of the plain notes posted (`POST …/notes`), quick actions removed. */
   notes: string[]
 }
@@ -143,6 +145,7 @@ export class FakeGitLab implements GitLabTransport {
       draftNotes: [],
       reviews: [],
       outsideDiff: new Set(),
+      refusedTexts: [],
       notes: []
     }
     this.#addVersion(mr)
@@ -196,6 +199,11 @@ export class FakeGitLab implements GitLabTransport {
   /** Drafts on this line fail to publish (GitLab can't find it in the diff) and stay drafts. */
   outsideDiff(projectPath: string, iid: number, path: string, line: number): void {
     this.#find(projectPath, iid).outsideDiff.add(`${path}:${line}`)
+  }
+
+  /** Drafts whose text contains `text` never publish (a refusal the plugin can't work around). */
+  refuseToPublish(projectPath: string, iid: number, text: string): void {
+    this.#find(projectPath, iid).refusedTexts.push(text)
   }
 
   /** Reviews published with `bulk_publish` or a `/submit_review` note, oldest first. */
@@ -456,6 +464,7 @@ export class FakeGitLab implements GitLabTransport {
   #publish(mr: FakeMergeRequest, summary: string | null, reviewerState: string | null): void {
     const fails = (d: FakeDraftNote) => {
       const p = d.position as { new_path?: unknown; new_line?: unknown } | null
+      if (mr.refusedTexts.some((text) => d.note.includes(text))) return true
       return p !== null && mr.outsideDiff.has(`${String(p.new_path)}:${String(p.new_line)}`)
     }
     const mine = mr.draftNotes.filter((d) => d.author === this.me && !fails(d))

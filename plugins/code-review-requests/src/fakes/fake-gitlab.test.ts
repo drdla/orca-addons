@@ -126,6 +126,18 @@ test('a draft on a line outside the diff fails to publish and stays a draft; the
   assert.deepEqual(gitlab.reviewsOf('acme/api', 7).map((r) => r.notes), [['fine']])
 })
 
+test('a draft GitLab refuses to publish stays a draft, wherever it is', async () => {
+  const gitlab = new FakeGitLab({ me: 'me' })
+  gitlab.addMergeRequest({ iid: 7, projectPath: 'acme/api' })
+  gitlab.refuseToPublish('acme/api', 7, 'never')
+  const base = '/projects/acme%2Fapi/merge_requests/7'
+  await gitlab.rest('POST', `${base}/draft_notes`, { note: 'contains never in it' })
+
+  await gitlab.rest('POST', `${base}/draft_notes/bulk_publish`)
+
+  assert.equal(gitlab.draftNotesOf('acme/api', 7).length, 1)
+})
+
 test('GitLab before 19.2 ignores the summary and state on bulk_publish; a /submit_review note publishes instead', async () => {
   const gitlab = new FakeGitLab({ me: 'me', version: '18.11.0' })
   gitlab.addMergeRequest({ iid: 7, projectPath: 'acme/api' })

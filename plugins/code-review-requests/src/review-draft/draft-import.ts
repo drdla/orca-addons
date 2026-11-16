@@ -13,7 +13,7 @@ import type { Files } from '../seams/files'
 import type { Git } from '../seams/git'
 import type { DiffComment, OrcaCli } from '../seams/orca-cli'
 import { FINDINGS_FILE, parseFindings, type AgentFinding } from './findings'
-import { isPosted, type ReviewComment, type ReviewDraft, type ReviewDrafts } from './review-drafts'
+import { isPosted, type FailedDraft, type ReviewComment, type ReviewDraft, type ReviewDrafts } from './review-drafts'
 
 /** The Review Request a draft belongs to, with its Review Workspace if it has one. */
 export type DraftTarget = {
@@ -188,15 +188,16 @@ export function viewOf(draft: ReviewDraft, target: DraftTarget): ReviewDraftView
     url: target.url,
     title: target.title,
     workspace: target.workspace,
-    comments: draft.comments.map(commentView),
+    comments: draft.comments.map((c) => commentView(c, draft.failedDrafts?.find((f) => f.commentId === c.id))),
     warnings: draft.warnings,
     importedAt: draft.importedAt
   }
 }
 
-function commentView(comment: ReviewComment): ReviewCommentView {
+function commentView(comment: ReviewComment, failed: FailedDraft | undefined): ReviewCommentView {
   const posted = isPosted(comment)
   return {
+    ...(failed === undefined || posted ? {} : { failure: failed.message }),
     id: comment.id,
     origin: comment.origin,
     filePath: comment.filePath,

@@ -50,7 +50,15 @@ export type ReviewDraft = {
   /** What the last import skipped or couldn't read. */
   warnings: string[]
   importedAt: number | null
+  /**
+   * Drafts the last post (#30) left on GitLab because they didn't publish. A later post deletes
+   * and re-creates them (retry); Delete failed drafts removes them. Absent means none.
+   */
+  failedDrafts?: FailedDraft[]
 }
+
+/** A Review Comment whose GitLab draft didn't publish. */
+export type FailedDraft = { commentId: string; draftNoteId: number; message: string }
 
 /** The part of orca.storage the store uses. */
 export type DraftStorage = Pick<OrcaWorkerApi['storage'], 'get' | 'set' | 'delete' | 'keys'>
