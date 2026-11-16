@@ -7,6 +7,7 @@ import {
   type ReviewRequestNode,
   type ReviewRequestsResponse
 } from './review-requests-query'
+import { explainRefusedQuery } from './version-check'
 
 /** The logged-in user's username, which the query needs as `$me`. */
 export async function fetchUsername(transport: GitLabTransport): Promise<string> {
@@ -23,10 +24,12 @@ export async function fetchReviewRequests(
   let after: string | null = null
   for (;;) {
     const variables: Record<string, string> = after === null ? { me } : { me, after }
-    const data: ReviewRequestsResponse = await transport.graphql<ReviewRequestsResponse>(
-      REVIEW_REQUESTS_QUERY,
-      variables
-    )
+    let data: ReviewRequestsResponse
+    try {
+      data = await transport.graphql<ReviewRequestsResponse>(REVIEW_REQUESTS_QUERY, variables)
+    } catch (error) {
+      throw await explainRefusedQuery(transport, error)
+    }
     const page = data.currentUser.reviewRequestedMergeRequests
     for (const node of page.nodes) {
       if (isReviewRequest(node, me)) views.push(toView(node))

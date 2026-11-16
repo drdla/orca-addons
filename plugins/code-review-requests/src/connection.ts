@@ -9,7 +9,9 @@ export function hostOf(instanceUrl: string): string {
   try {
     url = new URL(instanceUrl.includes('://') ? instanceUrl : `https://${instanceUrl}`)
   } catch {
-    throw new GitLabError('needs-you', `The GitLab instance URL "${instanceUrl}" is not a URL.`)
+    throw new GitLabError('needs-you', `The GitLab instance URL "${instanceUrl}" is not a URL.`, {
+      reason: 'bad-url'
+    })
   }
   return url.host
 }
