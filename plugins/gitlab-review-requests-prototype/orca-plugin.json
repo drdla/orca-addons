@@ -1,0 +1,35 @@
+{
+  "manifestVersion": 2,
+  "id": "gitlab-review-requests-prototype",
+  "name": "GitLab Review Requests (PROTOTYPE)",
+  "version": "0.0.1",
+  "description": "Throwaway UI prototype for the panel and status-bar item. Mock data only.",
+  "engines": { "orca": ">=1.4.248" },
+  "execution": "trusted-worker",
+  "pluginApi": 1,
+  "main": "src/worker.ts",
+  "contributes": {
+    "panels": [
+      {
+        "id": "review-requests",
+        "title": "Review Requests (prototype)",
+        "icon": "branch",
+        "entry": "src/panel.tsx",
+        "ui": "components"
+      }
+    ],
+    "commands": [
+      { "id": "gitlab-review-requests-prototype.open", "title": "Review Requests: Open panel (prototype)" }
+    ],
+    "statusBarItems": [
+      {
+        "id": "review-requests",
+        "text": "…",
+        "icon": "branch",
+        "tooltip": "Review Requests (prototype)",
+        "command": "gitlab-review-requests-prototype.open"
+      }
+    ]
+  },
+  "capabilities": [{ "kind": "storage:own" }]
+}
