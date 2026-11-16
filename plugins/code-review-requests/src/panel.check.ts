@@ -4,7 +4,15 @@
 // Never seed `settings.instanceUrl` in a scenario: the worker treats it as "configured" and the
 // real worker would then poll GitLab through the real glab (src/worker.ts).
 import { defineCheck, hostError } from 'orca/testing'
-import type { ConnectionView, ReviewDraftView, ReviewRequestCard, ReviewRequestsSnapshot, SetupReason } from './protocol'
+import type {
+  ConnectionView,
+  PostPreview,
+  ReviewDraftView,
+  ReviewRequestCard,
+  ReviewRequestsSnapshot,
+  SetupReason
+} from './protocol'
+import type { PostStep } from './review-post-view'
 
 const HOUR = 3_600_000
 const NOW = Date.UTC(2026, 10, 16, 9, 0)
@@ -136,6 +144,33 @@ const reviewDraft: ReviewDraftView = {
 
 /** The Review Draft view is open on MR 12 (it stays open across reloads). */
 const draftOpen = { plugin: { 'rr.tab': 'in', 'rr.draftUrl': DRAFT_URL } }
+
+/** The confirm step before posting (#30): two comments, one of my browser drafts, a warning. */
+const postPreview: PostPreview = {
+  url: DRAFT_URL,
+  comments: 2,
+  leftoverDrafts: [{ id: 41, body: 'Nit: the README still mentions the old login flow.' }],
+  warnings: ['The MR has new commits since 2 Review Comments were written: GitLab may show them as outdated.']
+}
+
+/** The draft view with the posting step (persisted, so check can show it) in a given state. */
+function postStep(step: PostStep, extra: Record<string, unknown> = {}) {
+  return { plugin: { ...draftOpen.plugin, 'rr.postStep': step, ...extra } }
+}
+
+/** reviewDraft after a post: the posted comments marked, a failed one flagged. */
+function postedDraft(failedId: string | null): ReviewDraftView {
+  return {
+    ...reviewDraft,
+    comments: reviewDraft.comments.map((c) =>
+      c.id === failedId
+        ? { ...c, failure: 'GitLab kept it as a draft: it did not publish.' }
+        : c.checked
+          ? { ...c, posted: true, editable: false }
+          : c
+    )
+  }
+}
 
 function needsYou(reason: SetupReason, version: string | null = null): ReviewRequestsSnapshot {
   return {
@@ -278,7 +313,49 @@ export default defineCheck({
       }
     },
     persisted: draftOpen
+  },
+  /** Posting (#30): the confirm step with a summary, an outcome, leftover drafts and a warning. */
+  postConfirm: {
+    requests: { 'rr.snapshot': inReview, 'rr.draft': reviewDraft, 'rr.connection': connection() },
+    persisted: postStep(
+      { kind: 'confirm', preview: postPreview, postingSince: null },
+      { 'rr.postSummary': 'Nearly there: two things to fix.', 'rr.postOutcome': 'requested_changes' }
+    )
+  },
+  /** The worker is posting: the confirm step locked with a spinner. */
+  posting: {
+    requests: { 'rr.snapshot': inReview, 'rr.draft': reviewDraft, 'rr.connection': connection() },
+    persisted: postStep({ kind: 'confirm', preview: postPreview, postingSince: Date.now() })
+  },
+  /** Posted: the success callout, the Orca clean-up hint, Posted badges. */
+  postSuccess: {
+    requests: { 'rr.snapshot': inReview, 'rr.draft': postedDraft(null), 'rr.connection': connection() },
+    persisted: postStep({ kind: 'done', result: { posted: 2, failed: [], approveError: null } })
+  },
+  /** Partly failed: what didn't post (Retry, Delete failed drafts), and an approval refused. */
+  postPartialFailure: {
+    requests: { 'rr.snapshot': inReview, 'rr.draft': postedDraft('finding:77d0e412'), 'rr.connection': connection() },
+    persisted: postStep({
+      kind: 'done',
+      result: {
+        posted: 1,
+        failed: [
+          { commentId: 'finding:77d0e412', location: 'General comment', message: 'GitLab kept it as a draft: it did not publish.' }
+        ],
+        approveError: 'SHA does not match HEAD of source branch'
+      }
+    })
+  },
+  /** The token lacks the api scope: Post disabled with the hint. */
+  postScopeMissing: {
+    requests: {
+      'rr.snapshot': inReview,
+      'rr.draft': reviewDraft,
+      'rr.connection': connection({ source: 'token', scopes: ['read_api'], canPost: false })
+    },
+    persisted: draftOpen
   }
-  // `events` only delivers Orca events, not worker posts, so rr.changed is covered by
+  // A refused post (the api-scope hint from a 403) needs a press, so it's covered by
+  // review-post-panel.test.tsx. `events` only delivers Orca events, not worker posts, so rr.changed is covered by
   // panel.test.tsx instead.
 })

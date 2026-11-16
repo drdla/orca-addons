@@ -120,6 +120,36 @@ export type ReviewCommentView = {
   sha: string | null
   /** Posted to GitLab and not changed since. */
   posted: boolean
+  /** Why the last post couldn't publish it (its draft is left on GitLab), if it failed (#30). */
+  failure?: string
+}
+
+/** How the review is submitted (#14, #30): its reviewer state. */
+export type ReviewOutcome = 'comment' | 'requested_changes' | 'approve'
+
+/** A draft note already pending on GitLab, which publishing the review publishes too. */
+export type LeftoverDraftView = { id: number; body: string }
+
+/** The confirm step before posting a Review Draft (#30). */
+export type PostPreview = {
+  url: string
+  /** How many checked, unposted Review Comments post. */
+  comments: number
+  /** My other pending GitLab drafts on the MR (started in the browser, say); they publish too. */
+  leftoverDrafts: LeftoverDraftView[]
+  /** One line each: older MR versions, comments that post as general comments, failed drafts replaced. */
+  warnings: string[]
+}
+
+/** What posting did (#30). */
+export type PostResult = {
+  /** Review Comments now on GitLab. */
+  posted: number
+  /** Review Comments whose draft GitLab kept unpublished; they stay in the Review Draft. */
+  failed: { commentId: string; location: string; message: string }[]
+  /** Why Approve didn't go through (the review itself is posted), or null. */
+  approveError: string | null
+  draft: ReviewDraftView
 }
 
 /** A Review Request's Review Draft (#29): what the drill-in panel view curates. */
@@ -197,6 +227,18 @@ declare module 'orca' {
       input: { url: string; id: string; checked?: boolean; body?: string }
       output: ReviewDraftView
     }
+    /** The confirm step: what posting the Review Draft would send and publish (#30). Reads GitLab only. */
+    'rr.postPreview': { input: { url: string }; output: PostPreview }
+    /**
+     * Posts the checked, unposted Review Comments as one GitLab review with a summary and an
+     * outcome, approving too for `approve`, then re-lists and retries what failed (#30).
+     */
+    'rr.postReview': {
+      input: { url: string; summary: string; outcome: ReviewOutcome }
+      output: PostResult
+    }
+    /** Deletes the drafts the last post left on GitLab; their Review Comments stay in the draft (#30). */
+    'rr.deleteFailedDrafts': { input: { url: string }; output: ReviewDraftView }
     /** The Connection section (#25). `test` re-checks the user and scopes instead of the cached answer. */
     'rr.connection': { input: { test: boolean }; output: ConnectionView }
     /**

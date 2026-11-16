@@ -20,7 +20,7 @@ import { explainDropped } from './notify/explain-dropped'
 import { createNotifier } from './notify/notifier'
 import { redactError } from './gitlab/http-response'
 import { createTokenMode } from './token-mode'
-import type { ReviewRequestsSnapshot, ReviewRequestView } from './protocol'
+import type { ReviewRequestCard, ReviewRequestsSnapshot, ReviewRequestView } from './protocol'
 import type { GitLabConnection, GitLabTransport } from './seams/gitlab'
 import { DEFAULT_SETTINGS, readSettings, type Settings } from './settings'
 import { createStatusBar } from './status-bar'
@@ -31,6 +31,8 @@ import { createWorkspaceTracker, hasWorkspace, withWorkspaces } from './workspac
 import { createReviewActions, hostWorkspaceIdOf } from './workspaces/review-actions'
 import { createEndedWorkspaces } from './ended/ended-workspaces'
 import { registerDraftRequests } from './review-draft/draft-requests'
+import { registerPostRequests } from './review-draft/post-requests'
+import { createReviewDrafts } from './review-draft/review-drafts'
 
 export const REFRESH_COMMAND = 'code-review-requests.refresh'
 export const OPEN_COMMAND = 'code-review-requests.open'
@@ -63,6 +65,8 @@ export function createWorker(deps: Deps) {
     // Filters (#26). A Review Request with a Review Workspace is never hidden; the lookup uses the
     // worktree list poll() refreshed before applyFilters.
     const hasReviewWorkspace = (view: ReviewRequestView): boolean => hasWorkspace(workspaces.current(), view)
+    // The Review Drafts (#29), read by posting and removal (#30).
+    const drafts = createReviewDrafts(orca.storage, deps.clock)
     // Ended Review Requests with a Review Workspace, and removing those workspaces (#28).
     const ended = createEndedWorkspaces({
       storage: orca.storage,
@@ -72,8 +76,10 @@ export function createWorker(deps: Deps) {
       clock: deps.clock,
       workspaces,
       autoRemoveDays: async () => (await readSettings(orca.settings)).autoRemoveDays,
-      // #30: count the Review Draft's unposted Review Comments here (and discard it in onRemoved).
-      unpostedReviewComments: async () => 0,
+      // Unposted Review Comments make manual removal ask and auto-removal skip (#30); once the
+      // workspace is gone, by any route, its Review Draft goes too.
+      unpostedReviewComments: async (entry) => (await drafts.toPost(entry.url)).length,
+      onRemoved: (entry) => drafts.remove(entry.url),
       log: (message) => orca.log(message)
     })
     await ended.load()
@@ -261,12 +267,20 @@ export function createWorker(deps: Deps) {
       await reviewActions.runAgentReview(url)
       return { started: true as const }
     })
-    // The Review Draft (#29): import and curation. #28/#30 can keep the returned store
-    // (createReviewDrafts) for hasUnposted / toPost / markPosted.
-    registerDraftRequests(orca, {
-      deps,
-      cards: () => snapshot().reviewRequests,
-      workspaceState: () => workspaces.current()
+    // The Review Draft (#29): import and curation, also for an Ended Review Request whose
+    // workspace is still there; posting it (#30).
+    const draftCards = (): ReviewRequestCard[] => [
+      ...snapshot().reviewRequests,
+      ...ended.entries().map((entry) => ({ ...entry, overdue: false }))
+    ]
+    registerDraftRequests(orca, { deps, cards: draftCards, workspaceState: () => workspaces.current() })
+    registerPostRequests(orca, {
+      drafts,
+      cards: draftCards,
+      connection: async () => {
+        const connection = await connectionFor(await readSettings(orca.settings), orca.secrets)
+        return { transport: deps.gitLab(connection), token: connection.token }
+      }
     })
 
     // Token mode and the Connection section (#25).

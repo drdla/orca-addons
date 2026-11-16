@@ -4,7 +4,12 @@ import { assert, test } from 'orca/testing'
 import { REVIEW_REQUESTS_QUERY, type ReviewRequestsResponse } from '../gitlab/review-requests-query'
 import { FakeGitLab, FakeOrcaCli } from '../fakes'
 import type { Worktree, WorktreeDetail } from '../seams/orca-cli'
-import { draftNoteFromDocs, personalAccessTokenFromDocs } from './gitlab-docs-shapes'
+import {
+  draftNoteFromDocs,
+  mergeRequestNoteFromDocs,
+  mergeRequestVersionFromDocs,
+  personalAccessTokenFromDocs
+} from './gitlab-docs-shapes'
 import { mergeRequestBody, reviewRequestsBody } from './gitlab-captures'
 import { mergeRequestReviewersBody } from './gitlab-reviewers-capture'
 import { worktreeListEnvelope, worktreeShowEnvelope, worktreeShowErrorEnvelope } from './orca-cli-captures'
@@ -48,6 +53,18 @@ test('the fake draft notes look like the documented draft note', async () => {
 
   assert.deepEqual(shapeMismatches(created, draftNoteFromDocs, { exact: true }), [])
   assert.deepEqual(shapeMismatches(listed, [draftNoteFromDocs], { exact: true }), [])
+})
+
+test('the fake lists MR diff versions and answers a note in the documented shapes', async () => {
+  const gitlab = seeded()
+  const base = '/projects/acme%2Fteam-1%2Fservice-1/merge_requests/101'
+  gitlab.push('acme/team-1/service-1', 101)
+
+  const versions = await gitlab.rest('GET', `${base}/versions`)
+  const note = await gitlab.rest('POST', `${base}/notes`, { body: 'Summary\n\n/submit_review reviewed' })
+
+  assert.deepEqual(shapeMismatches(versions, [mergeRequestVersionFromDocs, mergeRequestVersionFromDocs], { exact: true }), [])
+  assert.deepEqual(shapeMismatches(note, mergeRequestNoteFromDocs, { exact: true }), [])
 })
 
 test('the fake describes a personal access token in the documented shape, for token mode and glab alike', async () => {
