@@ -219,10 +219,9 @@ test('failed polls notify nothing, and recovery after more than 2 intervals is a
 
   fakes.gitlab.merge('acme/api', 1)
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/web', iid: 5, title: 'Five' })
-  for (let i = 0; i < 2; i++) {
-    fakes.gitlab.failNext(new GitLabError('transient', 'GitLab is down', { status: 503 }))
-    await fakes.clock.advance(5 * MINUTE)
-  }
+  // Polls fail at 5, 6, 8 and 12 minutes (transient backoff, #24); the one at 17 works.
+  for (let i = 0; i < 4; i++) fakes.gitlab.failNext(new GitLabError('transient', 'GitLab is down', { status: 503 }))
+  await fakes.clock.advance(12 * MINUTE)
   assert.equal(notes().length, 1)
 
   await fakes.clock.advance(5 * MINUTE)

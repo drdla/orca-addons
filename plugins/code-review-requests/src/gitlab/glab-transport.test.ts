@@ -136,6 +136,32 @@ test('rate limiting and server errors are Transient, honouring Retry-After', asy
   assert.deepEqual([down.kind, down.status, down.retryAfterMs], ['transient', 502, undefined])
 })
 
+test('a 429 without Retry-After waits until RateLimit-Reset, measured against the response Date', async () => {
+  const glab = stubGlab({
+    exitCode: 1,
+    stdout: included('429 Too Many Requests', '{"message":"Retry later"}', [
+      'Date: Mon, 16 Nov 2026 09:00:00 GMT',
+      `RateLimit-Reset: ${Date.UTC(2026, 10, 16, 9, 2, 0) / 1000}`
+    ])
+  })
+
+  const limited = await failure(transport(glab.run).rest('GET', '/version'))
+
+  assert.deepEqual([limited.kind, limited.retryAfterMs], ['transient', 120_000])
+})
+
+test('a 401 and a missing glab say which setup step is missing', async () => {
+  const loggedOut = stubGlab({ exitCode: 1, stdout: included('401 Unauthorized', '{"message":"401 Unauthorized"}') })
+  const missing = createGlabTransport({ host: 'gitlab.example.com', run: stubGlab().run, locate: () => null })
+
+  const errors = [
+    await failure(transport(loggedOut.run).rest('GET', '/user')),
+    await failure(missing.rest('GET', '/user'))
+  ]
+
+  assert.deepEqual(errors.map((e) => e.reason), ['logged-out', 'glab-missing'])
+})
+
 test('a missing glab is Needs you, whether it was not found or vanished before spawning', async () => {
   const notFound = stubGlab()
   const missing = createGlabTransport({ host: 'gitlab.example.com', run: notFound.run, locate: () => null })

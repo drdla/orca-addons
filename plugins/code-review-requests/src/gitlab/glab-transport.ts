@@ -41,7 +41,10 @@ export function createGlabTransport(options: GlabTransportOptions): GitLabTransp
 
     const message = `${host}: ${messageOf(parsed) ?? oneLine(result.stderr)}`
     if (status === 401) {
-      throw new GitLabError('needs-you', `${message}. Run \`glab auth login --hostname ${host}\`.`, { status })
+      throw new GitLabError('needs-you', `${message}. Run \`glab auth login --hostname ${host}\`.`, {
+        status,
+        reason: 'logged-out'
+      })
     }
     if (status === 429 || status >= 500) {
       const retryAfterMs = retryAfter(response.headers)
@@ -89,7 +92,9 @@ export function locateGlab(
 }
 
 function glabNotFound(): GitLabError {
-  return new GitLabError('needs-you', 'glab not found. Install it (brew install glab) and run `glab auth login`.')
+  return new GitLabError('needs-you', 'glab not found. Install it (brew install glab) and run `glab auth login`.', {
+    reason: 'glab-missing'
+  })
 }
 
 type Included ={ status: number; headers: Map<string, string>; body: string }
@@ -131,14 +136,21 @@ function messageOf(body: unknown): string | undefined {
   return typeof value === 'string' ? value : JSON.stringify(value)
 }
 
-/** `Retry-After` in seconds, or as an HTTP date measured against the response's `Date`. */
+/**
+ * `Retry-After` in seconds, or as an HTTP date measured against the response's `Date`. Without it,
+ * GitLab's `RateLimit-Reset` (Unix seconds), also measured against `Date`.
+ */
 function retryAfter(headers: Map<string, string>): number | undefined {
-  const value = headers.get('retry-after')
-  if (!value) return undefined
-  if (/^\d+$/.test(value)) return Number(value) * 1000
-  const at = Date.parse(value)
   const now = Date.parse(headers.get('date') ?? '')
-  return Number.isNaN(at) || Number.isNaN(now) ? undefined : Math.max(0, at - now)
+  const value = headers.get('retry-after')
+  if (value) {
+    if (/^\d+$/.test(value)) return Number(value) * 1000
+    const at = Date.parse(value)
+    return Number.isNaN(at) || Number.isNaN(now) ? undefined : Math.max(0, at - now)
+  }
+  const reset = headers.get('ratelimit-reset')
+  if (!reset || !/^\d+$/.test(reset) || Number.isNaN(now)) return undefined
+  return Math.max(0, Number(reset) * 1000 - now)
 }
 
 function oneLine(text: string): string {

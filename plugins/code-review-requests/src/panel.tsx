@@ -6,8 +6,8 @@
 //
 // Tabs: To review holds Review Requests without a Review Workspace (all of them until #27),
 // In review those with one (#27), Ended the Ended Review Requests (#28). Later slices fill a tab
-// by changing what tabContents() returns for it; #24 puts its setup checklist above the tabs in
-// Body().
+// by changing what tabContents() returns for it. #24: in Body(), the setup checklist replaces the
+// tabs while GitLab needs setting up, and the refresh problem sits above them on a failed poll.
 import {
   atom,
   Badge,
@@ -35,6 +35,8 @@ import {
   type PanelContext
 } from 'orca'
 import type { ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
+import { RefreshProblem } from './refresh-problem'
+import { SetupChecklist } from './setup-checklist'
 
 type TabId = 'todo' | 'in' | 'ended'
 
@@ -167,6 +169,19 @@ function Body() {
   }
   const current = read(snapshot)
   if (current === null) return <Skeleton lines={6} label="Loading Review Requests" />
+  // #24: GitLab needs setting up: the setup checklist replaces the tabs.
+  const gitlab = current.gitlab
+  if (gitlab?.status === 'needs-you') {
+    return <SetupChecklist problem={gitlab} checking={read(refreshing)} onCheckAgain={refresh} />
+  }
+  if (gitlab?.status === 'retrying') {
+    return (
+      <Stack gap="md">
+        <RefreshProblem problem={gitlab} retrying={read(refreshing)} onRetry={refresh} />
+        <StageTabs snapshot={current} />
+      </Stack>
+    )
+  }
   return <StageTabs snapshot={current} />
 }
 
