@@ -49,7 +49,13 @@ export default defineCheck({
   /** The person left the panel on In review (empty until #27). */
   inReviewTab: { requests: { 'rr.snapshot': toReview }, persisted: { plugin: { 'rr.tab': 'in' } } },
   /** The person left the panel on Ended (empty until #28). */
-  endedTab: { requests: { 'rr.snapshot': toReview }, persisted: { plugin: { 'rr.tab': 'ended' } } }
+  endedTab: { requests: { 'rr.snapshot': toReview }, persisted: { plugin: { 'rr.tab': 'ended' } } },
+  /** Filters hide some Review Requests and ignore an invalid entry (#26): footer and warning. */
+  filtered: {
+    requests: {
+      'rr.snapshot': { ...toReview, hiddenByFilters: 3, invalidFilterEntries: ['acme//api'] }
+    }
+  }
   // `events` only delivers Orca events, not worker posts, so rr.changed is covered by
   // panel.test.tsx instead.
 })
