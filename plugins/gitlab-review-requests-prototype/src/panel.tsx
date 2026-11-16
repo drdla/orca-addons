@@ -34,7 +34,8 @@ import {
   type PanelContext
 } from 'orca'
 import { ended, lastRefreshedAt, reviewRequests, type EndedReviewRequest, type ReviewRequest } from './mock'
-import type { PanelState, StatusVariant } from './protocol'
+import type { CatchUpScenario, CatchUpStrategy, PanelState, StatusVariant } from './protocol'
+import { SCENARIOS, STRATEGIES } from './catchup'
 
 // ---------- prototype switches ----------
 const VARIANTS = [
@@ -483,6 +484,64 @@ function VariantC() {
 }
 
 // ---------- prototype bar ----------
+// ---------- catch-up notifications (#11) ----------
+const cuStrategy = atom<CatchUpStrategy>('proto.cuStrategy', 'summary', { persist: 'storage' })
+const cuScenario = atom<CatchUpScenario>('proto.cuScenario', 'weekend', { persist: 'storage' })
+const cuCap = atom('proto.cuCap', '3', { persist: 'storage' })
+const cuResult = atom<{ sent: { title: string; body: string }[]; note: string } | null>('proto.cuResult', null)
+
+function CatchUpBar() {
+  const result = read(cuResult)
+  const fire = async () => {
+    set(cuResult, await plugin.request('proto.catchUp', { strategy: read(cuStrategy), scenario: read(cuScenario), cap: Number(read(cuCap)) }))
+  }
+  return (
+    <Box border="warning" background="muted" radius="md" padding="sm" direction="column" gap="xs">
+      <Text size="xs" weight="semibold">
+        PROTOTYPE · Catch-up notifications
+      </Text>
+      <Select
+        label="Scenario"
+        value={read(cuScenario)}
+        options={Object.entries(SCENARIOS).map(([value, sc]) => ({ value, label: sc.label }))}
+        onChange={(x) => set(cuScenario, x as CatchUpScenario)}
+      />
+      <Select
+        label="Strategy"
+        value={read(cuStrategy)}
+        options={Object.entries(STRATEGIES).map(([value, label]) => ({ value, label }))}
+        onChange={(x) => set(cuStrategy, x as CatchUpStrategy)}
+      />
+      <Select
+        label="Per-item cap"
+        value={read(cuCap)}
+        options={['1', '3', '5'].map((v) => ({ value: v, label: `Per-item cap: ${v}` }))}
+        onChange={(x) => set(cuCap, x)}
+      />
+      <Button size="sm" variant="solid" onPress={() => void fire()}>
+        Fire notifications
+      </Button>
+      {result ? (
+        <Stack gap="xs">
+          <Text size="xs" muted>
+            {result.note}
+          </Text>
+          {result.sent.map((n, i) => (
+            <Box key={i} border radius="sm" padding="xs" direction="column">
+              <Text size="xs" weight="semibold">
+                {n.title}
+              </Text>
+              <Text size="xs" muted>
+                {n.body}
+              </Text>
+            </Box>
+          ))}
+        </Stack>
+      ) : null}
+    </Box>
+  )
+}
+
 function PrototypeBar() {
   const v = read(variant)
   const idx = VARIANTS.findIndex((x) => x.key === v)
@@ -557,6 +616,7 @@ export default function Panel() {
       <Header count={rrs.length} />
       <OfflineBanner />
       {body ?? (v === 'A' ? <VariantA /> : v === 'B' ? <VariantB /> : v === 'C' ? <VariantC /> : <VariantD />)}
+      <CatchUpBar />
       <PrototypeBar />
     </Stack>
   )

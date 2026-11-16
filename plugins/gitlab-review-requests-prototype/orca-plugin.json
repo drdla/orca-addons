@@ -31,5 +31,5 @@
       }
     ]
   },
-  "capabilities": [{ "kind": "storage:own" }]
+  "capabilities": [{ "kind": "storage:own" }, { "kind": "notifications:show" }]
 }

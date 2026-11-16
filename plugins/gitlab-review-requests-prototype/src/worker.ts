@@ -2,6 +2,7 @@
 import type { OrcaWorkerApi } from 'orca/worker'
 import { spawn } from 'node:child_process'
 import type { PanelState, StatusVariant } from './protocol'
+import { plan } from './catchup'
 
 type Look = {
   text: string
@@ -66,6 +67,16 @@ export default function activate(orca: OrcaWorkerApi): void {
     const empty = st === 'empty'
     await orca.host.call('statusBar.update', { id: 'review-requests', ...look(sv, st, empty ? 0 : 5, empty ? 0 : 2, empty ? 0 : 2) } as never)
     return { ok: true as const }
+  })
+
+  // Catch-up prototype (#11): fire the strategy's notifications for real, 400ms apart.
+  orca.panels.handle('proto.catchUp', async ({ strategy, scenario, cap }) => {
+    const out = plan(strategy, scenario, cap)
+    for (const n of out.sent) {
+      await orca.host.call('notifications.show', n)
+      await new Promise((r) => setTimeout(r, 400))
+    }
+    return out
   })
 
   // Pressing the status-bar item opens the panel. The host API can't open a panel, so use the CLI.

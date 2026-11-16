@@ -3,6 +3,8 @@ export {}
 
 export type PanelState = 'loaded' | 'empty' | 'loading' | 'refreshing' | 'offline' | 'setup'
 export type StatusVariant = 'icon-count' | 'label' | 'quiet'
+export type CatchUpStrategy = 'silent' | 'summary' | 'per-item' | 'hybrid' | 'split'
+export type CatchUpScenario = 'live' | 'first-run' | 'short' | 'weekend' | 'vacation'
 
 declare module 'orca' {
   interface PluginRequests {
@@ -15,6 +17,11 @@ declare module 'orca' {
     'proto.set': {
       input: { variant?: string; state?: PanelState; status?: StatusVariant; overdueHours?: string; tab?: string }
       output: { ok: true }
+    }
+    /** Fire the notifications a strategy would send for a scenario. Returns what was sent. */
+    'proto.catchUp': {
+      input: { strategy: CatchUpStrategy; scenario: CatchUpScenario; cap: number }
+      output: { sent: { title: string; body: string }[]; note: string }
     }
   }
 }
