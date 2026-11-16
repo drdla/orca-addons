@@ -145,9 +145,12 @@ test('the panel snapshot lists the Review Requests from the last poll', async ()
         title: 'Add login',
         projectPath: 'acme/api',
         iid: 7,
-        author: 'ada'
+        author: 'ada',
+        requestedAt: fakes.clock.now(),
+        overdue: false
       }
-    ]
+    ],
+    refreshedAt: fakes.clock.now()
   })
   await worker.deactivate()
 })

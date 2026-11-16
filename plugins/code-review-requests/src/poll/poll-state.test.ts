@@ -9,7 +9,8 @@ function rr(iid: number): ReviewRequestView {
     title: `MR ${iid}`,
     projectPath: 'acme/api',
     iid,
-    author: 'ada'
+    author: 'ada',
+    requestedAt: 0
   }
 }
 
@@ -50,7 +51,11 @@ test('a failure keeps the last good list, and success listeners do not hear it',
     lastAttemptAt: 2,
     lastError: new Error('offline')
   })
-  assert.deepEqual(snapshotOf(store.current()), { reviewRequests: [rr(1)] })
+  const notOverdue = { now: () => 1, overdueHours: () => 24 }
+  assert.deepEqual(snapshotOf(store.current(), notOverdue), {
+    reviewRequests: [{ ...rr(1), overdue: false }],
+    refreshedAt: 1
+  })
 })
 
 test('a listener that throws is logged and does not stop the others', async () => {

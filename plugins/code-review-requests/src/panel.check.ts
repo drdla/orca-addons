@@ -8,7 +8,7 @@ import { defineCheck, hostError } from 'orca/testing'
 export default defineCheck({
   /** No stub: the real, unconfigured worker answers. */
   fresh: {},
-  empty: { requests: { 'rr.snapshot': { reviewRequests: [] } } },
+  empty: { requests: { 'rr.snapshot': { reviewRequests: [], refreshedAt: null } } },
   workerDown: {
     requests: {
       'rr.snapshot': () => {

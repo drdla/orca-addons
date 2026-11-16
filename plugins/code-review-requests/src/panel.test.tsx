@@ -2,7 +2,7 @@ import { assert, hostError, mockHost, mount, test } from 'orca/testing'
 import * as panel from './panel'
 
 test('shows that there is nothing to review when the worker has no Review Requests', async () => {
-  const host = mockHost({ requests: { 'rr.snapshot': { reviewRequests: [] } } })
+  const host = mockHost({ requests: { 'rr.snapshot': { reviewRequests: [], refreshedAt: null } } })
   const view = await mount(panel, { host })
 
   assert.ok(view.find({ type: 'Heading', text: 'Review Requests' }))
