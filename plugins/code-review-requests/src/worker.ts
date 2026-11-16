@@ -23,6 +23,8 @@ import { DEFAULT_SETTINGS, readSettings, type Settings } from './settings'
 import { createStatusBar } from './status-bar'
 import { createRequestedAtCache } from './gitlab/requested-at'
 import { overdueRefiner, type OverdueContext } from './to-review'
+import { createWorkspaceTracker, withWorkspaces } from './workspaces/workspace-tracker'
+import { createReviewActions } from './workspaces/review-actions'
 
 export const REFRESH_COMMAND = 'code-review-requests.refresh'
 export const OPEN_COMMAND = 'code-review-requests.open'
@@ -51,9 +53,13 @@ export function createWorker(deps: Deps) {
     const statusBar = createStatusBar(orca, [overdueRefiner(overdue)])
     const gitLab = createGitLabSource(deps)
     let connectionKey: string | null = null
+    // Review Workspaces (#27): one `orca worktree list` per poll; a failure only disables them.
+    const workspaces = createWorkspaceTracker(deps.orcaCli, (message) => orca.log(message))
+    const snapshot = (current: PollState) => withWorkspaces(snapshotOf(current, overdue), workspaces.current())
 
     async function poll(): Promise<void> {
       const at = deps.clock.now()
+      await workspaces.refresh()
       try {
         const settings = await readSettings(orca.settings)
         const reviewRequests = await gitLab.reviewRequests(await connectionFor(settings))
@@ -81,7 +87,7 @@ export function createWorker(deps: Deps) {
     })
     state.onSucceeded((_previous, next) => notifier.onGoodPoll(next.reviewRequests, next.lastSuccessAt!))
     state.onChange((current) => statusBar.render(current))
-    state.onChange((current) => orca.panels.post('rr.changed', snapshotOf(current, overdue)))
+    state.onChange((current) => orca.panels.post('rr.changed', snapshot(current)))
 
     /** Starts, stops or re-times polling to match the settings. */
     async function applySettings(): Promise<void> {
@@ -103,14 +109,39 @@ export function createWorker(deps: Deps) {
       }
     }
 
-    orca.panels.handle('rr.snapshot', async () => snapshotOf(state.current(), overdue))
+    orca.panels.handle('rr.snapshot', async () => snapshot(state.current()))
     orca.panels.handle('rr.refresh', async () => {
       if (await isConfigured(orca)) await poller.pollNow()
-      return snapshotOf(state.current(), overdue)
+      return snapshot(state.current())
     })
     orca.panels.handle('rr.copyLink', async ({ url }) => {
       await deps.desktop.copyText(url)
       return { copied: true as const }
+    })
+    // Review Workspace actions (#27). Start review answers the new snapshot and tells open panels.
+    const reviewActions = createReviewActions({
+      cli: deps.orcaCli,
+      git: deps.git,
+      host: orca.host,
+      workspaces,
+      settings: () => readSettings(orca.settings),
+      reviewRequest: (url) => state.current().reviewRequests.find((rr) => rr.url === url)
+    })
+    orca.panels.handle('rr.startReview', async ({ url, withAgent }) => {
+      try {
+        await reviewActions.startReview(url, withAgent)
+      } finally {
+        await orca.panels.post('rr.changed', snapshot(state.current()))
+      }
+      return snapshot(state.current())
+    })
+    orca.panels.handle('rr.openWorkspace', async ({ url }) => {
+      await reviewActions.openWorkspace(url)
+      return { opened: true as const }
+    })
+    orca.panels.handle('rr.runAgentReview', async ({ url }) => {
+      await reviewActions.runAgentReview(url)
+      return { started: true as const }
     })
     orca.commands.register(OPEN_COMMAND, async () => {
       // A string result is shown as-is; nothing to say when it worked.

@@ -1,0 +1,237 @@
+// Review Workspaces end to end through the worker (#27): finding them on each poll, Start review
+// (with or without an Agent Review), Open workspace and Run agent review. GitLab, the orca CLI,
+// git and the clock are fakes; Orca's host is the kit's mock host.
+import { assert, mockHost, mountWorker, test } from 'orca/testing'
+import { fakeDeps, type Fakes } from './fakes'
+import { OrcaCliError } from './seams/orca-cli'
+import { createWorker } from './worker'
+
+const MINUTE = 60_000
+const CONFIGURED = { instanceUrl: 'https://gitlab.example.com', pollMinutes: 5 }
+const MR_URL = 'https://gitlab.example.com/acme/api/-/merge_requests/7'
+const REPO = { repoId: 'repo-api', projectId: 'git:gitlab.example.com/acme/api', path: '/src/api' }
+
+/** What `workspace.list` answers: the host's ids for the repo and the workspaces the test makes. */
+function workspaceList(...paths: string[]) {
+  return {
+    workspaces: paths.map((path, i) => ({
+      id: `ws-${i}`,
+      kind: 'worktree' as const,
+      name: path.split('/').at(-1)!,
+      path,
+      branch: null,
+      hostId: 'local'
+    })),
+    truncated: false
+  }
+}
+
+async function startWorker(
+  fakes: Fakes,
+  options: { settings?: Record<string, string | number>; workspaces?: string[] } = {}
+) {
+  const host = mockHost({
+    settings: { ...CONFIGURED, ...options.settings },
+    results: {
+      'workspace.list': workspaceList(...(options.workspaces ?? [])),
+      'agent.launch': { terminalId: 'term-agent' },
+      'terminal.create': { terminalId: 'term-cmd' },
+      'workspace.open': { opened: true }
+    }
+  })
+  const worker = await mountWorker(createWorker(fakes.deps), { host })
+  await fakes.clock.advance(0)
+  return { host, worker }
+}
+
+function addReviewRequest(fakes: Fakes) {
+  fakes.gitlab.addMergeRequest({
+    projectPath: 'acme/api',
+    iid: 7,
+    title: 'Add login',
+    author: 'ada',
+    sourceBranch: 'feature/login',
+    targetBranch: 'main'
+  })
+}
+
+function worktreeLists(fakes: Fakes): number {
+  return fakes.cli.calls.filter((c) => c.command === 'worktree list').length
+}
+
+test('a Review Request with a linked workspace carries it in the snapshot; one worktree list per poll', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 8 })
+  fakes.cli.addRepo(REPO)
+  fakes.cli.addWorktree({ name: 'review-api-7', repoId: REPO.repoId, path: '/wt/review-api-7', references: [MR_URL] })
+
+  const { worker } = await startWorker(fakes)
+
+  assert.equal(worktreeLists(fakes), 1)
+  const cards = (await worker.request('rr.snapshot')).reviewRequests
+  const seven = cards.find((c) => c.iid === 7)!
+  assert.deepEqual(seven.workspace, { id: `${REPO.repoId}::/wt/review-api-7`, name: 'review-api-7', path: '/wt/review-api-7' })
+  assert.equal(cards.find((c) => c.iid === 8)!.workspace, null)
+
+  await fakes.clock.advance(5 * MINUTE)
+  assert.equal(worktreeLists(fakes), 2)
+  await worker.deactivate()
+})
+
+test('Start review is blocked with a hint when Orca has no repo for the MR project', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+
+  const { worker } = await startWorker(fakes)
+
+  const [card] = (await worker.request('rr.snapshot')).reviewRequests
+  assert.equal(card!.startBlocked, 'Add acme/api to Orca to review here.')
+  await worker.deactivate()
+})
+
+test('a broken orca CLI disables only the workspace features; the Review Requests still show', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.failNext(new OrcaCliError('unavailable', 'orca CLI not found'))
+
+  const { host, worker } = await startWorker(fakes)
+
+  const [card] = (await worker.request('rr.snapshot')).reviewRequests
+  assert.equal(card!.title, 'Add login')
+  assert.equal(card!.workspace, null)
+  assert.match(card!.startBlocked ?? '', /orca CLI not found/)
+  const bar = host.callsOf('statusBar.update').at(-1) as { text?: string }
+  assert.equal(bar.text, '1')
+  await worker.deactivate()
+})
+
+test('Start review fetches the MR head and creates a workspace linked to the MR, without an agent', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  const { host, worker } = await startWorker(fakes)
+
+  const answer = await worker.request('rr.startReview', { url: MR_URL, withAgent: false })
+
+  assert.deepEqual(fakes.git.fetches, [{ repoPath: '/src/api', iid: 7 }])
+  const create = fakes.cli.calls.find((c) => c.command === 'worktree create')
+  assert.deepEqual(create?.args, {
+    name: 'review-api-7',
+    repo: `id:${REPO.repoId}`,
+    baseBranch: 'origin/merge-requests/7',
+    gitlabMr: MR_URL,
+    noParent: true
+  })
+  assert.equal(answer.reviewRequests[0]!.workspace?.name, 'review-api-7')
+  assert.equal(host.callsOf('agent.launch').length, 0)
+  assert.equal(host.callsOf('terminal.create').length, 0)
+  const pushed = worker.posts.filter((p) => p.event === 'rr.changed').at(-1)?.payload as {
+    reviewRequests: { workspace?: { name: string } | null }[]
+  }
+  assert.equal(pushed.reviewRequests[0]!.workspace?.name, 'review-api-7')
+  await worker.deactivate()
+})
+
+test('Start review with an Agent Review launches the Review Agent in the new workspace with the Review Prompt', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  const { host, worker } = await startWorker(fakes, {
+    settings: { reviewAgent: 'codex', reviewPrompt: 'Review {mrUrl} ({sourceBranch} → {targetBranch})' },
+    workspaces: ['/src/api', '/worktrees/review-api-7']
+  })
+
+  await worker.request('rr.startReview', { url: MR_URL, withAgent: true })
+
+  assert.deepEqual(host.callsOf('agent.launch'), [
+    { workspaceId: 'ws-1', agent: 'codex', prompt: `Review ${MR_URL} (feature/login → main)` }
+  ])
+  await worker.deactivate()
+})
+
+test('with a custom review command, the Agent Review runs it in a new terminal instead of launching the agent', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  const { host, worker } = await startWorker(fakes, {
+    settings: { reviewPrompt: 'Review {title}', reviewCommand: 'claude --model opus {prompt}' },
+    workspaces: ['/worktrees/review-api-7']
+  })
+
+  await worker.request('rr.startReview', { url: MR_URL, withAgent: true })
+
+  assert.deepEqual(host.callsOf('terminal.create'), [
+    { workspaceId: 'ws-0', title: 'Agent Review', command: `claude --model opus 'Review Add login'` }
+  ])
+  assert.equal(host.callsOf('agent.launch').length, 0)
+  await worker.deactivate()
+})
+
+test('Open workspace and Run agent review act on the existing Review Workspace', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  fakes.cli.addWorktree({ name: 'by-hand', repoId: REPO.repoId, path: '/wt/by-hand', references: [MR_URL] })
+  const { host, worker } = await startWorker(fakes, { workspaces: ['/src/api', '/wt/by-hand'] })
+
+  assert.deepEqual(await worker.request('rr.openWorkspace', { url: MR_URL }), { opened: true })
+  assert.deepEqual(host.callsOf('workspace.open'), [{ workspaceId: 'ws-1' }])
+
+  assert.deepEqual(await worker.request('rr.runAgentReview', { url: MR_URL }), { started: true })
+  assert.equal((host.callsOf('agent.launch')[0] as { workspaceId: string }).workspaceId, 'ws-1')
+  assert.equal(fakes.cli.calls.filter((c) => c.command === 'worktree create').length, 0)
+  await worker.deactivate()
+})
+
+test('Start review on a Review Request that already has a workspace creates no second one', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  fakes.cli.addWorktree({ name: 'by-hand', repoId: REPO.repoId, path: '/wt/by-hand', references: [MR_URL] })
+  const { host, worker } = await startWorker(fakes, { workspaces: ['/wt/by-hand'] })
+
+  await worker.request('rr.startReview', { url: MR_URL, withAgent: true })
+
+  assert.equal(fakes.cli.calls.filter((c) => c.command === 'worktree create').length, 0)
+  assert.equal(host.callsOf('agent.launch').length, 1)
+  await worker.deactivate()
+})
+
+test('Start review fails with the reason when Orca has no repo, the fetch fails or Orca refuses', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  const { worker } = await startWorker(fakes)
+
+  await assert.rejects(worker.request('rr.startReview', { url: MR_URL, withAgent: false }), (error) =>
+    /Add acme\/api to Orca/.test(String(error))
+  )
+
+  fakes.cli.addRepo(REPO)
+  fakes.git.failNext(new Error('git fetch of the MR failed: no such ref'))
+  await assert.rejects(worker.request('rr.startReview', { url: MR_URL, withAgent: false }), (error) =>
+    /no such ref/.test(String(error))
+  )
+
+  const gone = 'https://gitlab.example.com/acme/api/-/merge_requests/99'
+  await assert.rejects(worker.request('rr.startReview', { url: gone, withAgent: false }), (error) =>
+    /no longer listed/.test(String(error))
+  )
+  assert.equal(fakes.cli.calls.filter((c) => c.command === 'worktree create').length, 0)
+  await worker.deactivate()
+})
+
+test('when the agent does not start, Start review says the workspace is ready anyway', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  // workspace.list does not know the new workspace (yet).
+  const { worker } = await startWorker(fakes, { workspaces: ['/src/api'] })
+
+  await assert.rejects(worker.request('rr.startReview', { url: MR_URL, withAgent: true }), (error) =>
+    /workspace is ready, but the Agent Review didn't start/i.test(String(error))
+  )
+  const [card] = (await worker.request('rr.snapshot')).reviewRequests
+  assert.equal(card!.workspace?.name, 'review-api-7')
+  await worker.deactivate()
+})

@@ -24,7 +24,14 @@ export type WorktreeSeed = {
   baseRef?: string
   /** Uncommitted changes: removal without force is refused. */
   dirty?: boolean
+  /** The legacy GitLab MR link only (`--gitlab-mr`), without a linked item. */
+  legacyGitLabMR?: number
+  /** A repo's main checkout rather than a worktree of it (see addRepo). */
+  isMainWorktree?: boolean
 }
+
+/** An Orca repo: its main worktree, which `orca worktree list` lists like any other. */
+export type RepoSeed = { repoId: string; projectId: string; path: string; branch?: string }
 
 type FakeWorktree = WorktreeDetail & { dirty: boolean }
 
@@ -46,10 +53,10 @@ export class FakeOrcaCli implements OrcaCli {
       repoId,
       projectId: seed.projectId ?? 'git:gitlab.example.com/acme/api',
       path,
-      isMainWorktree: false,
+      isMainWorktree: seed.isMainWorktree ?? false,
       branch: fullRef(seed.branch === undefined ? seed.name : seed.branch),
       displayName: seed.name,
-      linkedGitLabMR: mrIid(seed.references?.[0]),
+      linkedGitLabMR: seed.legacyGitLabMR ?? mrIid(seed.references?.[0]),
       linkedItems: (seed.references ?? []).map((url) => linkedItem(url)),
       ...(seed.baseRef ? { baseRef: seed.baseRef } : {}),
       diffComments: [],
@@ -57,6 +64,17 @@ export class FakeOrcaCli implements OrcaCli {
     }
     this.#worktrees.push(worktree)
     return publicRow(worktree)
+  }
+
+  addRepo(seed: RepoSeed): Worktree {
+    return this.addWorktree({
+      name: seed.path.split('/').at(-1) ?? seed.repoId,
+      repoId: seed.repoId,
+      projectId: seed.projectId,
+      path: seed.path,
+      branch: seed.branch ?? 'main',
+      isMainWorktree: true
+    })
   }
 
   setDiffComments(worktreeId: string, comments: DiffComment[]): void {
@@ -87,11 +105,21 @@ export class FakeOrcaCli implements OrcaCli {
 
   async createWorktree(input: CreateWorktreeInput): Promise<Worktree> {
     this.#record('worktree create', input)
+    if (input.references && input.gitlabMr) {
+      throw new OrcaCliError('invalid_argument', '--reference cannot be combined with legacy link flags')
+    }
+    const repo = input.repo ? this.#repo(input.repo) : undefined
+    const mr = input.gitlabMr ?? input.references?.[0]
+    if (repo && mr && !sameProject(repo.projectId, mr)) {
+      throw new OrcaCliError('invalid_argument', `${mr} does not belong to ${repo.projectId}`)
+    }
     return this.addWorktree({
       name: input.name,
+      ...(repo ? { repoId: repo.repoId, projectId: repo.projectId } : {}),
       ...(input.branch ? { branch: input.branch } : {}),
       ...(input.baseBranch ? { baseRef: input.baseBranch } : {}),
-      ...(input.references ? { references: input.references } : {})
+      ...(input.references ? { references: input.references } : {}),
+      ...(input.gitlabMr ? { references: [input.gitlabMr] } : {})
     })
   }
 
@@ -125,6 +153,14 @@ export class FakeOrcaCli implements OrcaCli {
     return found
   }
 
+  /** `id:<repoId>`: the repo's main worktree. */
+  #repo(selector: string): FakeWorktree {
+    const repoId = selector.replace(/^id:/, '')
+    const found = this.#worktrees.find((w) => w.isMainWorktree && w.repoId === repoId)
+    if (!found) throw new OrcaCliError('selector_not_found', `No repo matches ${selector}`)
+    return found
+  }
+
   #byId(id: string): FakeWorktree {
     const found = this.#worktrees.find((w) => w.id === id)
     if (!found) throw new Error(`fake orca CLI has no worktree ${id}`)
@@ -144,6 +180,12 @@ function publicRow(w: FakeWorktree): Worktree {
     displayName: w.displayName,
     linkedItems: w.linkedItems.map((l) => ({ ...l }))
   }
+}
+
+/** Orca refuses a GitLab URL of another project than the repo's (`git:<host>/<path>`). */
+function sameProject(projectId: string, mrUrl: string): boolean {
+  const match = /^https?:\/\/([^/]+)\/(.+?)\/-\/merge_requests\//.exec(mrUrl)
+  return match !== null && projectId.toLowerCase() === `git:${match[1]}/${match[2]}`.toLowerCase()
 }
 
 function fullRef(branch: string | null): string | null {

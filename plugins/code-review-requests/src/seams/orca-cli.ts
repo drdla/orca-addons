@@ -51,7 +51,11 @@ export type DiffComment = {
 /** `orca worktree show --json` → `result.worktree`. */
 export type WorktreeDetail = Worktree & { baseRef?: string; diffComments?: DiffComment[] }
 
-/** `orca worktree create` flags. `references` and `--no-parent` are what a Review Workspace uses. */
+/**
+ * `orca worktree create` flags. A Review Workspace uses `repo`, `baseBranch` (the fetched MR head),
+ * `gitlabMr` (the MR web URL, as Orca's own "Start workspace from MR" links it) and `noParent`.
+ * `references` and `gitlabMr` can't be combined.
+ */
 export type CreateWorktreeInput = {
   name: string
   project?: string
@@ -60,6 +64,10 @@ export type CreateWorktreeInput = {
   branch?: string
   /** MR web URLs, passed as repeated `--reference`. */
   references?: string[]
+  /** `--gitlab-mr <url>`: links the MR (it must belong to the repo's project). */
+  gitlabMr?: string
+  /** `--no-parent`: a plugin worker has no lineage to record. */
+  noParent?: boolean
   agent?: string
   prompt?: string
   activate?: boolean
