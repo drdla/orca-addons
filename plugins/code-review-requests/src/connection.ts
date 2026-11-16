@@ -28,5 +28,6 @@ export type SecretsSource = { get(key: string): Promise<string | null> }
 export async function connectionFor(settings: Settings, secrets?: SecretsSource): Promise<GitLabConnection> {
   const host = hostOf(settings.instanceUrl)
   const token = secrets ? ((await secrets.get(tokenKey(host)))?.trim() ?? '') : ''
-  return { host, token: token === '' ? null : token }
+  const glabPath = settings.glabPath.trim()
+  return { host, token: token === '' ? null : token, glabPath: glabPath === '' ? null : glabPath }
 }

@@ -35,7 +35,7 @@ export function realDeps(): Deps {
         ? createGlabTransport({
             host: connection.host,
             run: spawnGlab,
-            locate: () => locateGlab(process.env, isExecutable)
+            locate: () => locateGlab(process.env, isExecutable, connection.glabPath)
           })
         : createTokenTransport({ host: connection.host, token: connection.token, fetch: globalThis.fetch }),
     orcaCli: () => systemOrcaCli,

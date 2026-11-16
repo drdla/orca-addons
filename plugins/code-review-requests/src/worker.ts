@@ -367,7 +367,7 @@ function createGitLabSource(deps: Deps) {
 }
 
 function keyOf(connection: GitLabConnection | null): string {
-  return connection === null ? '' : `${connection.host}\n${connection.token ?? ''}`
+  return connection === null ? '' : `${connection.host}\n${connection.token ?? ''}\n${connection.glabPath ?? ''}`
 }
 
 function refreshSummary(state: PollState): string {

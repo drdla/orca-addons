@@ -26,6 +26,8 @@ export type GitLabConnection = {
   host: string
   /** The personal access token for `host`, or null to use glab. */
   token: string | null
+  /** The "glab path" setting, or null to probe PATH and the usual install folders. */
+  glabPath: string | null
 }
 
 /**

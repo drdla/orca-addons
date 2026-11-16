@@ -129,7 +129,7 @@ export function createTokenMode(options: TokenModeOptions) {
     } catch (error) {
       return messageOf(error)
     }
-    const connection = { host, token }
+    const connection: GitLabConnection = { host, token, glabPath: null }
     let result: Checked
     try {
       result = await checkConnection(options.deps.gitLab(connection))

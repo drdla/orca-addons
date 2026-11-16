@@ -5,6 +5,8 @@
 export const DEFAULT_SETTINGS = {
   /** The GitLab instance (#8): the single source of truth for the host. */
   instanceUrl: 'https://gitlab.com',
+  /** The glab binary (#8); blank probes PATH and the usual install folders. */
+  glabPath: '',
   /** Poll interval in minutes (#21). */
   pollMinutes: 5,
   /** A Review Request waiting longer than this, in working hours Mon–Fri, is Overdue (#22). */
