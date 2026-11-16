@@ -38,6 +38,7 @@ import {
 import type { ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
 import { RefreshProblem } from './refresh-problem'
 import { SetupChecklist } from './setup-checklist'
+import { isReviewDraftOpen, openReviewDraft, ReviewDraftScreen, setupReviewDraft } from './review-draft-view'
 
 type TabId = 'todo' | 'in' | 'ended'
 
@@ -69,6 +70,7 @@ export function setup(ctx: PanelContext): void {
     .request('rr.snapshot')
     .then(received)
     .catch((error: unknown) => set(failure, messageOf(error)))
+  setupReviewDraft()
 }
 
 function refresh(): void {
@@ -144,6 +146,8 @@ function copyLink(url: string): void {
 }
 
 export default function Panel() {
+  // #29: an open Review Draft takes the whole panel; its Back button returns here.
+  if (isReviewDraftOpen()) return <ReviewDraftScreen />
   return (
     <Stack gap="md">
       <Header />
@@ -309,6 +313,9 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
           disabled={busy}
           onPress={() => runAgentReview(card.url)}
         />
+        <Button size="xs" variant="outline" icon="edit" onPress={() => openReviewDraft(card.url)}>
+          Review draft
+        </Button>
         {busy && <Spinner label="Working" labelHidden />}
       </Row>
     )
