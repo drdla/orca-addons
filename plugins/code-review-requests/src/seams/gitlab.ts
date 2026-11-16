@@ -36,20 +36,29 @@ export type GitLabConnection = {
  */
 export type GitLabFailure = 'needs-you' | 'transient' | 'rejected'
 
+/**
+ * Which setup step a `needs-you` failure points at, so the panel can show the right fix (#24):
+ * glab isn't installed, glab (or the token, #25) isn't accepted by the host, the instance runs a
+ * GitLab older than 17.4, or the instance URL isn't a URL.
+ */
+export type NeedsYouReason = 'glab-missing' | 'logged-out' | 'token-rejected' | 'gitlab-too-old' | 'bad-url'
+
 export class GitLabError extends Error {
   readonly kind: GitLabFailure
   readonly status: number | undefined
   readonly retryAfterMs: number | undefined
+  readonly reason: NeedsYouReason | undefined
 
   constructor(
     kind: GitLabFailure,
     message: string,
-    details: { status?: number; retryAfterMs?: number } = {}
+    details: { status?: number; retryAfterMs?: number; reason?: NeedsYouReason } = {}
   ) {
     super(message)
     this.name = 'GitLabError'
     this.kind = kind
     this.status = details.status
     this.retryAfterMs = details.retryAfterMs
+    this.reason = details.reason
   }
 }
