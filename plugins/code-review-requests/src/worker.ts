@@ -15,12 +15,14 @@ import { realDeps, type Deps } from './deps'
 import { fetchReviewRequests, fetchUsername } from './gitlab/fetch-review-requests'
 import { createPollState, snapshotOf, type PollState } from './poll/poll-state'
 import { createPoller, type Poller } from './poll/poller'
+import { explainDropped } from './notify/explain-dropped'
+import { createNotifier } from './notify/notifier'
+import type { ReviewRequestView } from './protocol'
 import type { GitLabConnection, GitLabTransport } from './seams/gitlab'
-import { readSettings, type Settings } from './settings'
+import { DEFAULT_SETTINGS, readSettings, type Settings } from './settings'
 import { createStatusBar } from './status-bar'
 import { createRequestedAtCache } from './gitlab/requested-at'
 import { overdueRefiner, type OverdueContext } from './to-review'
-import { DEFAULT_SETTINGS } from './settings'
 
 export const REFRESH_COMMAND = 'code-review-requests.refresh'
 export const OPEN_COMMAND = 'code-review-requests.open'
@@ -69,6 +71,15 @@ export function createWorker(deps: Deps) {
     // diffing for notifications (#23) on onSucceeded, failure handling (#24) on onFailed with
     // `poller` for backoff, panel posts (#22) on onChange. onChange listeners run after every
     // onSucceeded/onFailed one, so the bell always draws a fully handled outcome.
+    const notifier = createNotifier({
+      storage: orca.storage,
+      show: (note) => orca.host.call('notifications.show', note),
+      intervalMs: async () => intervalMsOf(await readSettings(orca.settings)),
+      explainDropped: async (dropped) =>
+        gitLab.explainDropped(await connectionFor(await readSettings(orca.settings)), dropped),
+      log: (message) => orca.log(message)
+    })
+    state.onSucceeded((_previous, next) => notifier.onGoodPoll(next.reviewRequests, next.lastSuccessAt!))
     state.onChange((current) => statusBar.render(current))
     state.onChange((current) => orca.panels.post('rr.changed', snapshotOf(current, overdue)))
 
@@ -140,14 +151,21 @@ export function createWorker(deps: Deps) {
 function createGitLabSource(deps: Deps) {
   let cached: { key: string; transport: GitLabTransport; me: string | null } | null = null
   const requestedAt = createRequestedAtCache()
+  async function sourceFor(connection: GitLabConnection) {
+    const key = keyOf(connection)
+    if (cached?.key !== key) cached = { key, transport: deps.gitLab(connection), me: null }
+    const source = cached
+    source.me ??= await fetchUsername(source.transport)
+    return { transport: source.transport, me: source.me }
+  }
   return {
     async reviewRequests(connection: GitLabConnection) {
-      const key = keyOf(connection)
-      if (cached?.key !== key) cached = { key, transport: deps.gitLab(connection), me: null }
-      const source = cached
-      source.me ??= await fetchUsername(source.transport)
-      const views = await fetchReviewRequests(source.transport, source.me)
-      return requestedAt.apply(source.transport, source.me, views)
+      const { transport, me } = await sourceFor(connection)
+      return requestedAt.apply(transport, me, await fetchReviewRequests(transport, me))
+    },
+    async explainDropped(connection: GitLabConnection, dropped: ReviewRequestView[]) {
+      const { transport, me } = await sourceFor(connection)
+      return explainDropped(transport, me, dropped)
     }
   }
 }
