@@ -26,6 +26,30 @@ const toReview: ReviewRequestsSnapshot = {
   refreshedAt: NOW
 }
 
+const WORKSPACE = { id: 'repo-api::/wt/review-api-12', name: 'review-api-12', path: '/wt/review-api-12' }
+
+/** One Review Request being reviewed (it has a Review Workspace), one still to start. */
+const inReview: ReviewRequestsSnapshot = {
+  reviewRequests: [
+    { ...card(12, 'Add login with SSO', 5), workspace: WORKSPACE, startBlocked: null },
+    { ...card(14, 'Fix flaky upload test', 1), workspace: null, startBlocked: null }
+  ],
+  refreshedAt: NOW
+}
+
+/** Start review can't run: no Orca repo for one project, the orca CLI broken for the other. */
+const startBlocked: ReviewRequestsSnapshot = {
+  reviewRequests: [
+    { ...card(12, 'Add login with SSO', 5), workspace: null, startBlocked: 'Add acme/api to Orca to review here.' },
+    {
+      ...card(14, 'Fix flaky upload test', 1),
+      workspace: null,
+      startBlocked: 'Workspaces are unavailable: The orca CLI failed (exit 1): Orca is not running'
+    }
+  ],
+  refreshedAt: NOW
+}
+
 const withOverdue: ReviewRequestsSnapshot = {
   reviewRequests: [card(9, 'Migrate billing to the new API', 72, true), ...toReview.reviewRequests],
   refreshedAt: NOW
@@ -46,8 +70,14 @@ export default defineCheck({
   toReview: { requests: { 'rr.snapshot': toReview } },
   /** An overdue card: danger border and badge, warning icon on the tab. */
   overdue: { requests: { 'rr.snapshot': withOverdue } },
-  /** The person left the panel on In review (empty until #27). */
+  /** The person left the panel on In review, with nothing there. */
   inReviewTab: { requests: { 'rr.snapshot': toReview }, persisted: { plugin: { 'rr.tab': 'in' } } },
+  /** In review: a card with a Review Workspace, Open workspace and Run agent review (#27). */
+  inReview: { requests: { 'rr.snapshot': inReview }, persisted: { plugin: { 'rr.tab': 'in' } } },
+  /** To review next to an In review card: Start review and its Agent Review button (#27). */
+  startReview: { requests: { 'rr.snapshot': inReview } },
+  /** Start review disabled, with the hint why (#27). */
+  startBlocked: { requests: { 'rr.snapshot': startBlocked } },
   /** The person left the panel on Ended (empty until #28). */
   endedTab: { requests: { 'rr.snapshot': toReview }, persisted: { plugin: { 'rr.tab': 'ended' } } }
   // `events` only delivers Orca events, not worker posts, so rr.changed is covered by
