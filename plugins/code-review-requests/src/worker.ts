@@ -18,6 +18,8 @@ import { createPollState, snapshotOf, type PollState } from './poll/poll-state'
 import { createPoller, type Poller } from './poll/poller'
 import { explainDropped } from './notify/explain-dropped'
 import { createNotifier } from './notify/notifier'
+import { redactError } from './gitlab/http-response'
+import { createTokenMode } from './token-mode'
 import type { ReviewRequestsSnapshot, ReviewRequestView } from './protocol'
 import type { GitLabConnection, GitLabTransport } from './seams/gitlab'
 import { DEFAULT_SETTINGS, readSettings, type Settings } from './settings'
@@ -69,16 +71,20 @@ export function createWorker(deps: Deps) {
     async function poll(): Promise<void> {
       const at = deps.clock.now()
       await workspaces.refresh()
+      let token: string | null = null
       try {
         const settings = await readSettings(orca.settings)
         host = null
-        const connection = await connectionFor(settings)
+        const connection = await connectionFor(settings, orca.secrets)
         host = connection.host
+        token = connection.token
         const all = await gitLab.reviewRequests(connection)
         filters = parseFilters(settings)
         const { visible, hidden } = applyFilters(all, filters.filters, hasReviewWorkspace)
         await state.record({ ok: true, at, reviewRequests: visible, hidden })
-      } catch (error) {
+      } catch (caught) {
+        // A token GitLab or the network echoes back must not reach logs, the panel or the bell.
+        const error = redactError(caught, token)
         orca.log(`poll failed: ${error instanceof Error ? error.message : String(error)}`)
         await state.record({ ok: false, at, error })
       }
@@ -109,7 +115,7 @@ export function createWorker(deps: Deps) {
       show: (note) => orca.host.call('notifications.show', note),
       intervalMs: async () => intervalMsOf(await readSettings(orca.settings)),
       explainDropped: async (dropped) =>
-        gitLab.explainDropped(await connectionFor(await readSettings(orca.settings)), dropped),
+        gitLab.explainDropped(await connectionFor(await readSettings(orca.settings), orca.secrets), dropped),
       isShown,
       log: (message) => orca.log(message)
     })
@@ -122,7 +128,7 @@ export function createWorker(deps: Deps) {
     state.onChange(() => orca.panels.post('rr.changed', snapshot()))
 
     /** Starts, stops or re-times polling to match the settings. */
-    async function applySettings(): Promise<void> {
+    async function applySettings(options: { pollAtOnce?: boolean } = {}): Promise<void> {
       const current = await readSettings(orca.settings)
       overdueHours = current.overdueHours
       filters = parseFilters(current)
@@ -136,12 +142,13 @@ export function createWorker(deps: Deps) {
       const settings = await readSettings(orca.settings)
       intervalMs = intervalMsOf(settings)
       poller.setIntervalMs(intervalMs)
-      const key = keyOf(await connectionFor(settings).catch(() => null))
+      const key = keyOf(await connectionFor(settings, orca.secrets).catch(() => null))
       if (!poller.running) {
         // Needs you stays stopped until the connection changes (or Retry, or a restart).
         if (failures.needsYou() && key === connectionKey) return
         connectionKey = key
         poller.start()
+        if (options.pollAtOnce) await poller.pollNow()
       } else if (key !== connectionKey || (filtersKey !== previousFiltersKey && failures.rateLimitedUntil() === null)) {
         // A changed filter polls too (unless rate-limited), so the list and the bell follow it at once.
         connectionKey = key
@@ -198,6 +205,22 @@ export function createWorker(deps: Deps) {
       await reviewActions.runAgentReview(url)
       return { started: true as const }
     })
+
+    // Token mode and the Connection section (#25).
+    const tokenMode = createTokenMode({
+      deps,
+      secrets: orca.secrets,
+      protection: async () => {
+        const answer = await orca.host.call('secrets.protection').catch(() => null)
+        return answer?.status === 'unavailable' ? 'unavailable' : 'os-keyring'
+      },
+      settings: () => readSettings(orca.settings),
+      isConfigured: () => isConfigured(orca),
+      onTokenChanged: () => applySettings({ pollAtOnce: true })
+    })
+    orca.panels.handle('rr.connection', async ({ test }) => tokenMode.view(test))
+    orca.panels.handle('rr.saveToken', async ({ token }) => tokenMode.save(token))
+    orca.panels.handle('rr.removeToken', async () => tokenMode.remove())
     orca.commands.register(OPEN_COMMAND, async () => {
       // A string result is shown as-is; nothing to say when it worked.
       return deps.desktop.openPanel(PANEL_ID).then(
