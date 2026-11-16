@@ -134,7 +134,7 @@ function cardAction(url: string, failed: string, action: () => Promise<unknown>)
 const START_TIMEOUT_MS = 120_000
 
 function startReview(url: string, withAgent: boolean): void {
-  cardAction(url, "Couldn't start the review", () =>
+  cardAction(url, "Couldn't create the Review Workspace", () =>
     plugin.request('rr.startReview', { url, withAgent }, { timeoutMs: START_TIMEOUT_MS }).then(received)
   )
 }
@@ -337,7 +337,7 @@ function When({ at, overdue = false }: { at: number; overdue?: boolean }) {
   return <RelativeTime at={at} format="short" tone={overdue ? 'danger' : undefined} />
 }
 
-/** Start review (plus its Agent Review button), or Open workspace and Run agent review (#6). */
+/** Start review (plus its Agent Review button), or Open workspace and Run Agent Review (#6). */
 function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
   const busy = read(busyCards)[card.url] === true
   if (card.workspace != null) {
@@ -348,7 +348,7 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
         </Button>
         <IconButton
           icon="agent"
-          label="Run agent review"
+          label="Run Agent Review"
           variant="ghost"
           size="xs"
           disabled={busy}
@@ -386,14 +386,14 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
       </Button>
       <IconButton
         icon="agent"
-        label="Start review with agent"
+        label="Start review with Agent Review"
         tooltip={blocked ?? 'Create the Review Workspace and start an Agent Review in it'}
         variant="ghost"
         size="xs"
         disabled={busy || blocked !== null}
         onPress={() => startReview(card.url, true)}
       />
-      {busy && <Spinner label="Starting the review" labelHidden />}
+      {busy && <Spinner label="Creating the Review Workspace" labelHidden />}
     </Row>
   )
 }

@@ -159,7 +159,7 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
         <Confirm preview={current.preview} posting={isPosting(current)} onDraft={onDraft} />
       )}
       {error !== null && (
-        <Callout tone="danger" icon="error" title="Couldn't post the review">
+        <Callout tone="danger" icon="error" title="Couldn't post the Review Draft">
           {error}
         </Callout>
       )}

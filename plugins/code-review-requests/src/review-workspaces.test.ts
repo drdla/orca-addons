@@ -1,5 +1,5 @@
 // Review Workspaces end to end through the worker (#27): finding them on each poll, Start review
-// (with or without an Agent Review), Open workspace and Run agent review. GitLab, the orca CLI,
+// (with or without an Agent Review), Open workspace and Run Agent Review. GitLab, the orca CLI,
 // git and the clock are fakes; Orca's host is the kit's mock host.
 import { assert, mockHost, mountWorker, test } from 'orca/testing'
 import { fakeDeps, type Fakes } from './fakes'
@@ -184,7 +184,7 @@ test('with a custom review command, the Agent Review runs it in a new terminal i
   await worker.deactivate()
 })
 
-test('Open workspace and Run agent review act on the existing Review Workspace', async () => {
+test('Open workspace and Run Agent Review act on the existing Review Workspace', async () => {
   const fakes = fakeDeps()
   addReviewRequest(fakes)
   fakes.cli.addRepo(REPO)

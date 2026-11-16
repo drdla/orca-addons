@@ -1,6 +1,6 @@
 // What the panel's workspace buttons do (#6, #27): Start review (create the Review Workspace
 // through the orca CLI, linked to the MR, optionally followed by an Agent Review), Open workspace
-// and Run agent review. Every failure rejects with a message the panel shows on the card.
+// and Run Agent Review. Every failure rejects with a message the panel shows on the card.
 //
 // The orca CLI and the host API name workspaces differently (`<repoId>::<path>` vs the id
 // `workspace.list` gives), so host calls map a worktree to its host id by path.
