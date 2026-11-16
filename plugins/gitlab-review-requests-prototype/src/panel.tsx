@@ -40,7 +40,8 @@ import type { PanelState, StatusVariant } from './protocol'
 const VARIANTS = [
   { key: 'A', name: 'Inbox cards' },
   { key: 'B', name: 'Table + detail' },
-  { key: 'C', name: 'Tabs by stage' }
+  { key: 'C', name: 'Tabs by stage' },
+  { key: 'D', name: 'C tabs + A cards' }
 ] as const
 const variant = atom('proto.variant', 'A', { persist: 'storage' })
 const panelState = atom<PanelState>('proto.state', 'loaded', { persist: 'storage' })
@@ -266,12 +267,10 @@ function SecondaryIcons(props: { rr: ReviewRequest }) {
 
 // ---------- Variant A: inbox cards ----------
 // Flat list, longest-waiting first. Every row carries its actions inline.
-function VariantA() {
-  const rrs = visibleRRs()
+function RRCard(props: { rr: ReviewRequest }) {
+  const rr = props.rr
   return (
-    <Stack gap="sm">
-      {rrs.map((rr) => (
-        <Box key={rr.id} border={rr.isNew ? 'accent' : true} radius="md" padding="sm" direction="column" gap="xs">
+        <Box border={rr.isNew ? 'accent' : true} radius="md" padding="sm" direction="column" gap="xs">
           <Row justify="between" align="start">
             <Text weight="semibold">{rr.title}</Text>
             {rr.isNew ? <Badge tone="accent">New</Badge> : null}
@@ -282,7 +281,7 @@ function VariantA() {
           <Row gap="xs" wrap>
             {pipelineBadge(rr.pipeline)}
             <Badge>{`${rr.approvals.given}/${rr.approvals.required} approvals`}</Badge>
-            {rr.comments ? <Badge>{`${rr.comments} comments`}</Badge> : null}
+            {rr.comments ? <Badge>{`${rr.comments} comment${rr.comments === 1 ? '' : 's'}`}</Badge> : null}
           </Row>
           {agentText(rr) ? (
             <Text size="xs" tone={rr.workspace?.agentReview === 'done' ? 'success' : 'accent'}>
@@ -294,9 +293,55 @@ function VariantA() {
             <SecondaryIcons rr={rr} />
           </Row>
         </Box>
+  )
+}
+
+function VariantA() {
+  const rrs = visibleRRs()
+  return (
+    <Stack gap="sm">
+      {rrs.map((rr) => (
+        <RRCard key={rr.id} rr={rr} />
       ))}
       <EndedSection />
     </Stack>
+  )
+}
+
+// ---------- Variant D: C's tabs on top, A's cards inside ----------
+function VariantD() {
+  const rrs = visibleRRs()
+  const todo = rrs.filter((r) => !r.workspace)
+  const inReview = rrs.filter((r) => r.workspace)
+  const done = visibleEnded()
+  const cards = (list: ReviewRequest[]) =>
+    list.length ? (
+      <Stack gap="sm">
+        {list.map((rr) => (
+          <RRCard key={rr.id} rr={rr} />
+        ))}
+      </Stack>
+    ) : (
+      <Text muted size="sm">Nothing here.</Text>
+    )
+  return (
+    <Tabs label="Stage" defaultValue="todo">
+      <Tab value="todo" label={`To review ${todo.length}`}>
+        {cards(todo)}
+      </Tab>
+      <Tab value="in" label={`In review ${inReview.length}`}>
+        {cards(inReview)}
+      </Tab>
+      <Tab value="ended" label={`Ended ${done.length}`}>
+        <Stack gap="sm">
+          {done.map((e) => (
+            <Box key={e.id} border radius="md" padding="sm" direction="column">
+              <EndedEntry e={e} />
+            </Box>
+          ))}
+        </Stack>
+      </Tab>
+    </Tabs>
   )
 }
 
@@ -481,7 +526,7 @@ export default function Panel() {
     <Stack gap="md">
       <Header count={rrs.length} />
       <OfflineBanner />
-      {body ?? (v === 'A' ? <VariantA /> : v === 'B' ? <VariantB /> : <VariantC />)}
+      {body ?? (v === 'A' ? <VariantA /> : v === 'B' ? <VariantB /> : v === 'C' ? <VariantC /> : <VariantD />)}
       <PrototypeBar />
     </Stack>
   )
