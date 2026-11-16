@@ -165,6 +165,129 @@ test('the refresh button asks the worker to poll and shows the new list', async 
   await view.unmount()
 })
 
+const WORKSPACE = { id: 'repo::/wt/review-api-1', name: 'review-api-1', path: '/wt/review-api-1' }
+
+test('a Review Request with a Review Workspace is under In review, not To review', async () => {
+  const host = mockHost({
+    requests: { 'rr.snapshot': snapshot(card(1, { title: 'Reviewing', workspace: WORKSPACE }), card(2, { title: 'Waiting', workspace: null })) }
+  })
+  const view = await mount(panel, { host })
+
+  assert.ok(view.find({ type: 'Tab', label: 'To review 1' }))
+  assert.ok(view.find({ type: 'Tab', label: 'In review 1' }))
+  assert.ok(view.find({ text: 'Waiting' }))
+  assert.equal(view.find({ text: 'Reviewing' }), null)
+
+  await view.select(view.find({ type: 'Tabs' })!, 'in')
+  assert.ok(view.find({ text: 'Reviewing' }))
+  assert.ok(view.find({ type: 'Button', text: 'Open workspace' }))
+  assert.ok(view.find({ type: 'IconButton', label: 'Run agent review' }))
+  assert.equal(view.find({ type: 'Button', text: 'Start review' }), null)
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('Start review asks the worker for a workspace without an agent, and the card moves to In review', async () => {
+  const asked: { url: string; withAgent: boolean }[] = []
+  const host = mockHost({
+    requests: {
+      'rr.snapshot': snapshot(card(1, { workspace: null })),
+      'rr.startReview': (input) => {
+        asked.push(input)
+        return snapshot(card(1, { workspace: WORKSPACE }))
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+
+  await view.press(view.find({ type: 'Button', text: 'Start review' })!)
+
+  assert.deepEqual(asked, [{ url: card(1).url, withAgent: false }])
+  assert.ok(view.find({ type: 'Tab', label: 'In review 1' }))
+  assert.ok(view.find({ type: 'Tab', label: 'To review 0' }))
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('the agent button starts the review with an Agent Review', async () => {
+  const asked: { url: string; withAgent: boolean }[] = []
+  const host = mockHost({
+    requests: {
+      'rr.snapshot': snapshot(card(1, { workspace: null })),
+      'rr.startReview': (input) => {
+        asked.push(input)
+        return snapshot(card(1, { workspace: WORKSPACE }))
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+
+  await view.press(view.find({ type: 'IconButton', label: 'Start review with agent' })!)
+
+  assert.deepEqual(asked, [{ url: card(1).url, withAgent: true }])
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('Start review is disabled with the hint when it cannot run', async () => {
+  const host = mockHost({
+    requests: { 'rr.snapshot': snapshot(card(1, { workspace: null, startBlocked: 'Add acme/api to Orca to review here.' })) }
+  })
+  const view = await mount(panel, { host })
+
+  assert.equal(view.find({ type: 'Button', text: 'Start review' })!.disabled, true)
+  assert.equal(view.find({ type: 'IconButton', label: 'Start review with agent' })!.disabled, true)
+  assert.ok(view.find({ text: 'Add acme/api to Orca to review here.' }))
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('says on the card why Start review failed', async () => {
+  const host = mockHost({
+    requests: {
+      'rr.snapshot': snapshot(card(1, { workspace: null })),
+      'rr.startReview': () => {
+        throw hostError('action_failed', 'git fetch of the MR failed')
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+
+  await view.press(view.find({ type: 'Button', text: 'Start review' })!)
+
+  assert.ok(view.find({ text: /Couldn't start the review: .*git fetch of the MR failed/ }))
+  assert.equal(view.find({ type: 'Button', text: 'Start review' })!.disabled, false)
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('Open workspace and Run agent review go to the worker', async () => {
+  const opened: string[] = []
+  const reviewed: string[] = []
+  const host = mockHost({
+    requests: {
+      'rr.snapshot': snapshot(card(1, { workspace: WORKSPACE })),
+      'rr.openWorkspace': ({ url }) => {
+        opened.push(url)
+        return { opened: true }
+      },
+      'rr.runAgentReview': ({ url }) => {
+        reviewed.push(url)
+        return { started: true }
+      }
+    }
+  })
+  const view = await mount(panel, { host, persisted: { plugin: { 'rr.tab': 'in' } } })
+
+  await view.press(view.find({ type: 'Button', text: 'Open workspace' })!)
+  await view.press(view.find({ type: 'IconButton', label: 'Run agent review' })!)
+
+  assert.deepEqual(opened, [card(1).url])
+  assert.deepEqual(reviewed, [card(1).url])
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
 test('updates when the worker pushes a new snapshot', async () => {
   const host = mockHost({ requests: { 'rr.snapshot': snapshot() } })
   const view = await mount(panel, { host })

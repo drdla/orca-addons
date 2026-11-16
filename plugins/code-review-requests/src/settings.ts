@@ -16,9 +16,12 @@ export const DEFAULT_SETTINGS = {
   authorBlocklist: '',
   /** The Orca agent id an Agent Review runs (#27). */
   reviewAgent: 'claude',
-  /** The Review Prompt (#27). Placeholders are defined by #27. */
+  /**
+   * The Review Prompt (#27). Placeholders: {mrUrl}, {title}, {project}, {sourceBranch},
+   * {targetBranch}, {author} (workspaces/review-prompt.ts). #29 owns the findings.json contract.
+   */
   reviewPrompt:
-    'Review the GitLab merge request {url} ("{title}"). Write your findings to .orca-review/findings.json.',
+    'Review the GitLab merge request {mrUrl} ("{title}" by {author}, {sourceBranch} into {targetBranch}) in {project}. The workspace has the MR\'s changes checked out. Write your findings to .orca-review/findings.json.',
   /** Optional custom command that replaces the agent launch (#27). */
   reviewCommand: '',
   /** Days after a Review Request ends before its Review Workspace is removed; 0 turns it off (#28). */

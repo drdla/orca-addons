@@ -96,15 +96,15 @@
         "key": "reviewPrompt",
         "title": "Review Prompt",
         "type": "string",
-        "description": "The prompt that starts an Agent Review.",
-        "default": "Review the GitLab merge request {url} (\"{title}\"). Write your findings to .orca-review/findings.json.",
+        "description": "The prompt that starts an Agent Review. Placeholders: {mrUrl}, {title}, {project}, {sourceBranch}, {targetBranch}, {author}.",
+        "default": "Review the GitLab merge request {mrUrl} (\"{title}\" by {author}, {sourceBranch} into {targetBranch}) in {project}. The workspace has the MR's changes checked out. Write your findings to .orca-review/findings.json.",
         "multiline": true
       },
       {
         "key": "reviewCommand",
         "title": "Custom review command",
         "type": "string",
-        "description": "Optional. A command to run in the review workspace instead of launching the review agent.",
+        "description": "Optional. A command to run in the review workspace instead of launching the review agent, for example claude --model opus {prompt}. {prompt} is the filled Review Prompt; the Review Prompt's placeholders work too.",
         "default": ""
       },
       {
@@ -126,6 +126,7 @@
     { "kind": "workspace:write" },
     { "kind": "workspace:create" },
     { "kind": "agent:read" },
-    { "kind": "agent:launch" }
+    { "kind": "agent:launch" },
+    { "kind": "terminal:send" }
   ]
 }

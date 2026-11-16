@@ -25,6 +25,8 @@ import { createStatusBar } from './status-bar'
 import { applyFilters, parseFilters, passesFilters } from './filters'
 import { createRequestedAtCache } from './gitlab/requested-at'
 import { overdueRefiner, type OverdueContext } from './to-review'
+import { createWorkspaceTracker, hasWorkspace, withWorkspaces } from './workspaces/workspace-tracker'
+import { createReviewActions } from './workspaces/review-actions'
 
 export const REFRESH_COMMAND = 'code-review-requests.refresh'
 export const OPEN_COMMAND = 'code-review-requests.open'
@@ -52,9 +54,11 @@ export function createWorker(deps: Deps) {
     const overdue: OverdueContext = { now: () => deps.clock.now(), overdueHours: () => overdueHours }
     const gitLab = createGitLabSource(deps)
     let connectionKey: string | null = null
-    // Filters (#26). `hasReviewWorkspace` is the "never hide one with a Review Workspace" rule:
-    // #27 replaces this no-op with a lookup of the workspaces it finds per poll.
-    const hasReviewWorkspace = (_view: ReviewRequestView): boolean => false
+    // Review Workspaces (#27): one `orca worktree list` per poll; a failure only disables them.
+    const workspaces = createWorkspaceTracker(deps.orcaCli, (message) => orca.log(message))
+    // Filters (#26). A Review Request with a Review Workspace is never hidden; the lookup uses the
+    // worktree list poll() refreshed before applyFilters.
+    const hasReviewWorkspace = (view: ReviewRequestView): boolean => hasWorkspace(workspaces.current(), view)
     let filters = parseFilters(DEFAULT_SETTINGS)
     let filtersKey = ''
     /** Shown in the list and allowed to notify: has a Review Workspace or passes the filters. */
@@ -64,6 +68,7 @@ export function createWorker(deps: Deps) {
 
     async function poll(): Promise<void> {
       const at = deps.clock.now()
+      await workspaces.refresh()
       try {
         const settings = await readSettings(orca.settings)
         host = null
@@ -148,11 +153,14 @@ export function createWorker(deps: Deps) {
     function snapshot(): ReviewRequestsSnapshot {
       const current = state.current()
       const problem = failures.problemView(current)
-      return {
-        ...snapshotOf(current, overdue),
-        ...(problem === undefined ? {} : { gitlab: problem }),
-        ...(filters.invalid.length === 0 ? {} : { invalidFilterEntries: filters.invalid })
-      }
+      return withWorkspaces(
+        {
+          ...snapshotOf(current, overdue),
+          ...(problem === undefined ? {} : { gitlab: problem }),
+          ...(filters.invalid.length === 0 ? {} : { invalidFilterEntries: filters.invalid })
+        },
+        workspaces.current()
+      )
     }
 
     orca.panels.handle('rr.snapshot', async () => snapshot())
@@ -164,6 +172,31 @@ export function createWorker(deps: Deps) {
     orca.panels.handle('rr.copyLink', async ({ url }) => {
       await deps.desktop.copyText(url)
       return { copied: true as const }
+    })
+    // Review Workspace actions (#27). Start review answers the new snapshot and tells open panels.
+    const reviewActions = createReviewActions({
+      cli: deps.orcaCli,
+      git: deps.git,
+      host: orca.host,
+      workspaces,
+      settings: () => readSettings(orca.settings),
+      reviewRequest: (url) => state.current().reviewRequests.find((rr) => rr.url === url)
+    })
+    orca.panels.handle('rr.startReview', async ({ url, withAgent }) => {
+      try {
+        await reviewActions.startReview(url, withAgent)
+      } finally {
+        await orca.panels.post('rr.changed', snapshot())
+      }
+      return snapshot()
+    })
+    orca.panels.handle('rr.openWorkspace', async ({ url }) => {
+      await reviewActions.openWorkspace(url)
+      return { opened: true as const }
+    })
+    orca.panels.handle('rr.runAgentReview', async ({ url }) => {
+      await reviewActions.runAgentReview(url)
+      return { started: true as const }
     })
     orca.commands.register(OPEN_COMMAND, async () => {
       // A string result is shown as-is; nothing to say when it worked.

@@ -6,8 +6,11 @@ import { createGlabTransport, locateGlab } from './gitlab/glab-transport'
 import { systemClock, type Clock } from './seams/clock'
 import { systemDesktop } from './desktop-process'
 import type { Desktop } from './seams/desktop'
+import type { Git } from './seams/git'
+import { systemGit } from './git-process'
 import { GitLabError, type GitLabConnection, type GitLabTransport } from './seams/gitlab'
-import { OrcaCliError, type OrcaCli } from './seams/orca-cli'
+import type { OrcaCli } from './seams/orca-cli'
+import { createOrcaCli, spawnOrca } from './orca-cli-process'
 
 export type Deps = {
   /** Builds the transport for a connection: token mode if it has a token, glab otherwise (#8). */
@@ -16,6 +19,8 @@ export type Deps = {
   clock: Clock
   /** Clipboard and opening the panel (#22). */
   desktop: Desktop
+  /** Fetching an MR head for a Review Workspace (#27). */
+  git: Git
 }
 
 export function realDeps(): Deps {
@@ -28,26 +33,17 @@ export function realDeps(): Deps {
             locate: () => locateGlab(process.env, isExecutable)
           })
         : notYetBuiltTransport,
-    orcaCli: () => notYetBuiltCli,
+    orcaCli: () => systemOrcaCli,
     clock: systemClock,
-    desktop: systemDesktop
+    desktop: systemDesktop,
+    git: systemGit
   }
 }
 
-// Placeholders until the real adapters land: the token transport (#25) and the CLI adapter
-// (#27). They only reject, so nothing calls out by accident.
+// Placeholder until the token transport lands (#25). It only rejects, so nothing calls out by accident.
 const notYetBuiltTransport: GitLabTransport = {
   graphql: () => Promise.reject(new GitLabError('needs-you', 'GitLab transport not built yet')),
   rest: () => Promise.reject(new GitLabError('needs-you', 'GitLab transport not built yet'))
 }
 
-const notYetBuiltCli: OrcaCli = {
-  listWorktrees: () => Promise.reject(cliMissing()),
-  showWorktree: () => Promise.reject(cliMissing()),
-  createWorktree: () => Promise.reject(cliMissing()),
-  removeWorktree: () => Promise.reject(cliMissing())
-}
-
-function cliMissing(): OrcaCliError {
-  return new OrcaCliError('unavailable', 'orca CLI adapter not built yet')
-}
+const systemOrcaCli: OrcaCli = createOrcaCli(spawnOrca)
