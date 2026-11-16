@@ -1,0 +1,131 @@
+{
+  "manifestVersion": 2,
+  "id": "code-review-requests",
+  "name": "Code Review Requests",
+  "version": "0.1.0",
+  "description": "Your GitLab Review Requests in Orca: a count in the status bar, a panel, and review workspaces.",
+  "author": { "name": "Dominik Rodler" },
+  "repository": "https://github.com/drdla/orca-addons",
+  "license": "MIT",
+  "engines": {
+    "orca": ">=1.4.259"
+  },
+  "execution": "trusted-worker",
+  "pluginApi": 1,
+  "main": "src/worker.ts",
+  "contributes": {
+    "panels": [
+      {
+        "id": "review-requests",
+        "title": "Review Requests",
+        "icon": "bell",
+        "entry": "src/panel.tsx",
+        "ui": "components"
+      }
+    ],
+    "commands": [
+      { "id": "code-review-requests.open", "title": "Review Requests: Open panel" },
+      { "id": "code-review-requests.refresh", "title": "Review Requests: Refresh" }
+    ],
+    "statusBarItems": [
+      {
+        "id": "review-requests",
+        "icon": "bell",
+        "tooltip": "Review Requests",
+        "command": "code-review-requests.open"
+      }
+    ],
+    "events": [{ "on": "workspace.removed" }],
+    "settings": [
+      {
+        "key": "instanceUrl",
+        "title": "GitLab instance URL",
+        "type": "string",
+        "description": "The GitLab instance to read Review Requests from, for example https://gitlab.com or https://gitlab.example.com.",
+        "default": "https://gitlab.com",
+        "placeholder": "https://gitlab.com"
+      },
+      {
+        "key": "pollMinutes",
+        "title": "Refresh every (minutes)",
+        "type": "integer",
+        "default": 5,
+        "minimum": 1,
+        "maximum": 1440
+      },
+      {
+        "key": "overdueHours",
+        "title": "Overdue after (working hours)",
+        "type": "integer",
+        "description": "A Review Request waiting longer than this, counting Monday to Friday only, is marked overdue.",
+        "default": 24,
+        "minimum": 1
+      },
+      {
+        "key": "pathAllowlist",
+        "title": "Only these groups or projects",
+        "type": "string",
+        "description": "One path per line, for example acme/backend or acme/*/api. A path matches itself and everything below it. Empty means all.",
+        "default": "",
+        "multiline": true
+      },
+      {
+        "key": "pathBlocklist",
+        "title": "Never these groups or projects",
+        "type": "string",
+        "description": "One path per line. The blocklist wins over the allowlist.",
+        "default": "",
+        "multiline": true
+      },
+      {
+        "key": "authorBlocklist",
+        "title": "Never these authors",
+        "type": "string",
+        "description": "GitLab usernames, one per line, for example renovate-bot.",
+        "default": "",
+        "multiline": true
+      },
+      {
+        "key": "reviewAgent",
+        "title": "Review agent",
+        "type": "string",
+        "description": "The Orca agent that runs an Agent Review, for example claude or codex.",
+        "default": "claude"
+      },
+      {
+        "key": "reviewPrompt",
+        "title": "Review Prompt",
+        "type": "string",
+        "description": "The prompt that starts an Agent Review.",
+        "default": "Review the GitLab merge request {url} (\"{title}\"). Write your findings to .orca-review/findings.json.",
+        "multiline": true
+      },
+      {
+        "key": "reviewCommand",
+        "title": "Custom review command",
+        "type": "string",
+        "description": "Optional. A command to run in the review workspace instead of launching the review agent.",
+        "default": ""
+      },
+      {
+        "key": "autoRemoveDays",
+        "title": "Remove ended review workspaces after (days)",
+        "type": "integer",
+        "description": "Clean workspaces of Ended Review Requests are removed after this many days. 0 turns it off.",
+        "default": 2,
+        "minimum": 0
+      }
+    ]
+  },
+  "capabilities": [
+    { "kind": "storage:own" },
+    { "kind": "settings:own" },
+    { "kind": "secrets:own" },
+    { "kind": "notifications:show" },
+    { "kind": "workspace:read" },
+    { "kind": "workspace:write" },
+    { "kind": "workspace:create" },
+    { "kind": "agent:read" },
+    { "kind": "agent:launch" }
+  ]
+}

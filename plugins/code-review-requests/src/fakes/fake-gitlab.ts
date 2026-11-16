@@ -1,0 +1,374 @@
+// An in-memory, stateful GitLab that implements GitLabTransport. It holds MRs, reviewers,
+// approvals and draft notes, and answers the plugin's GraphQL query and REST calls from that
+// state, so posting a review or approving changes what the next poll sees.
+//
+// Extend it when a slice needs another call: add a branch to graphql() (keyed by the query's
+// operation name) or a route to rest(). Response shapes follow the research notes and, once #20
+// lands, the sanitized fixtures.
+import type { Clock } from '../seams/clock'
+import {
+  GitLabError,
+  type GitLabTransport,
+  type HttpMethod,
+  type Json
+} from '../seams/gitlab'
+import type {
+  ReviewRequestNode,
+  ReviewRequestsResponse,
+  ReviewState
+} from '../gitlab/review-requests-query'
+import { FakeClock } from './fake-clock'
+
+export type MergeRequestSeed = {
+  projectPath: string
+  iid?: number
+  title?: string
+  author?: string
+  draft?: boolean
+  state?: 'opened' | 'closed' | 'merged'
+  /** Defaults to `[me]`. */
+  reviewers?: string[]
+  approvedBy?: string[]
+  sourceBranch?: string
+  targetBranch?: string
+  labels?: string[]
+}
+
+export type FakeMergeRequest = {
+  id: number
+  iid: number
+  projectPath: string
+  title: string
+  author: string
+  draft: boolean
+  state: 'opened' | 'closed' | 'merged'
+  reviewers: string[]
+  approvedBy: string[]
+  reviewStates: Record<string, ReviewState>
+  sourceBranch: string
+  targetBranch: string
+  labels: string[]
+  createdAt: number
+  updatedAt: number
+  diffRefs: { baseSha: string; startSha: string; headSha: string }
+  draftNotes: FakeDraftNote[]
+  reviews: FakeReview[]
+}
+
+export type FakeDraftNote = { id: number; author: string; note: string; position: Json | null }
+export type FakeReview = { summary: string | null; reviewerState: string | null; notes: string[] }
+
+export type FakeRequest = { operation: string; variables?: Record<string, Json>; body?: Json }
+
+export type FakeGitLabOptions = {
+  /** The logged-in user. */
+  me?: string
+  host?: string
+  clock?: Clock
+  /** The GraphQL page size; GitLab's is 100. */
+  pageSize?: number
+  /** What `GET /version` reports. */
+  version?: string
+}
+
+export class FakeGitLab implements GitLabTransport {
+  readonly me: string
+  readonly host: string
+  /** Every call made, in order, for assertions such as "nothing was fetched". */
+  readonly requests: FakeRequest[] = []
+  version: string
+
+  #clock: Clock
+  #pageSize: number
+  #mergeRequests: FakeMergeRequest[] = []
+  #failures: GitLabError[] = []
+  #nextId = 1
+  #nextSha = 1
+
+  constructor(options: FakeGitLabOptions = {}) {
+    this.me = options.me ?? 'me'
+    this.host = options.host ?? 'gitlab.example.com'
+    this.#clock = options.clock ?? new FakeClock()
+    this.#pageSize = options.pageSize ?? 100
+    this.version = options.version ?? '19.6.0'
+  }
+
+  // --- Arrange: shape the instance ---------------------------------------------------------
+
+  addMergeRequest(seed: MergeRequestSeed): FakeMergeRequest {
+    const now = this.#clock.now()
+    const id = this.#nextId++
+    const reviewers = seed.reviewers ?? [this.me]
+    const approvedBy = seed.approvedBy ?? []
+    const mr: FakeMergeRequest = {
+      id,
+      iid: seed.iid ?? id,
+      projectPath: seed.projectPath,
+      title: seed.title ?? `Merge request ${seed.iid ?? id}`,
+      author: seed.author ?? 'author',
+      draft: seed.draft ?? false,
+      state: seed.state ?? 'opened',
+      reviewers,
+      approvedBy,
+      reviewStates: Object.fromEntries(
+        reviewers.map((r) => [r, approvedBy.includes(r) ? 'APPROVED' : 'UNREVIEWED'])
+      ),
+      sourceBranch: seed.sourceBranch ?? `feature-${id}`,
+      targetBranch: seed.targetBranch ?? 'main',
+      labels: seed.labels ?? [],
+      createdAt: now,
+      updatedAt: now,
+      diffRefs: { baseSha: this.#sha(), startSha: this.#sha(), headSha: this.#sha() },
+      draftNotes: [],
+      reviews: []
+    }
+    this.#mergeRequests.push(mr)
+    return mr
+  }
+
+  approve(projectPath: string, iid: number, username = this.me): void {
+    const mr = this.#find(projectPath, iid)
+    if (!mr.approvedBy.includes(username)) mr.approvedBy.push(username)
+    mr.reviewStates[username] = 'APPROVED'
+    this.#touch(mr)
+  }
+
+  merge(projectPath: string, iid: number): void {
+    this.#touch(Object.assign(this.#find(projectPath, iid), { state: 'merged' as const }))
+  }
+
+  close(projectPath: string, iid: number): void {
+    this.#touch(Object.assign(this.#find(projectPath, iid), { state: 'closed' as const }))
+  }
+
+  markDraft(projectPath: string, iid: number, draft = true): void {
+    this.#touch(Object.assign(this.#find(projectPath, iid), { draft }))
+  }
+
+  addReviewer(projectPath: string, iid: number, username = this.me): void {
+    const mr = this.#find(projectPath, iid)
+    if (!mr.reviewers.includes(username)) mr.reviewers.push(username)
+    mr.reviewStates[username] = 'UNREVIEWED'
+    this.#touch(mr)
+  }
+
+  removeReviewer(projectPath: string, iid: number, username = this.me): void {
+    const mr = this.#find(projectPath, iid)
+    mr.reviewers = mr.reviewers.filter((r) => r !== username)
+    delete mr.reviewStates[username]
+    this.#touch(mr)
+  }
+
+  /** New commits on the MR: `diff_refs.head_sha` moves on. */
+  push(projectPath: string, iid: number): void {
+    const mr = this.#find(projectPath, iid)
+    mr.diffRefs = { ...mr.diffRefs, headSha: this.#sha() }
+    this.#touch(mr)
+  }
+
+  /** Reviews published with `bulk_publish`, oldest first. */
+  reviewsOf(projectPath: string, iid: number): FakeReview[] {
+    return this.#find(projectPath, iid).reviews
+  }
+
+  /** The next calls reject with these errors, one each, before calls succeed again. */
+  failNext(...errors: GitLabError[]): void {
+    this.#failures.push(...errors)
+  }
+
+  // --- GitLabTransport ---------------------------------------------------------------------
+
+  async graphql<T>(query: string, variables: Record<string, Json> = {}): Promise<T> {
+    const name = /^\s*query\s+(\w+)/.exec(query)?.[1] ?? 'anonymous'
+    this.requests.push({ operation: `graphql ${name}`, variables })
+    this.#maybeFail()
+    switch (name) {
+      case 'ReviewRequests':
+        return this.#reviewRequests(variables) as T
+      default:
+        throw new GitLabError('rejected', `fake GitLab does not know the query ${name}`, {
+          status: 400
+        })
+    }
+  }
+
+  async rest<T>(method: HttpMethod, path: string, body?: Json): Promise<T> {
+    this.requests.push({ operation: `${method} ${path}`, ...(body === undefined ? {} : { body }) })
+    this.#maybeFail()
+    return this.#route(method, path, (body ?? {}) as Record<string, Json>) as T
+  }
+
+  // --- internals ---------------------------------------------------------------------------
+
+  #reviewRequests(variables: Record<string, Json>): ReviewRequestsResponse {
+    const me = typeof variables.me === 'string' ? variables.me : this.me
+    const all = this.#mergeRequests
+      .filter(
+        (mr) =>
+          mr.state === 'opened' &&
+          !mr.draft &&
+          mr.reviewers.includes(this.me) &&
+          !mr.approvedBy.includes(me)
+      )
+      .sort((a, b) => b.updatedAt - a.updatedAt || b.id - a.id)
+    const offset = typeof variables.after === 'string' ? Number(variables.after) : 0
+    const nodes = all.slice(offset, offset + this.#pageSize)
+    const hasNextPage = offset + this.#pageSize < all.length
+    return {
+      currentUser: {
+        username: this.me,
+        reviewRequestedMergeRequests: {
+          count: all.length,
+          pageInfo: { hasNextPage, endCursor: nodes.length ? String(offset + nodes.length) : null },
+          nodes: nodes.map((mr) => this.#node(mr))
+        }
+      }
+    }
+  }
+
+  #node(mr: FakeMergeRequest): ReviewRequestNode {
+    const group = mr.projectPath.split('/').slice(0, -1).join('/')
+    return {
+      id: `gid://gitlab/MergeRequest/${mr.id}`,
+      iid: String(mr.iid),
+      title: mr.title,
+      webUrl: this.#webUrl(mr),
+      draft: mr.draft,
+      state: mr.state,
+      createdAt: new Date(mr.createdAt).toISOString(),
+      updatedAt: new Date(mr.updatedAt).toISOString(),
+      sourceBranch: mr.sourceBranch,
+      targetBranch: mr.targetBranch,
+      diffRefs: { ...mr.diffRefs },
+      project: { fullPath: mr.projectPath, group: group ? { fullPath: group } : null },
+      author: { username: mr.author, name: mr.author },
+      labels: { nodes: mr.labels.map((title) => ({ title })) },
+      reviewers: {
+        nodes: mr.reviewers.map((username) => ({
+          username,
+          mergeRequestInteraction: {
+            reviewState: mr.reviewStates[username] ?? 'UNREVIEWED',
+            approved: mr.approvedBy.includes(username),
+            reviewed: (mr.reviewStates[username] ?? 'UNREVIEWED') !== 'UNREVIEWED'
+          }
+        }))
+      }
+    }
+  }
+
+  #route(method: HttpMethod, path: string, body: Record<string, Json>): Json {
+    if (method === 'GET' && path === '/user') {
+      return { id: 1, username: this.me, name: this.me }
+    }
+    if (method === 'GET' && path === '/version') return { version: this.version }
+
+    const m = /^\/projects\/([^/]+)\/merge_requests\/(\d+)(\/.*)?$/.exec(path)
+    if (m) {
+      const mr = this.#find(decodeURIComponent(m[1]!), Number(m[2]))
+      const rest = m[3] ?? ''
+      const draft = /^\/draft_notes\/(\d+)$/.exec(rest)
+      if (method === 'GET' && rest === '') return this.#restMergeRequest(mr)
+      if (method === 'POST' && rest === '/approve') {
+        if (typeof body.sha === 'string' && body.sha !== mr.diffRefs.headSha) {
+          throw new GitLabError('rejected', 'SHA does not match HEAD of source branch', {
+            status: 409
+          })
+        }
+        this.approve(mr.projectPath, mr.iid)
+        return { approved: true }
+      }
+      if (method === 'GET' && rest === '/draft_notes') {
+        return mr.draftNotes.filter((d) => d.author === this.me).map(restDraftNote)
+      }
+      if (method === 'POST' && rest === '/draft_notes') {
+        if (typeof body.note !== 'string' || body.note === '') {
+          throw new GitLabError('rejected', 'note is missing', { status: 400 })
+        }
+        const created: FakeDraftNote = {
+          id: this.#nextId++,
+          author: this.me,
+          note: body.note,
+          position: body.position ?? null
+        }
+        mr.draftNotes.push(created)
+        if (mr.reviewers.includes(this.me)) mr.reviewStates[this.me] = 'REVIEW_STARTED'
+        return restDraftNote(created)
+      }
+      if (method === 'DELETE' && draft) {
+        const id = Number(draft[1])
+        if (!mr.draftNotes.some((d) => d.id === id)) throw notFound(path)
+        mr.draftNotes = mr.draftNotes.filter((d) => d.id !== id)
+        return null
+      }
+      if (method === 'POST' && rest === '/draft_notes/bulk_publish') {
+        const mine = mr.draftNotes.filter((d) => d.author === this.me)
+        mr.draftNotes = mr.draftNotes.filter((d) => d.author !== this.me)
+        const reviewerState = typeof body.reviewer_state === 'string' ? body.reviewer_state : null
+        mr.reviews.push({
+          summary: typeof body.note === 'string' ? body.note : null,
+          reviewerState,
+          notes: mine.map((d) => d.note)
+        })
+        if (mr.reviewers.includes(this.me)) {
+          mr.reviewStates[this.me] =
+            reviewerState === 'requested_changes' ? 'REQUESTED_CHANGES' : 'REVIEWED'
+        }
+        this.#touch(mr)
+        return null
+      }
+    }
+    throw notFound(path)
+  }
+
+  #restMergeRequest(mr: FakeMergeRequest): Json {
+    return {
+      id: mr.id,
+      iid: mr.iid,
+      title: mr.title,
+      state: mr.state,
+      draft: mr.draft,
+      web_url: this.#webUrl(mr),
+      source_branch: mr.sourceBranch,
+      target_branch: mr.targetBranch,
+      sha: mr.diffRefs.headSha,
+      diff_refs: {
+        base_sha: mr.diffRefs.baseSha,
+        start_sha: mr.diffRefs.startSha,
+        head_sha: mr.diffRefs.headSha
+      },
+      author: { username: mr.author, name: mr.author },
+      reviewers: mr.reviewers.map((username) => ({ username, name: username }))
+    }
+  }
+
+  #webUrl(mr: FakeMergeRequest): string {
+    return `https://${this.host}/${mr.projectPath}/-/merge_requests/${mr.iid}`
+  }
+
+  #find(projectPath: string, iid: number): FakeMergeRequest {
+    const mr = this.#mergeRequests.find((m) => m.projectPath === projectPath && m.iid === iid)
+    if (!mr) throw notFound(`${projectPath}!${iid}`)
+    return mr
+  }
+
+  #touch(mr: FakeMergeRequest): void {
+    mr.updatedAt = Math.max(this.#clock.now(), mr.updatedAt + 1)
+  }
+
+  #maybeFail(): void {
+    const failure = this.#failures.shift()
+    if (failure) throw failure
+  }
+
+  #sha(): string {
+    return (this.#nextSha++).toString(16).padStart(40, '0')
+  }
+}
+
+function restDraftNote(d: FakeDraftNote): Json {
+  return { id: d.id, note: d.note, position: d.position }
+}
+
+function notFound(what: string): GitLabError {
+  return new GitLabError('rejected', `404 Not Found: ${what}`, { status: 404 })
+}
