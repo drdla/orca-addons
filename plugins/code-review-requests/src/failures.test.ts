@@ -197,19 +197,19 @@ test('Refresh retries a Needs you failure, and once it works polling resumes', a
   await worker.deactivate()
 })
 
-test('the panel’s Retry polls at once and answers with the new snapshot, unless rate-limited', async () => {
+test('the panel’s Retry (rr.refresh) polls at once and answers with the new snapshot, unless rate-limited', async () => {
   const fakes = fakeDeps()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api' })
   fakes.gitlab.failNext(loggedOut())
   const { worker } = await startWorker(fakes)
 
-  const retried = await worker.request('rr.retry')
+  const retried = await worker.request('rr.refresh')
   assert.equal(retried.gitlab, undefined)
   assert.equal(retried.reviewRequests.length, 1)
 
   fakes.gitlab.failNext(rateLimited(10 * MINUTE))
   await worker.command('code-review-requests.refresh')
-  const limited = await worker.request('rr.retry')
+  const limited = await worker.request('rr.refresh')
   assert.equal(reviewRequestPolls(fakes), 2)
   assert.match(limited.gitlab?.status === 'retrying' ? (limited.gitlab.rateLimitedUntil ?? '') : '', /^\d\d:\d\d$/)
   await worker.deactivate()

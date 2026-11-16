@@ -7,16 +7,19 @@ import type { GitLabConnection } from '../seams/gitlab'
 import { FakeClock } from './fake-clock'
 import { FakeGitLab, type FakeGitLabOptions } from './fake-gitlab'
 import { FakeOrcaCli } from './fake-orca-cli'
+import { FakeDesktop } from './fake-desktop'
 
 export { FakeClock } from './fake-clock'
 export { FakeGitLab } from './fake-gitlab'
 export { FakeOrcaCli } from './fake-orca-cli'
+export { FakeDesktop } from './fake-desktop'
 
 export type Fakes = {
   deps: Deps
   gitlab: FakeGitLab
   cli: FakeOrcaCli
   clock: FakeClock
+  desktop: FakeDesktop
   /** Every connection the worker built a transport for, in order. */
   connections: GitLabConnection[]
 }
@@ -26,13 +29,15 @@ export function fakeDeps(options: { start?: number; gitlab?: FakeGitLabOptions }
   const gitlab = new FakeGitLab({ clock, ...options.gitlab })
   const cli = new FakeOrcaCli()
   const connections: GitLabConnection[] = []
+  const desktop = new FakeDesktop()
   const deps: Deps = {
     gitLab: (connection) => {
       connections.push(connection)
       return gitlab
     },
     orcaCli: () => cli,
-    clock
+    clock,
+    desktop
   }
-  return { deps, gitlab, cli, clock, connections }
+  return { deps, gitlab, cli, clock, desktop, connections }
 }

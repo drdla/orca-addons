@@ -20,10 +20,14 @@ import { explainDropped } from './notify/explain-dropped'
 import { createNotifier } from './notify/notifier'
 import type { ReviewRequestsSnapshot, ReviewRequestView } from './protocol'
 import type { GitLabConnection, GitLabTransport } from './seams/gitlab'
-import { readSettings, type Settings } from './settings'
+import { DEFAULT_SETTINGS, readSettings, type Settings } from './settings'
 import { createStatusBar } from './status-bar'
+import { createRequestedAtCache } from './gitlab/requested-at'
+import { overdueRefiner, type OverdueContext } from './to-review'
 
 export const REFRESH_COMMAND = 'code-review-requests.refresh'
+export const OPEN_COMMAND = 'code-review-requests.open'
+const PANEL_ID = 'review-requests'
 
 const MINUTE = 60_000
 
@@ -43,6 +47,8 @@ export function createWorker(deps: Deps) {
 
   async function activate(orca: OrcaWorkerApi): Promise<void> {
     const state = createPollState((message) => orca.log(message))
+    let overdueHours = DEFAULT_SETTINGS.overdueHours
+    const overdue: OverdueContext = { now: () => deps.clock.now(), overdueHours: () => overdueHours }
     const gitLab = createGitLabSource(deps)
     let connectionKey: string | null = null
     /** The host the last poll tried, or null if the instance URL is no URL. */
@@ -74,7 +80,8 @@ export function createWorker(deps: Deps) {
       storage: orca.storage,
       notify: (notification) => orca.host.call('notifications.show', notification)
     })
-    const statusBar = createStatusBar(orca, [failures.refineStatusBar])
+    // The problem states replace the whole look, so they come last.
+    const statusBar = createStatusBar(orca, [overdueRefiner(overdue), failures.refineStatusBar])
 
     // Features hang off the poll state here, one listener each (see poll/poll-state.ts):
     // diffing for notifications (#23) on onSucceeded, failure handling (#24) on onFailed with
@@ -92,9 +99,11 @@ export function createWorker(deps: Deps) {
     })
     state.onSucceeded((_previous, next) => notifier.onGoodPoll(next.reviewRequests, next.lastSuccessAt!))
     state.onChange((current) => statusBar.render(current))
+    state.onChange(() => orca.panels.post('rr.changed', snapshot()))
 
     /** Starts, stops or re-times polling to match the settings. */
     async function applySettings(): Promise<void> {
+      overdueHours = (await readSettings(orca.settings)).overdueHours
       if (!(await isConfigured(orca))) {
         poller.stop()
         connectionKey = null
@@ -115,16 +124,29 @@ export function createWorker(deps: Deps) {
       }
     }
 
+    /** The panel's view: the poll state plus, while GitLab fails, the problem (#24). */
     function snapshot(): ReviewRequestsSnapshot {
       const current = state.current()
       const problem = failures.problemView(current)
-      return { ...snapshotOf(current), ...(problem === undefined ? {} : { gitlab: problem }) }
+      return { ...snapshotOf(current, overdue), ...(problem === undefined ? {} : { gitlab: problem }) }
     }
 
     orca.panels.handle('rr.snapshot', async () => snapshot())
-    orca.panels.handle('rr.retry', async () => {
+    // Also the panel's Retry / Check again; it waits out a rate limit instead of polling.
+    orca.panels.handle('rr.refresh', async () => {
       if ((await isConfigured(orca)) && failures.rateLimitedUntil() === null) await poller.pollNow()
       return snapshot()
+    })
+    orca.panels.handle('rr.copyLink', async ({ url }) => {
+      await deps.desktop.copyText(url)
+      return { copied: true as const }
+    })
+    orca.commands.register(OPEN_COMMAND, async () => {
+      // A string result is shown as-is; nothing to say when it worked.
+      return deps.desktop.openPanel(PANEL_ID).then(
+        () => undefined,
+        (error: unknown) => `Couldn't open the Review Requests panel: ${String(error)}`
+      )
     })
     orca.commands.register(REFRESH_COMMAND, async () => {
       if (!(await isConfigured(orca))) return 'GitLab is not set up yet.'
@@ -159,6 +181,7 @@ export function createWorker(deps: Deps) {
 /** One transport and username per connection, rebuilt when the connection changes. */
 function createGitLabSource(deps: Deps) {
   let cached: { key: string; transport: GitLabTransport; me: string | null } | null = null
+  const requestedAt = createRequestedAtCache()
   async function sourceFor(connection: GitLabConnection) {
     const key = keyOf(connection)
     if (cached?.key !== key) cached = { key, transport: deps.gitLab(connection), me: null }
@@ -169,7 +192,7 @@ function createGitLabSource(deps: Deps) {
   return {
     async reviewRequests(connection: GitLabConnection) {
       const { transport, me } = await sourceFor(connection)
-      return fetchReviewRequests(transport, me)
+      return requestedAt.apply(transport, me, await fetchReviewRequests(transport, me))
     },
     async explainDropped(connection: GitLabConnection, dropped: ReviewRequestView[]) {
       const { transport, me } = await sourceFor(connection)

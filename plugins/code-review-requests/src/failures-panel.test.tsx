@@ -9,6 +9,7 @@ const NOW = Date.UTC(2026, 10, 16, 9, 0, 0)
 function needsYou(over: Partial<Extract<GitLabProblemView, { status: 'needs-you' }>> = {}): ReviewRequestsSnapshot {
   return {
     reviewRequests: [],
+    refreshedAt: null,
     gitlab: {
       status: 'needs-you',
       reason: 'logged-out',
@@ -23,6 +24,7 @@ function needsYou(over: Partial<Extract<GitLabProblemView, { status: 'needs-you'
 function retrying(over: Partial<Extract<GitLabProblemView, { status: 'retrying' }>> = {}): ReviewRequestsSnapshot {
   return {
     reviewRequests: [],
+    refreshedAt: null,
     gitlab: {
       status: 'retrying',
       message: 'gitlab.example.com: 503 Service Unavailable',
@@ -52,9 +54,9 @@ test('Check again asks the worker to retry and shows what it answers', async () 
   const host = mockHost({
     requests: {
       'rr.snapshot': needsYou(),
-      'rr.retry': () => {
+      'rr.refresh': () => {
         retries++
-        return { reviewRequests: [] }
+        return { reviewRequests: [], refreshedAt: NOW }
       }
     }
   })

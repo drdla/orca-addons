@@ -6,6 +6,7 @@ import { FakeGitLab, FakeOrcaCli } from '../fakes'
 import type { Worktree, WorktreeDetail } from '../seams/orca-cli'
 import { draftNoteFromDocs } from './gitlab-docs-shapes'
 import { mergeRequestBody, reviewRequestsBody } from './gitlab-captures'
+import { mergeRequestReviewersBody } from './gitlab-reviewers-capture'
 import { worktreeListEnvelope, worktreeShowEnvelope, worktreeShowErrorEnvelope } from './orca-cli-captures'
 import { shapeMismatches } from './shape'
 
@@ -31,6 +32,12 @@ test('the fake merge request carries only fields GitLab sends, diff_refs include
   const mr = await seeded().rest('GET', '/projects/acme%2Fteam-1%2Fservice-1/merge_requests/101')
 
   assert.deepEqual(shapeMismatches(mr, mergeRequestBody), [])
+})
+
+test('the fake lists merge request reviewers in the shape GitLab does', async () => {
+  const reviewers = await seeded().rest('GET', '/projects/acme%2Fteam-1%2Fservice-1/merge_requests/101/reviewers')
+
+  assert.deepEqual(shapeMismatches(reviewers, mergeRequestReviewersBody, { exact: true }), [])
 })
 
 test('the fake draft notes look like the documented draft note', async () => {

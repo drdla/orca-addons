@@ -4,6 +4,8 @@
 import { isExecutable, spawnGlab } from './gitlab/glab-process'
 import { createGlabTransport, locateGlab } from './gitlab/glab-transport'
 import { systemClock, type Clock } from './seams/clock'
+import { systemDesktop } from './desktop-process'
+import type { Desktop } from './seams/desktop'
 import { GitLabError, type GitLabConnection, type GitLabTransport } from './seams/gitlab'
 import { OrcaCliError, type OrcaCli } from './seams/orca-cli'
 
@@ -12,6 +14,8 @@ export type Deps = {
   gitLab(connection: GitLabConnection): GitLabTransport
   orcaCli(): OrcaCli
   clock: Clock
+  /** Clipboard and opening the panel (#22). */
+  desktop: Desktop
 }
 
 export function realDeps(): Deps {
@@ -25,7 +29,8 @@ export function realDeps(): Deps {
           })
         : notYetBuiltTransport,
     orcaCli: () => notYetBuiltCli,
-    clock: systemClock
+    clock: systemClock,
+    desktop: systemDesktop
   }
 }
 

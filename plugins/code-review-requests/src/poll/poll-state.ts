@@ -8,6 +8,7 @@
 // A failed poll keeps the last good list (#15): only lastAttemptAt and lastError move.
 import type { ReviewRequestView, ReviewRequestsSnapshot } from '../protocol'
 import type { Disposable } from '../seams/clock'
+import { cardsOf, type OverdueContext } from '../to-review'
 
 export type PollOutcome =
   | { ok: true; at: number; reviewRequests: ReviewRequestView[] }
@@ -90,7 +91,7 @@ export function createPollState(log: (message: string) => void = () => {}): Poll
   }
 }
 
-/** What the panel gets from rr.snapshot. Extend it with ReviewRequestsSnapshot (#22). */
-export function snapshotOf(state: PollState): ReviewRequestsSnapshot {
-  return { reviewRequests: state.reviewRequests }
+/** What the panel gets from rr.snapshot and rr.changed. Extend it with ReviewRequestsSnapshot. */
+export function snapshotOf(state: PollState, overdue: OverdueContext): ReviewRequestsSnapshot {
+  return { reviewRequests: cardsOf(state, overdue), refreshedAt: state.lastSuccessAt }
 }
