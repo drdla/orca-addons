@@ -54,6 +54,17 @@ export default function activate(orca: OrcaWorkerApi): void {
     return { text: l.text, tone: l.tone, visible: l.visible }
   })
 
+  orca.panels.handle('proto.set', async ({ variant, state, status }) => {
+    if (variant) await orca.storage.set('proto.variant', variant)
+    if (state) await orca.storage.set('proto.state', state)
+    if (status) await orca.storage.set('proto.status', status)
+    const st = ((await orca.storage.get('proto.state')) ?? 'loaded') as PanelState
+    const sv = ((await orca.storage.get('proto.status')) ?? 'icon-count') as StatusVariant
+    const empty = st === 'empty'
+    await orca.host.call('statusBar.update', { id: 'review-requests', ...look(sv, st, empty ? 0 : 5, empty ? 0 : 2) } as never)
+    return { ok: true as const }
+  })
+
   // Pressing the status-bar item opens the panel. The host API can't open a panel, so use the CLI.
   orca.commands.register('gitlab-review-requests-prototype.open', () => {
     const child = spawn(

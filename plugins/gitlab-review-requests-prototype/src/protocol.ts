@@ -11,5 +11,10 @@ declare module 'orca' {
       input: { variant: StatusVariant; state: PanelState; count: number; newCount: number }
       output: { text: string; tone: string; visible: boolean }
     }
+    /** Set the prototype switches from outside (orca plugin dev request), for screenshots. */
+    'proto.set': {
+      input: { variant?: string; state?: PanelState; status?: StatusVariant }
+      output: { ok: true }
+    }
   }
 }

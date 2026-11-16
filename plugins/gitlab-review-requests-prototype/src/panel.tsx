@@ -25,7 +25,9 @@ import {
   Spinner,
   Stack,
   Tab,
-  Table,
+  List,
+  ListItem,
+  ui,
   Tabs,
   Text,
   set,
@@ -40,9 +42,9 @@ const VARIANTS = [
   { key: 'B', name: 'Table + detail' },
   { key: 'C', name: 'Tabs by stage' }
 ] as const
-const variant = atom('proto.variant', 'A', { persist: 'plugin' })
-const panelState = atom<PanelState>('proto.state', 'loaded', { persist: 'plugin' })
-const statusVariant = atom<StatusVariant>('proto.status', 'icon-count', { persist: 'plugin' })
+const variant = atom('proto.variant', 'A', { persist: 'storage' })
+const panelState = atom<PanelState>('proto.state', 'loaded', { persist: 'storage' })
+const statusVariant = atom<StatusVariant>('proto.status', 'icon-count', { persist: 'storage' })
 const lastAction = atom('proto.lastAction', '—')
 const statusEcho = atom('proto.statusEcho', '')
 const selected = atom<string | null>('proto.selected', 'rr1')
@@ -76,6 +78,8 @@ async function pushStatusBar(): Promise<void> {
 }
 
 export function setup(_ctx: PanelContext): void {
+  const used = ['Table', 'List', 'ListItem', 'Tabs', 'Collapsible', 'Callout', 'KeyValue', 'Skeleton', 'EmptyState', 'RelativeTime', 'Box', 'Select', 'Checkbox', 'Spinner']
+  console.log('[proto] components missing:', used.filter((c) => !ui.has(c)).join(', ') || 'none', '· catalog', ui.catalog)
   void pushStatusBar()
 }
 
@@ -88,6 +92,12 @@ const pipelineBadge = (p: ReviewRequest['pipeline']) =>
   ) : p === 'running' ? (
     <Badge tone="accent">CI running</Badge>
   ) : null
+
+function ageText(at: number): string {
+  // ListItem description is a plain string, so no RelativeTime here.
+  const m = Math.round((Date.now() - at) / 60000)
+  return m < 60 ? `${m}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`
+}
 
 const shortProject = (p: string) => p.split('/').slice(-1)[0]
 
@@ -297,29 +307,19 @@ function VariantB() {
   const sel = rrs.find((r) => r.id === read(selected)) ?? null
   return (
     <Stack gap="md">
-      <Table
-        label="Review Requests"
-        selectionMode="single"
-        selected={sel ? [sel.id] : []}
-        onSelectionChange={({ keys }) => set(selected, keys[0] ?? null)}
-        onRowAction={({ key }) => set(selected, key)}
-        maxHeight="md"
-        columns={[
-          { key: 'title', label: 'Title', width: 'auto', minWidth: 'md' },
-          { key: 'project', label: 'Project', width: 'sm', hideBelow: 'md' },
-          { key: 'state', label: '', width: 'xs' },
-          { key: 'age', label: 'Waiting', width: 'xs', sortable: true }
-        ]}
-        rows={rrs.map((rr) => ({
-          key: rr.id,
-          cells: {
-            title: (rr.isNew ? '● ' : '') + rr.title,
-            project: shortProject(rr.project),
-            state: rr.workspace ? (rr.workspace.agentReview === 'done' ? '✓ agent' : rr.workspace.agentReview === 'running' ? '… agent' : 'ws') : '',
-            age: { type: 'relative', at: rr.requestedAt, format: 'duration' }
-          }
-        }))}
-      />
+      {/* Table isn't drawn by this Orca build (placeholder), so B uses a selectable List. */}
+      <List label="Review Requests">
+        {rrs.map((rr) => (
+          <ListItem
+            key={rr.id}
+            icon={rr.workspace ? (rr.workspace.agentReview === 'done' ? 'check' : rr.workspace.agentReview === 'running' ? 'agent' : 'folder') : rr.isNew ? 'bell' : 'branch'}
+            title={(rr.isNew ? '● ' : '') + rr.title}
+            description={`${shortProject(rr.project)} !${rr.iid} · ${rr.author} · ${ageText(rr.requestedAt)}` + (rr.pipeline === 'failed' ? ' · CI failed' : '')}
+            current={sel?.id === rr.id}
+            onPress={() => set(selected, rr.id)}
+          />
+        ))}
+      </List>
       {sel ? (
         <Card title={sel.title} description={`${sel.project} !${sel.iid}`}>
           <Stack gap="sm">
