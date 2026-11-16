@@ -14,7 +14,10 @@ import {
 export type WorktreeSeed = {
   name: string
   repoId?: string
+  /** Defaults to `git:gitlab.example.com/acme/api`. */
+  projectId?: string
   path?: string
+  /** The short branch name; the fake reports it as `refs/heads/<branch>`, as Orca does. */
   branch?: string | null
   /** MR web URLs linked to the worktree. */
   references?: string[]
@@ -41,9 +44,12 @@ export class FakeOrcaCli implements OrcaCli {
     const worktree: FakeWorktree = {
       id: `${repoId}::${path}`,
       repoId,
+      projectId: seed.projectId ?? 'git:gitlab.example.com/acme/api',
       path,
-      branch: seed.branch === undefined ? seed.name : seed.branch,
+      isMainWorktree: false,
+      branch: fullRef(seed.branch === undefined ? seed.name : seed.branch),
       displayName: seed.name,
+      linkedGitLabMR: mrIid(seed.references?.[0]),
       linkedItems: (seed.references ?? []).map((url) => linkedItem(url)),
       ...(seed.baseRef ? { baseRef: seed.baseRef } : {}),
       diffComments: [],
@@ -130,14 +136,26 @@ function publicRow(w: FakeWorktree): Worktree {
   return {
     id: w.id,
     repoId: w.repoId,
+    projectId: w.projectId,
     path: w.path,
+    isMainWorktree: w.isMainWorktree,
     branch: w.branch,
+    linkedGitLabMR: w.linkedGitLabMR,
     displayName: w.displayName,
     linkedItems: w.linkedItems.map((l) => ({ ...l }))
   }
 }
 
+function fullRef(branch: string | null): string | null {
+  return branch === null || branch.startsWith('refs/') ? branch : `refs/heads/${branch}`
+}
+
+function mrIid(url: string | undefined): number | null {
+  const iid = url ? /\/merge_requests\/(\d+)/.exec(url)?.[1] : undefined
+  return iid ? Number(iid) : null
+}
+
 function linkedItem(url: string) {
-  const iid = /\/merge_requests\/(\d+)/.exec(url)?.[1]
-  return { provider: 'gitlab', type: 'mr', url, ...(iid ? { number: Number(iid) } : {}) }
+  const iid = mrIid(url)
+  return { provider: 'gitlab', type: 'mr', url, ...(iid === null ? {} : { number: iid }) }
 }

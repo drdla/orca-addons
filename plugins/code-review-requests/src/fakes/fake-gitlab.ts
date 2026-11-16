@@ -258,7 +258,7 @@ export class FakeGitLab implements GitLabTransport {
 
   #route(method: HttpMethod, path: string, body: Record<string, Json>): Json {
     if (method === 'GET' && path === '/user') {
-      return { id: 1, username: this.me, name: this.me }
+      return { id: FAKE_USER_ID, username: this.me, name: this.me }
     }
     if (method === 'GET' && path === '/version') return { version: this.version }
 
@@ -278,7 +278,7 @@ export class FakeGitLab implements GitLabTransport {
         return { approved: true }
       }
       if (method === 'GET' && rest === '/draft_notes') {
-        return mr.draftNotes.filter((d) => d.author === this.me).map(restDraftNote)
+        return mr.draftNotes.filter((d) => d.author === this.me).map((d) => restDraftNote(d, mr.id))
       }
       if (method === 'POST' && rest === '/draft_notes') {
         if (typeof body.note !== 'string' || body.note === '') {
@@ -292,7 +292,7 @@ export class FakeGitLab implements GitLabTransport {
         }
         mr.draftNotes.push(created)
         if (mr.reviewers.includes(this.me)) mr.reviewStates[this.me] = 'REVIEW_STARTED'
-        return restDraftNote(created)
+        return restDraftNote(created, mr.id)
       }
       if (method === 'DELETE' && draft) {
         const id = Number(draft[1])
@@ -365,8 +365,35 @@ export class FakeGitLab implements GitLabTransport {
   }
 }
 
-function restDraftNote(d: FakeDraftNote): Json {
-  return { id: d.id, note: d.note, position: d.position }
+/** In the documented draft-note shape (src/fixtures/gitlab-docs-shapes.ts). */
+function restDraftNote(d: FakeDraftNote, mergeRequestId: number): Json {
+  return {
+    id: d.id,
+    author_id: FAKE_USER_ID,
+    merge_request_id: mergeRequestId,
+    resolve_discussion: false,
+    discussion_id: null,
+    note: d.note,
+    commit_id: null,
+    line_code: null,
+    position: d.position ?? GENERAL_NOTE_POSITION
+  }
+}
+
+/** The id `GET /user` reports for the logged-in user. */
+const FAKE_USER_ID = 1
+
+/** What GitLab returns as `position` for a draft that isn't on a diff line. */
+const GENERAL_NOTE_POSITION: Json = {
+  base_sha: null,
+  start_sha: null,
+  head_sha: null,
+  old_path: null,
+  new_path: null,
+  position_type: 'text',
+  old_line: null,
+  new_line: null,
+  line_range: null
 }
 
 function notFound(what: string): GitLabError {

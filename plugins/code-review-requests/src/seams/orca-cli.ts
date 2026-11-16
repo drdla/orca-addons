@@ -17,9 +17,15 @@ export type Worktree = {
   /** `<repoId>::<abs path>`; select it with `id:<id>`. */
   id: string
   repoId: string
+  /** `git:<host>/<project path>` for a Git remote, for example `git:gitlab.com/acme/api`. */
+  projectId: string
   path: string
+  isMainWorktree: boolean
+  /** The full ref, for example `refs/heads/feature/x`. */
   branch: string | null
   displayName: string
+  /** The legacy GitLab MR link: the MR iid, or null. */
+  linkedGitLabMR: number | null
   linkedItems: LinkedItem[]
 }
 
