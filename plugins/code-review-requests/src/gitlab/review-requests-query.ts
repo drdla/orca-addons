@@ -23,7 +23,7 @@ export const REVIEW_REQUESTS_QUERY = `query ReviewRequests($me: String!, $after:
         author { username name }
         labels { nodes { title } }
         reviewers { nodes { username mergeRequestInteraction { reviewState approved reviewed } } }
-        approvalsRequired approvalsLeft userNotesCount
+        userNotesCount
         headPipeline { status }
       }
     }
@@ -61,10 +61,6 @@ export type ReviewRequestNode = {
       mergeRequestInteraction: { reviewState: ReviewState; approved: boolean; reviewed: boolean } | null
     }[]
   }
-  /** Approvals the MR needs in all; 0 or null when none are required (#10's approvals badge). */
-  approvalsRequired: number | null
-  /** Approvals still missing. */
-  approvalsLeft: number | null
   /** Comments by people (system notes excluded), for the comments badge. */
   userNotesCount: number | null
   /** The latest pipeline on the source branch, or null without CI. */

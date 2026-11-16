@@ -3,6 +3,7 @@
 // "M new", and the Agent Review line on In review cards. Through the worker's public surface.
 import { assert, test } from 'orca/testing'
 import { fakeDeps, type Fakes } from './fakes'
+import { GitLabError } from './seams/gitlab'
 import { CONFIGURED, lastStatusBar, MINUTE, startWorker } from './testing/worker-harness'
 
 const MR_URL = 'https://gitlab.example.com/acme/api/-/merge_requests/7'
@@ -36,6 +37,40 @@ test('cards carry the CI status, approvals given/required and the comment count'
   assert.equal(four?.ci, null, 'no pipeline, no CI badge')
   assert.equal(four?.approvals, null, 'no approvals required, no approvals badge')
   assert.equal(four?.comments, 0)
+  await worker.deactivate()
+})
+
+test('on GitLab CE (no approval fields) the list still loads; only the approvals badge is hidden', async () => {
+  const fakes = fakeDeps({ gitlab: { edition: 'ce' } })
+  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 1, pipeline: 'SUCCESS', userNotesCount: 2, approvalsRequired: 2 })
+  const { worker, host } = await startWorker(fakes)
+  await fakes.clock.advance(5 * MINUTE)
+
+  const snapshot = await worker.request('rr.snapshot')
+  assert.equal(snapshot.gitlab, undefined, 'no setup or retry state')
+  const one = snapshot.reviewRequests.find((c) => c.iid === 1)
+  assert.equal(one?.ci, 'passed')
+  assert.equal(one?.comments, 2)
+  assert.equal(one?.approvals, null)
+  assert.equal(lastStatusBar(host)?.text, '1')
+  const asked = fakes.gitlab.requests.filter((r) => r.operation === 'graphql ReviewRequestApprovals').length
+  assert.equal(asked, 1, 'a refused approvals query is not asked again')
+  await worker.deactivate()
+})
+
+test('a failing approvals query never fails the poll', async () => {
+  const fakes = fakeDeps()
+  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 1, approvalsRequired: 1 })
+  const graphql = fakes.gitlab.graphql.bind(fakes.gitlab)
+  fakes.gitlab.graphql = (query, variables) =>
+    query.includes('ReviewRequestApprovals')
+      ? Promise.reject(new GitLabError('transient', '503 Service Unavailable', { status: 503 }))
+      : graphql(query, variables)
+  const { worker } = await startWorker(fakes)
+
+  const snapshot = await worker.request('rr.snapshot')
+  assert.equal(snapshot.gitlab, undefined)
+  assert.equal(snapshot.reviewRequests[0]?.approvals, null)
   await worker.deactivate()
 })
 

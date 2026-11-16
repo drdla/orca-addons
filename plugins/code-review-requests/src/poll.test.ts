@@ -160,7 +160,7 @@ test('asks GitLab who the user is once, and polls the configured instance throug
   assert.deepEqual(fakes.connections, [{ host: 'gitlab.acme.dev', token: null, glabPath: null }])
   assert.equal(fakes.gitlab.requests.filter((r) => r.operation === 'GET /user').length, 1)
   assert.deepEqual(
-    fakes.gitlab.requests.filter((r) => r.operation.startsWith('graphql')).map((r) => r.variables?.me),
+    fakes.gitlab.requests.filter((r) => r.operation === 'graphql ReviewRequests').map((r) => r.variables?.me),
     ['me', 'me']
   )
   await worker.deactivate()

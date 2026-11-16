@@ -62,7 +62,8 @@ function toView(node: ReviewRequestNode): ReviewRequestView {
     sourceBranch: node.sourceBranch,
     targetBranch: node.targetBranch,
     ci: ciOf(node.headPipeline?.status ?? null),
-    approvals: approvalsOf(node),
+    // Filled in from the optional approvals query (approvals.ts), which CE may not answer.
+    approvals: null,
     comments: node.userNotesCount ?? 0
   }
 }
@@ -85,12 +86,4 @@ function ciOf(status: PipelineStatus | null): CiStatus | null {
     default:
       return null
   }
-}
-
-/** `given/required`, with given = required - left (the query stays scalar to keep it cheap). */
-function approvalsOf(node: ReviewRequestNode): { given: number; required: number } | null {
-  const required = node.approvalsRequired ?? 0
-  if (required <= 0) return null
-  const left = Math.max(0, Math.min(required, node.approvalsLeft ?? required))
-  return { given: required - left, required }
 }

@@ -19,6 +19,7 @@ import type {
   ReviewState
 } from '../gitlab/review-requests-query'
 import type { DroppedMergeRequestResponse } from '../notify/explain-dropped'
+import type { ApprovalsResponse } from '../gitlab/approvals'
 import { FakeClock } from './fake-clock'
 
 export type MergeRequestSeed = {
@@ -96,6 +97,8 @@ export type FakeGitLabOptions = {
   pageSize?: number
   /** What `GET /version` reports. */
   version?: string
+  /** `ce`: the schema lacks the EE approval fields (`approvalsRequired`, `approvalsLeft`). */
+  edition?: 'ee' | 'ce'
 }
 
 export class FakeGitLab implements GitLabTransport {
@@ -104,6 +107,7 @@ export class FakeGitLab implements GitLabTransport {
   /** Every call made, in order, for assertions such as "nothing was fetched". */
   readonly requests: FakeRequest[] = []
   version: string
+  edition: 'ee' | 'ce'
 
   #clock: Clock
   #pageSize: number
@@ -125,6 +129,7 @@ export class FakeGitLab implements GitLabTransport {
     this.#clock = options.clock ?? new FakeClock()
     this.#pageSize = options.pageSize ?? 100
     this.version = options.version ?? '19.6.0'
+    this.edition = options.edition ?? 'ee'
   }
 
   // --- Arrange: shape the instance ---------------------------------------------------------
@@ -288,12 +293,23 @@ export class FakeGitLab implements GitLabTransport {
   async graphql<T>(query: string, variables: Record<string, Json> = {}): Promise<T> {
     const name = /^\s*query\s+(\w+)/.exec(query)?.[1] ?? 'anonymous'
     this.requests.push({ operation: `graphql ${name}`, variables })
-    this.#maybeFail()
+    // The optional approvals query never takes a failNext() error, so tests that queue failures
+    // for polls keep their order.
+    if (name !== 'ReviewRequestApprovals') this.#maybeFail()
+    if (this.edition === 'ce') {
+      const unknown = /\b(approvalsRequired|approvalsLeft)\b/.exec(query)?.[1]
+      if (unknown) {
+        // As GitLab answers a query with a field its schema lacks: HTTP 200 with `errors`.
+        throw new GitLabError('rejected', `Field '${unknown}' doesn't exist on type 'MergeRequest'`, { status: 200 })
+      }
+    }
     switch (name) {
       case 'ReviewRequests':
         return this.#reviewRequests(variables) as T
       case 'DroppedMergeRequest':
         return this.#droppedMergeRequest(variables) as T
+      case 'ReviewRequestApprovals':
+        return this.#approvals(variables) as T
       default:
         throw new GitLabError('rejected', `fake GitLab does not know the query ${name}`, {
           status: 400
@@ -336,6 +352,27 @@ export class FakeGitLab implements GitLabTransport {
       last_used_at: null,
       active: true,
       expires_at: null
+    }
+  }
+
+  /** The optional approvals query (gitlab/approvals.ts): same list, approval fields only. */
+  #approvals(variables: Record<string, Json>): ApprovalsResponse {
+    const { currentUser } = this.#reviewRequests(variables)
+    const page = currentUser.reviewRequestedMergeRequests
+    return {
+      currentUser: {
+        reviewRequestedMergeRequests: {
+          pageInfo: page.pageInfo,
+          nodes: page.nodes.map((node) => {
+            const mr = this.#mergeRequests.find((m) => this.#webUrl(m) === node.webUrl)!
+            return {
+              webUrl: node.webUrl,
+              approvalsRequired: mr.approvalsRequired,
+              approvalsLeft: Math.max(0, mr.approvalsRequired - mr.approvedBy.length)
+            }
+          })
+        }
+      }
     }
   }
 
@@ -411,8 +448,6 @@ export class FakeGitLab implements GitLabTransport {
           }
         }))
       },
-      approvalsRequired: mr.approvalsRequired,
-      approvalsLeft: Math.max(0, mr.approvalsRequired - mr.approvedBy.length),
       userNotesCount: mr.userNotesCount,
       headPipeline: mr.pipeline === null ? null : { status: mr.pipeline }
     }
