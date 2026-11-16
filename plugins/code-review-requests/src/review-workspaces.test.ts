@@ -79,6 +79,22 @@ test('a Review Request with a linked workspace carries it in the snapshot; one w
   await worker.deactivate()
 })
 
+test('a filtered-out Review Request with a Review Workspace stays listed, under its workspace', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 8, title: 'Filtered, no workspace' })
+  fakes.cli.addRepo(REPO)
+  fakes.cli.addWorktree({ name: 'by-hand', repoId: REPO.repoId, path: '/wt/by-hand', references: [MR_URL] })
+
+  const { host, worker } = await startWorker(fakes, { settings: { pathBlocklist: 'acme/api' } })
+
+  const cards = (await worker.request('rr.snapshot')).reviewRequests
+  assert.deepEqual(cards.map((c) => c.title), ['Add login'])
+  assert.equal(cards[0]!.workspace?.name, 'by-hand')
+  assert.equal((host.callsOf('statusBar.update').at(-1) as { text?: string }).text, '1')
+  await worker.deactivate()
+})
+
 test('Start review is blocked with a hint when Orca has no repo for the MR project', async () => {
   const fakes = fakeDeps()
   addReviewRequest(fakes)

@@ -4,9 +4,10 @@
 // rr.changed push, and every request needs a .catch (an unhandled rejection fails tests and
 // `orca plugin check`).
 //
-// Tabs: To review holds Review Requests without a Review Workspace, In review those with one (#27), Ended the Ended Review Requests (#28). Later slices fill a tab
-// by changing what tabContents() returns for it; #24 puts its setup checklist above the tabs in
-// Body().
+// Tabs: To review holds Review Requests without a Review Workspace, In review those with one
+// (#27), Ended the Ended Review Requests (#28). Later slices fill a tab by changing what
+// stagesOf() returns for it. #24: in Body(), the setup checklist replaces the tabs while GitLab
+// needs setting up, and the refresh problem sits above them on a failed poll.
 import {
   atom,
   Badge,
@@ -35,6 +36,8 @@ import {
   type PanelContext
 } from 'orca'
 import type { ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
+import { RefreshProblem } from './refresh-problem'
+import { SetupChecklist } from './setup-checklist'
 
 type TabId = 'todo' | 'in' | 'ended'
 
@@ -145,6 +148,7 @@ export default function Panel() {
     <Stack gap="md">
       <Header />
       <Body />
+      <FilterNotes />
     </Stack>
   )
 }
@@ -174,6 +178,29 @@ function Header() {
   )
 }
 
+/** The footer about the filter settings (#26): ignored entries, and how many it hides. */
+function FilterNotes() {
+  const current = read(snapshot)
+  if (current === null) return null
+  const hidden = current.hiddenByFilters ?? 0
+  const invalid = current.invalidFilterEntries ?? []
+  if (hidden === 0 && invalid.length === 0) return null
+  return (
+    <Stack gap="xs">
+      {invalid.length > 0 && (
+        <Callout tone="warning" icon="filter" title="Some filter entries are ignored">
+          {`Not a valid path or username: ${invalid.join(', ')}. Fix them in Settings → Code Review Requests.`}
+        </Callout>
+      )}
+      {hidden > 0 && (
+        <Text muted size="xs">
+          {`${hidden} hidden by filters · change them in Settings → Code Review Requests`}
+        </Text>
+      )}
+    </Stack>
+  )
+}
+
 function Body() {
   const problem = read(failure)
   if (problem !== null) {
@@ -185,6 +212,19 @@ function Body() {
   }
   const current = read(snapshot)
   if (current === null) return <Skeleton lines={6} label="Loading Review Requests" />
+  // #24: GitLab needs setting up: the setup checklist replaces the tabs.
+  const gitlab = current.gitlab
+  if (gitlab?.status === 'needs-you') {
+    return <SetupChecklist problem={gitlab} checking={read(refreshing)} onCheckAgain={refresh} />
+  }
+  if (gitlab?.status === 'retrying') {
+    return (
+      <Stack gap="md">
+        <RefreshProblem problem={gitlab} retrying={read(refreshing)} onRetry={refresh} />
+        <StageTabs snapshot={current} />
+      </Stack>
+    )
+  }
   return <StageTabs snapshot={current} />
 }
 

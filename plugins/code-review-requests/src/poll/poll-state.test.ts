@@ -47,6 +47,7 @@ test('a failure keeps the last good list, and success listeners do not hear it',
   assert.deepEqual(order, ['succeeded', 'changed', 'failed: offline', 'changed'])
   assert.deepEqual(failedWith, {
     reviewRequests: [rr(1)],
+    hidden: [],
     lastSuccessAt: 1,
     lastAttemptAt: 2,
     lastError: new Error('offline')

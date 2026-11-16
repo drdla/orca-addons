@@ -65,7 +65,7 @@
         "key": "pathAllowlist",
         "title": "Only these groups or projects",
         "type": "string",
-        "description": "One path per line, for example acme/backend or acme/*/api. A path matches itself and everything below it. Empty means all.",
+        "description": "Group or project paths, separated by commas, spaces or new lines, for example acme/backend or acme/*/api (* is one path segment). A path matches itself and everything below it; case does not matter. Empty means all.",
         "default": "",
         "multiline": true
       },
@@ -73,7 +73,7 @@
         "key": "pathBlocklist",
         "title": "Never these groups or projects",
         "type": "string",
-        "description": "One path per line. The blocklist wins over the allowlist.",
+        "description": "Group or project paths, written like the allowlist. A Review Request matching one is hidden, even if the allowlist matches it, unless it already has a review workspace.",
         "default": "",
         "multiline": true
       },
@@ -81,7 +81,7 @@
         "key": "authorBlocklist",
         "title": "Never these authors",
         "type": "string",
-        "description": "GitLab usernames, one per line, for example renovate-bot.",
+        "description": "GitLab usernames, separated by commas, spaces or new lines, for example renovate-bot or @dependabot.",
         "default": "",
         "multiline": true
       },

@@ -4,7 +4,7 @@
 // Never seed `settings.instanceUrl` in a scenario: the worker treats it as "configured" and the
 // real worker would then poll GitLab through the real glab (src/worker.ts).
 import { defineCheck, hostError } from 'orca/testing'
-import type { ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
+import type { ReviewRequestCard, ReviewRequestsSnapshot, SetupReason } from './protocol'
 
 const HOUR = 3_600_000
 const NOW = Date.UTC(2026, 10, 16, 9, 0)
@@ -55,10 +55,48 @@ const withOverdue: ReviewRequestsSnapshot = {
   refreshedAt: NOW
 }
 
+function needsYou(reason: SetupReason, version: string | null = null): ReviewRequestsSnapshot {
+  return {
+    reviewRequests: [],
+    refreshedAt: null,
+    gitlab: {
+      status: 'needs-you',
+      reason,
+      host: reason === 'bad-url' ? null : 'gitlab.example.com',
+      version,
+      message: `gitlab.example.com: ${reason}`
+    }
+  }
+}
+
+/** A failed poll over the last good list. */
+function retrying(rateLimitedUntil: string | null, offline: boolean): ReviewRequestsSnapshot {
+  return {
+    ...toReview,
+    gitlab: {
+      status: 'retrying',
+      message: 'gitlab.example.com: 503 Service Unavailable',
+      lastSuccessAt: NOW - 14 * 60_000,
+      retryAt: NOW + 60_000,
+      rateLimitedUntil,
+      offline
+    }
+  }
+}
+
 export default defineCheck({
   /** No stub: the real, unconfigured worker answers. */
   fresh: {},
   empty: { requests: { 'rr.snapshot': { reviewRequests: [], refreshedAt: null } } },
+  // Failure states (#24): the setup checklist per Needs-you reason, and the transient line.
+  setupLoggedOut: { requests: { 'rr.snapshot': needsYou('logged-out') } },
+  setupGlabMissing: { requests: { 'rr.snapshot': needsYou('glab-missing') } },
+  setupTokenRejected: { requests: { 'rr.snapshot': needsYou('token-rejected') } },
+  setupTooOld: { requests: { 'rr.snapshot': needsYou('gitlab-too-old', '17.2.0') } },
+  setupBadUrl: { requests: { 'rr.snapshot': needsYou('bad-url') } },
+  retrying: { requests: { 'rr.snapshot': retrying(null, false) } },
+  offline: { requests: { 'rr.snapshot': retrying(null, true) } },
+  rateLimited: { requests: { 'rr.snapshot': retrying('09:10', false) } },
   workerDown: {
     requests: {
       'rr.snapshot': () => {
@@ -79,7 +117,13 @@ export default defineCheck({
   /** Start review disabled, with the hint why (#27). */
   startBlocked: { requests: { 'rr.snapshot': startBlocked } },
   /** The person left the panel on Ended (empty until #28). */
-  endedTab: { requests: { 'rr.snapshot': toReview }, persisted: { plugin: { 'rr.tab': 'ended' } } }
+  endedTab: { requests: { 'rr.snapshot': toReview }, persisted: { plugin: { 'rr.tab': 'ended' } } },
+  /** Filters hide some Review Requests and ignore an invalid entry (#26): footer and warning. */
+  filtered: {
+    requests: {
+      'rr.snapshot': { ...toReview, hiddenByFilters: 3, invalidFilterEntries: ['acme//api'] }
+    }
+  }
   // `events` only delivers Orca events, not worker posts, so rr.changed is covered by
   // panel.test.tsx instead.
 })

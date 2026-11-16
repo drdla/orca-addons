@@ -3,7 +3,14 @@
 // run). A failing CLI only disables these workspace features, never the poll (#15).
 import type { ReviewRequestCard, ReviewRequestsSnapshot } from '../protocol'
 import type { OrcaCli } from '../seams/orca-cli'
-import { findRepo, findReviewWorkspace, workspaceIndexOf, type WorkspaceIndex } from './review-workspaces'
+import {
+  findRepo,
+  findReviewWorkspace,
+  hasReviewWorkspace,
+  workspaceIndexOf,
+  type MergeRequestRef,
+  type WorkspaceIndex
+} from './review-workspaces'
 
 export type WorkspaceState =
   /** No list yet (nothing polled). */
@@ -33,6 +40,14 @@ export function createWorkspaceTracker(cli: () => OrcaCli, log: (message: string
       return state
     }
   }
+}
+
+/**
+ * Does this Review Request have a Review Workspace, by the last list? The filters' exception (#26).
+ * False while the CLI is unavailable or nothing was listed yet.
+ */
+export function hasWorkspace(state: WorkspaceState, mr: MergeRequestRef): boolean {
+  return state.kind === 'listed' && hasReviewWorkspace(state.index, mr)
 }
 
 /** The snapshot with each card's Review Workspace and Start review hint filled in. */
