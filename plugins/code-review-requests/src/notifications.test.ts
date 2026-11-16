@@ -1,21 +1,16 @@
 // Notifications for new and ended Review Requests (#23), through the worker's public surface: a
 // configured worker over the fake GitLab and fake clock, observed through notifications.show.
-import { assert, mockHost, mountWorker, test } from 'orca/testing'
-import { fakeDeps, type Fakes } from './fakes'
+import { assert, mockHost, test } from 'orca/testing'
+import { fakeDeps, FakeGitLab, type Fakes } from './fakes'
 import { GitLabError } from './seams/gitlab'
-import { createWorker } from './worker'
-
-const MINUTE = 60_000
-const CONFIGURED = { instanceUrl: 'https://gitlab.example.com', pollMinutes: 5 }
+import { CONFIGURED, MINUTE, startWorker as startHarness } from './testing/worker-harness'
 
 type Note = { title: string; body?: string }
 
 /** Starts a worker; `storage` carries what an earlier run of the worker left behind. */
 async function startWorker(fakes: Fakes, storage: Record<string, unknown> = {}) {
-  const host = mockHost({ settings: CONFIGURED, storage: storage as never })
-  const worker = await mountWorker(createWorker(fakes.deps), { host })
-  await fakes.clock.advance(0)
-  return { host, worker, notes: () => host.callsOf('notifications.show') as Note[] }
+  const started = await startHarness(fakes, CONFIGURED, mockHost({ settings: CONFIGURED, storage: storage as never }))
+  return { ...started, notes: () => started.host.callsOf('notifications.show') as Note[] }
 }
 
 test('first run: one summary of what is already waiting', async () => {
@@ -121,20 +116,80 @@ test('live poll: a Review Request made draft notifies, but not as ended', async 
   await worker.deactivate()
 })
 
-test('a Review Request GitLab no longer shows the user (deleted, access lost) has ended', async () => {
+test('the reason a Review Request ended comes from one GraphQL query, not a REST lookup', async () => {
+  const fakes = fakeDeps()
+  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 1, title: 'One' })
+  const { worker, notes } = await startWorker(fakes)
+
+  fakes.gitlab.approve('acme/api', 1)
+  await fakes.clock.advance(5 * MINUTE)
+
+  const operations = fakes.gitlab.requests.map((r) => r.operation)
+  assert.ok(operations.includes('graphql DroppedMergeRequest'))
+  assert.ok(!operations.some((o) => /^GET \/projects\/[^/]+\/merge_requests\/1$/.test(o)), 'no REST lookup')
+  assert.equal(notes().at(-1)?.title, 'Review Request ended: approved')
+  await worker.deactivate()
+})
+
+test('a Review Request GitLab no longer shows the user is not Ended: one neutral notification', async () => {
   const fakes = fakeDeps()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 1, title: 'One' })
   const { worker, notes } = await startWorker(fakes)
 
   fakes.gitlab.close('acme/api', 1)
-  const rest = fakes.gitlab.rest.bind(fakes.gitlab)
-  fakes.gitlab.rest = (method, path, body) =>
-    path.includes('/merge_requests/')
-      ? Promise.reject(new GitLabError('rejected', '404 Not found', { status: 404 }))
-      : rest(method, path, body)
+  fakes.gitlab.hide('acme/api', 1)
+  await fakes.clock.advance(5 * MINUTE)
   await fakes.clock.advance(5 * MINUTE)
 
-  assert.deepEqual(notes().slice(1), [{ title: 'Review Request ended', body: '!1 One\nacme/api' }])
+  assert.deepEqual(notes().slice(1), [{ title: 'Review Request no longer visible', body: '!1 One\nacme/api' }])
+  await worker.deactivate()
+})
+
+test('a 403 or 404 on the lookup means "no longer visible", not Ended', async () => {
+  const fakes = fakeDeps()
+  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 1, title: 'One' })
+  const { worker, notes } = await startWorker(fakes)
+
+  fakes.gitlab.close('acme/api', 1)
+  const graphql = fakes.gitlab.graphql.bind(fakes.gitlab)
+  fakes.gitlab.graphql = (query, variables) =>
+    query.includes('DroppedMergeRequest')
+      ? Promise.reject(new GitLabError('rejected', '403 Forbidden', { status: 403 }))
+      : graphql(query, variables)
+  await fakes.clock.advance(5 * MINUTE)
+
+  assert.deepEqual(notes().slice(1), [{ title: 'Review Request no longer visible', body: '!1 One\nacme/api' }])
+  await worker.deactivate()
+})
+
+test('first run: the summary counts the overdue Review Requests', async () => {
+  const fakes = fakeDeps()
+  const now = fakes.clock.now()
+  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 7, title: 'Old', requestedAt: now - 10 * 24 * 60 * MINUTE })
+  fakes.gitlab.addMergeRequest({ projectPath: 'acme/web', iid: 3, title: 'Recent', requestedAt: now - MINUTE })
+
+  const { worker, notes } = await startWorker(fakes)
+
+  assert.equal(notes()[0]!.title, '2 Review Requests waiting')
+  assert.match(notes()[0]!.body ?? '', /^1 overdue\./)
+  await worker.deactivate()
+})
+
+test("changing the instance URL never ends the old host's Review Requests: it is a first run there", async () => {
+  const fakes = fakeDeps()
+  const other = new FakeGitLab({ clock: fakes.clock, host: 'gitlab.other.com' })
+  const gitLab = fakes.deps.gitLab
+  fakes.deps.gitLab = (connection) => (connection.host === 'gitlab.other.com' ? other : gitLab(connection))
+  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 1, title: 'Old host' })
+  other.addMergeRequest({ projectPath: 'beta/app', iid: 2, title: 'New host' })
+  const { worker, notes, changeSetting } = await startWorker(fakes)
+
+  await changeSetting('instanceUrl', 'https://gitlab.other.com')
+  await fakes.clock.advance(5 * MINUTE)
+
+  assert.deepEqual(notes().slice(1), [{ title: '1 Review Request waiting', body: '!2 New host' }])
+  assert.ok(!other.requests.some((r) => r.operation === 'graphql DroppedMergeRequest'), 'no old-host lookup')
+  assert.equal((await worker.request('rr.snapshot')).ended, undefined)
   await worker.deactivate()
 })
 
@@ -235,13 +290,13 @@ test('if GitLab cannot say why a Review Request dropped off, it asks again on th
   const { worker, notes } = await startWorker(fakes)
 
   fakes.gitlab.merge('acme/api', 1)
-  const rest = fakes.gitlab.rest.bind(fakes.gitlab)
+  const graphql = fakes.gitlab.graphql.bind(fakes.gitlab)
   let lookups = 0
-  fakes.gitlab.rest = (method, path, body) => {
-    if (path.includes('/merge_requests/') && ++lookups === 1) {
+  fakes.gitlab.graphql = (query, variables) => {
+    if (query.includes('DroppedMergeRequest') && ++lookups === 1) {
       return Promise.reject(new GitLabError('transient', 'GitLab is down', { status: 503 }))
     }
-    return rest(method, path, body)
+    return graphql(query, variables)
   }
   await fakes.clock.advance(5 * MINUTE)
   assert.equal(notes().length, 1)

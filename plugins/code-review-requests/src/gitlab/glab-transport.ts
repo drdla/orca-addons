@@ -2,7 +2,7 @@
 // run, spawned by absolute path. `--include` puts the HTTP status line and headers before the
 // body on stdout, which is how failures are told apart (glab itself only exits 1).
 import { GitLabError, type GitLabTransport, type HttpMethod, type Json } from '../seams/gitlab'
-import { messageOf, parseBody, retryAfter } from './http-response'
+import { errorTextOf, parseBody, retryAfter } from './http-response'
 
 /** One finished glab run. Rejects only when glab could not be started (errno error). */
 export type GlabRun = { exitCode: number; stdout: string; stderr: string }
@@ -40,7 +40,7 @@ export function createGlabTransport(options: GlabTransportOptions): GitLabTransp
     const { status } = response
     if (status >= 200 && status < 300) return { status, body: parsed }
 
-    const message = `${host}: ${messageOf(parsed) ?? oneLine(result.stderr)}`
+    const message = `${host}: ${errorTextOf(parsed) ?? oneLine(result.stderr)}`
     if (status === 401) {
       throw new GitLabError('needs-you', `${message}. Run \`glab auth login --hostname ${host}\`.`, {
         status,
@@ -70,14 +70,17 @@ export function createGlabTransport(options: GlabTransportOptions): GitLabTransp
 }
 
 /**
- * Finds glab by absolute path. A worker forked early after a Dock launch has only Orca's seeded
- * PATH, without the user's shell additions (research #2), so the usual install folders are
- * tried after PATH. Relative PATH entries are skipped.
+ * Finds glab by absolute path. The "glab path" setting wins when set (null when it isn't
+ * executable: glab is missing). Otherwise: a worker forked early after a Dock launch has only
+ * Orca's seeded PATH, without the user's shell additions (research #2), so the usual install
+ * folders are tried after PATH. Relative PATH entries are skipped.
  */
 export function locateGlab(
   env: { PATH?: string; HOME?: string },
-  isExecutable: (path: string) => boolean
+  isExecutable: (path: string) => boolean,
+  configured: string | null = null
 ): string | null {
+  if (configured !== null) return isExecutable(configured) ? configured : null
   const dirs = [
     ...(env.PATH ?? '').split(':'),
     '/opt/homebrew/bin',
@@ -93,9 +96,11 @@ export function locateGlab(
 }
 
 function glabNotFound(): GitLabError {
-  return new GitLabError('needs-you', 'glab not found. Install it (brew install glab) and run `glab auth login`.', {
-    reason: 'glab-missing'
-  })
+  return new GitLabError(
+    'needs-you',
+    'glab not found. Install it (brew install glab) and run `glab auth login`, or set "glab path" in Settings.',
+    { reason: 'glab-missing' }
+  )
 }
 
 type Included ={ status: number; headers: Map<string, string>; body: string }

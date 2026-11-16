@@ -1,8 +1,11 @@
-// The worker's view of Orca's workspaces: one `orca worktree list` per poll (#7), kept until the
-// next one, and what it adds to each panel card (its Review Workspace, or why Start review can't
-// run). A failing CLI only disables these workspace features, never the poll (#15).
-import type { ReviewRequestCard, ReviewRequestsSnapshot } from '../protocol'
-import type { OrcaCli } from '../seams/orca-cli'
+// The worker's view of Orca's workspaces: one `orca worktree list` per poll (#7), plus one
+// `orca worktree ps` for their agents while any workspace is linked to an MR (#10), kept until
+// the next poll, and what it adds to each panel card (its Review Workspace, its Agent Review, or
+// why Start review can't run). A failing CLI only disables these workspace features, never the
+// poll (#15); a failing `ps` only drops the Agent Review line.
+import { messageOf } from '../errors'
+import type { AgentReviewView, ReviewRequestCard, ReviewRequestsSnapshot } from '../protocol'
+import type { OrcaCli, WorktreeAgent } from '../seams/orca-cli'
 import {
   findRepo,
   findReviewWorkspace,
@@ -15,7 +18,8 @@ import {
 export type WorkspaceState =
   /** No list yet (nothing polled). */
   | { kind: 'unknown' }
-  | { kind: 'listed'; index: WorkspaceIndex }
+  /** `agents`: by worktree id, from `orca worktree ps`; empty when it failed or wasn't asked. */
+  | { kind: 'listed'; index: WorkspaceIndex; agents: Map<string, WorktreeAgent[]> }
   /** The last `orca worktree list` failed; `reason` says why. */
   | { kind: 'unavailable'; reason: string }
 
@@ -27,13 +31,26 @@ export type WorkspaceTracker = {
 
 export function createWorkspaceTracker(cli: () => OrcaCli, log: (message: string) => void): WorkspaceTracker {
   let state: WorkspaceState = { kind: 'unknown' }
+
+  async function agentsOf(index: WorkspaceIndex): Promise<Map<string, WorktreeAgent[]>> {
+    const agents = new Map<string, WorktreeAgent[]>()
+    if (index.byUrl.size === 0 && !index.worktrees.some((w) => w.linkedGitLabMR !== null)) return agents
+    try {
+      for (const row of await cli().listAgents()) agents.set(row.worktreeId, row.agents)
+    } catch (error) {
+      log(`orca worktree ps failed: ${messageOf(error)}`)
+    }
+    return agents
+  }
+
   return {
     current: () => state,
     async refresh() {
       try {
-        state = { kind: 'listed', index: workspaceIndexOf(await cli().listWorktrees()) }
+        const index = workspaceIndexOf(await cli().listWorktrees())
+        state = { kind: 'listed', index, agents: await agentsOf(index) }
       } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error)
+        const reason = messageOf(error)
         log(`orca worktree list failed: ${reason}`)
         state = { kind: 'unavailable', reason }
       }
@@ -50,20 +67,44 @@ export function hasWorkspace(state: WorkspaceState, mr: MergeRequestRef): boolea
   return state.kind === 'listed' && hasReviewWorkspace(state.index, mr)
 }
 
-/** The snapshot with each card's Review Workspace and Start review hint filled in. */
-export function withWorkspaces(snapshot: ReviewRequestsSnapshot, state: WorkspaceState): ReviewRequestsSnapshot {
-  return { ...snapshot, reviewRequests: snapshot.reviewRequests.map((card) => decorate(card, state)) }
+/** A Review Draft's counts (#29, #30): unposted Review Comments, and the checked ones that post. */
+export type DraftCounts = { unposted: number; toPost: number }
+
+/** The snapshot with each card's Review Workspace, Agent Review and Start review hint filled in. */
+export function withWorkspaces(
+  snapshot: ReviewRequestsSnapshot,
+  state: WorkspaceState,
+  drafts: (url: string) => DraftCounts = () => ({ unposted: 0, toPost: 0 })
+): ReviewRequestsSnapshot {
+  return { ...snapshot, reviewRequests: snapshot.reviewRequests.map((card) => decorate(card, state, drafts)) }
 }
 
-function decorate(card: ReviewRequestCard, state: WorkspaceState): ReviewRequestCard {
-  if (state.kind === 'unknown') return { ...card, workspace: null, startBlocked: null }
+function decorate(
+  card: ReviewRequestCard,
+  state: WorkspaceState,
+  drafts: (url: string) => DraftCounts
+): ReviewRequestCard {
+  const none = { workspace: null, agentReview: null, toPost: 0 }
+  if (state.kind === 'unknown') return { ...card, ...none, startBlocked: null }
   if (state.kind === 'unavailable') {
-    return { ...card, workspace: null, startBlocked: `Workspaces are unavailable: ${state.reason}` }
+    return { ...card, ...none, startBlocked: `Workspaces are unavailable: ${state.reason}` }
   }
   const worktree = findReviewWorkspace(state.index, card)
+  const startBlocked = findRepo(state.index, card) ? null : `Add ${card.projectPath} to Orca to review here.`
+  if (!worktree) return { ...card, ...none, startBlocked }
+  const counts = drafts(card.url)
   return {
     ...card,
-    workspace: worktree && { id: worktree.id, name: worktree.displayName, path: worktree.path },
-    startBlocked: findRepo(state.index, card) ? null : `Add ${card.projectPath} to Orca to review here.`
+    workspace: { id: worktree.id, name: worktree.displayName, path: worktree.path },
+    startBlocked,
+    agentReview: agentReviewOf(state.agents.get(worktree.id) ?? [], counts.unposted),
+    toPost: counts.toPost
   }
+}
+
+/** Running while any agent works (or waits for permission); done once every one has finished. */
+function agentReviewOf(agents: WorktreeAgent[], commentsReady: number): AgentReviewView | null {
+  if (agents.length === 0) return null
+  const running = agents.some((a) => a.state === 'working' || a.state === 'blocked')
+  return { state: running ? 'running' : 'done', commentsReady }
 }

@@ -36,6 +36,13 @@ function usernameOf(entry: string): string | null {
   return USERNAME.test(name) ? name : null
 }
 
+/** What the three filter settings say, as one comparable value: a change re-polls (#26). */
+export type FiltersKey = string & { readonly __brand: 'FiltersKey' }
+
+export function filtersKeyOf(settings: FilterSettings): FiltersKey {
+  return JSON.stringify([settings.pathAllowlist, settings.pathBlocklist, settings.authorBlocklist]) as FiltersKey
+}
+
 /** The rules in the three settings, and the entries that are not valid rules (in order). */
 export function parseFilters(settings: FilterSettings): { filters: Filters; invalid: string[] } {
   const invalid: string[] = []

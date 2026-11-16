@@ -13,10 +13,13 @@ import {
   type Json
 } from '../seams/gitlab'
 import type {
+  PipelineStatus,
   ReviewRequestNode,
   ReviewRequestsResponse,
   ReviewState
 } from '../gitlab/review-requests-query'
+import type { DroppedMergeRequestResponse } from '../notify/explain-dropped'
+import type { ApprovalsResponse } from '../gitlab/approvals'
 import { FakeClock } from './fake-clock'
 
 export type MergeRequestSeed = {
@@ -34,6 +37,12 @@ export type MergeRequestSeed = {
   labels?: string[]
   /** When the seeded reviewers were added (ms); defaults to now. */
   requestedAt?: number
+  /** The head pipeline's status; none by default. */
+  pipeline?: PipelineStatus
+  /** Approvals the MR requires; 0 by default. */
+  approvalsRequired?: number
+  /** Comments by people on the MR; 0 by default. */
+  userNotesCount?: number
 }
 
 export type FakeMergeRequest = {
@@ -65,6 +74,11 @@ export type FakeMergeRequest = {
   refusedTexts: string[]
   /** Bodies of the plain notes posted (`POST …/notes`), quick actions removed. */
   notes: string[]
+  /** GitLab no longer shows it to the user (deleted, access lost). */
+  hidden: boolean
+  pipeline: PipelineStatus | null
+  approvalsRequired: number
+  userNotesCount: number
 }
 
 export type FakeVersion = { id: number; baseSha: string; startSha: string; headSha: string; createdAt: number }
@@ -83,6 +97,8 @@ export type FakeGitLabOptions = {
   pageSize?: number
   /** What `GET /version` reports. */
   version?: string
+  /** `ce`: the schema lacks the EE approval fields (`approvalsRequired`, `approvalsLeft`). */
+  edition?: 'ee' | 'ce'
 }
 
 export class FakeGitLab implements GitLabTransport {
@@ -91,6 +107,7 @@ export class FakeGitLab implements GitLabTransport {
   /** Every call made, in order, for assertions such as "nothing was fetched". */
   readonly requests: FakeRequest[] = []
   version: string
+  edition: 'ee' | 'ce'
 
   #clock: Clock
   #pageSize: number
@@ -112,6 +129,7 @@ export class FakeGitLab implements GitLabTransport {
     this.#clock = options.clock ?? new FakeClock()
     this.#pageSize = options.pageSize ?? 100
     this.version = options.version ?? '19.6.0'
+    this.edition = options.edition ?? 'ee'
   }
 
   // --- Arrange: shape the instance ---------------------------------------------------------
@@ -146,7 +164,11 @@ export class FakeGitLab implements GitLabTransport {
       reviews: [],
       outsideDiff: new Set(),
       refusedTexts: [],
-      notes: []
+      notes: [],
+      hidden: false,
+      pipeline: seed.pipeline ?? null,
+      approvalsRequired: seed.approvalsRequired ?? 0,
+      userNotesCount: seed.userNotesCount ?? 0
     }
     this.#addVersion(mr)
     this.#mergeRequests.push(mr)
@@ -166,6 +188,11 @@ export class FakeGitLab implements GitLabTransport {
 
   close(projectPath: string, iid: number): void {
     this.#touch(Object.assign(this.#find(projectPath, iid), { state: 'closed' as const }))
+  }
+
+  /** The user loses access (or the MR is deleted): GitLab no longer shows it to them. */
+  hide(projectPath: string, iid: number): void {
+    this.#find(projectPath, iid).hidden = true
   }
 
   markDraft(projectPath: string, iid: number, draft = true): void {
@@ -266,10 +293,23 @@ export class FakeGitLab implements GitLabTransport {
   async graphql<T>(query: string, variables: Record<string, Json> = {}): Promise<T> {
     const name = /^\s*query\s+(\w+)/.exec(query)?.[1] ?? 'anonymous'
     this.requests.push({ operation: `graphql ${name}`, variables })
-    this.#maybeFail()
+    // The optional approvals query never takes a failNext() error, so tests that queue failures
+    // for polls keep their order.
+    if (name !== 'ReviewRequestApprovals') this.#maybeFail()
+    if (this.edition === 'ce') {
+      const unknown = /\b(approvalsRequired|approvalsLeft)\b/.exec(query)?.[1]
+      if (unknown) {
+        // As GitLab answers a query with a field its schema lacks: HTTP 200 with `errors`.
+        throw new GitLabError('rejected', `Field '${unknown}' doesn't exist on type 'MergeRequest'`, { status: 200 })
+      }
+    }
     switch (name) {
       case 'ReviewRequests':
         return this.#reviewRequests(variables) as T
+      case 'DroppedMergeRequest':
+        return this.#droppedMergeRequest(variables) as T
+      case 'ReviewRequestApprovals':
+        return this.#approvals(variables) as T
       default:
         throw new GitLabError('rejected', `fake GitLab does not know the query ${name}`, {
           status: 400
@@ -315,6 +355,27 @@ export class FakeGitLab implements GitLabTransport {
     }
   }
 
+  /** The optional approvals query (gitlab/approvals.ts): same list, approval fields only. */
+  #approvals(variables: Record<string, Json>): ApprovalsResponse {
+    const { currentUser } = this.#reviewRequests(variables)
+    const page = currentUser.reviewRequestedMergeRequests
+    return {
+      currentUser: {
+        reviewRequestedMergeRequests: {
+          pageInfo: page.pageInfo,
+          nodes: page.nodes.map((node) => {
+            const mr = this.#mergeRequests.find((m) => this.#webUrl(m) === node.webUrl)!
+            return {
+              webUrl: node.webUrl,
+              approvalsRequired: mr.approvalsRequired,
+              approvalsLeft: Math.max(0, mr.approvalsRequired - mr.approvedBy.length)
+            }
+          })
+        }
+      }
+    }
+  }
+
   #reviewRequests(variables: Record<string, Json>): ReviewRequestsResponse {
     const me = typeof variables.me === 'string' ? variables.me : this.me
     const all = this.#mergeRequests
@@ -322,6 +383,7 @@ export class FakeGitLab implements GitLabTransport {
         (mr) =>
           mr.state === 'opened' &&
           !mr.draft &&
+          !mr.hidden &&
           mr.reviewers.includes(this.me) &&
           !mr.approvedBy.includes(me)
       )
@@ -336,6 +398,24 @@ export class FakeGitLab implements GitLabTransport {
           count: all.length,
           pageInfo: { hasNextPage, endCursor: nodes.length ? String(offset + nodes.length) : null },
           nodes: nodes.map((mr) => this.#node(mr))
+        }
+      }
+    }
+  }
+
+  /** One merge request's state, draft, approvals and reviewers (#7); null where it is hidden. */
+  #droppedMergeRequest(variables: Record<string, Json>): DroppedMergeRequestResponse {
+    const mr = this.#mergeRequests.find(
+      (m) => m.projectPath === variables.project && String(m.iid) === variables.iid && !m.hidden
+    )
+    if (!mr) return { project: null }
+    return {
+      project: {
+        mergeRequest: {
+          state: mr.state,
+          draft: mr.draft,
+          approvedBy: { nodes: mr.approvedBy.map((username) => ({ username })) },
+          reviewers: { nodes: mr.reviewers.map((username) => ({ username })) }
         }
       }
     }
@@ -367,7 +447,9 @@ export class FakeGitLab implements GitLabTransport {
             reviewed: (mr.reviewStates[username] ?? 'UNREVIEWED') !== 'UNREVIEWED'
           }
         }))
-      }
+      },
+      userNotesCount: mr.userNotesCount,
+      headPipeline: mr.pipeline === null ? null : { status: mr.pipeline }
     }
   }
 

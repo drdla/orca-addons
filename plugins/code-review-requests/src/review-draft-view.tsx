@@ -23,7 +23,8 @@ import {
   update
 } from 'orca'
 import type { ReviewCommentView, ReviewDraftView } from './protocol'
-import { PostSection, resetPosting, setupPosting } from './review-post-view'
+import { openConfirm, PostSection, resetPosting, setupPosting } from './review-post-view'
+import { messageOf } from './errors'
 
 /** The Review Request whose draft is open (its MR URL), or null for the tabs. Kept across reloads. */
 const draftUrl = atom<string | null>('rr.draftUrl', null, { persist: 'plugin' })
@@ -35,10 +36,6 @@ const importing = atom(false)
 const edits = atom<Record<string, string>>({})
 /** Per-comment errors, by comment id. */
 const commentErrors = atom<Record<string, string>>({})
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 /** Is a Review Draft open (the panel shows it instead of the tabs)? */
 export function isReviewDraftOpen(): boolean {
@@ -59,6 +56,12 @@ export function openReviewDraft(url: string): void {
   set(commentErrors, {})
   resetPosting()
   importDraft()
+}
+
+/** A card's "Post N to GitLab" (#10): the Review Draft, opened at its confirm step. */
+export function openReviewDraftToPost(url: string): void {
+  openReviewDraft(url)
+  openConfirm(url)
 }
 
 function closeReviewDraft(): void {

@@ -4,7 +4,7 @@
 //
 // The token must never reach a message, a log or the panel: every error text passes redact().
 import { GitLabError, type GitLabTransport, type HttpMethod, type Json } from '../seams/gitlab'
-import { messageOf, parseBody, redact, retryAfter } from './http-response'
+import { errorTextOf, parseBody, redact, retryAfter } from './http-response'
 
 export type FetchInit = { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }
 export type FetchResponse = { status: number; headers: { get(name: string): string | null }; text(): Promise<string> }
@@ -46,7 +46,7 @@ export function createTokenTransport(options: TokenTransportOptions): GitLabTran
     const { status } = response
     if (status >= 200 && status < 300) return { status, body: parsed }
 
-    const message = `${host}: ${messageOf(parsed) ?? `HTTP ${status}`}`
+    const message = `${host}: ${errorTextOf(parsed) ?? `HTTP ${status}`}`
     if (status === 401) {
       throw fail('needs-you', `${message}. The token was rejected (expired or revoked).`, { status, reason: 'token-rejected' })
     }

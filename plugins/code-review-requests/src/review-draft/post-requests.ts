@@ -13,6 +13,8 @@ export function registerPostRequests(
     /** The cards a Review Draft can belong to (Review Requests and Ended ones). */
     cards: () => ReviewRequestCard[]
     connection: () => Promise<PostConnection>
+    /** After posting or deleting failed drafts changed a Review Draft. */
+    onChanged?: () => Promise<void>
   }
 ): void {
   const { drafts } = options
@@ -37,11 +39,13 @@ export function registerPostRequests(
   orca.panels.handle('rr.postReview', async ({ url, summary, outcome }) => {
     const card = cardOf(url)
     const result = await poster.post(card, { summary, outcome })
+    await options.onChanged?.()
     return { ...result, draft: await draftView(card) }
   })
   orca.panels.handle('rr.deleteFailedDrafts', async ({ url }) => {
     const card = cardOf(url)
     await poster.deleteFailedDrafts(card)
+    await options.onChanged?.()
     return draftView(card)
   })
 }

@@ -1,13 +1,10 @@
 // Review Workspaces end to end through the worker (#27): finding them on each poll, Start review
-// (with or without an Agent Review), Open workspace and Run agent review. GitLab, the orca CLI,
+// (with or without an Agent Review), Open workspace and Run Agent Review. GitLab, the orca CLI,
 // git and the clock are fakes; Orca's host is the kit's mock host.
-import { assert, mockHost, mountWorker, test } from 'orca/testing'
+import { assert, mockHost, test } from 'orca/testing'
 import { fakeDeps, type Fakes } from './fakes'
 import { OrcaCliError } from './seams/orca-cli'
-import { createWorker } from './worker'
-
-const MINUTE = 60_000
-const CONFIGURED = { instanceUrl: 'https://gitlab.example.com', pollMinutes: 5 }
+import { CONFIGURED, MINUTE, startWorker as startHarness } from './testing/worker-harness'
 const MR_URL = 'https://gitlab.example.com/acme/api/-/merge_requests/7'
 const REPO = { repoId: 'repo-api', projectId: 'git:gitlab.example.com/acme/api', path: '/src/api' }
 
@@ -30,8 +27,9 @@ async function startWorker(
   fakes: Fakes,
   options: { settings?: Record<string, string | number>; workspaces?: string[] } = {}
 ) {
+  const settings = { ...CONFIGURED, ...options.settings }
   const host = mockHost({
-    settings: { ...CONFIGURED, ...options.settings },
+    settings,
     results: {
       'workspace.list': workspaceList(...(options.workspaces ?? [])),
       'agent.launch': { terminalId: 'term-agent' },
@@ -39,9 +37,7 @@ async function startWorker(
       'workspace.open': { opened: true }
     }
   })
-  const worker = await mountWorker(createWorker(fakes.deps), { host })
-  await fakes.clock.advance(0)
-  return { host, worker }
+  return startHarness(fakes, settings, host)
 }
 
 function addReviewRequest(fakes: Fakes) {
@@ -184,7 +180,7 @@ test('with a custom review command, the Agent Review runs it in a new terminal i
   await worker.deactivate()
 })
 
-test('Open workspace and Run agent review act on the existing Review Workspace', async () => {
+test('Open workspace and Run Agent Review act on the existing Review Workspace', async () => {
   const fakes = fakeDeps()
   addReviewRequest(fakes)
   fakes.cli.addRepo(REPO)

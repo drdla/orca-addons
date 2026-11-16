@@ -20,7 +20,7 @@ test('a token stored for the configured host means token mode', async () => {
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api' })
   const { host, worker } = await startWorker(fakes, CONFIGURED, hostWith({ [KEY]: TOKEN }))
 
-  assert.deepEqual(fakes.connections.at(-1), { host: 'gitlab.example.com', token: TOKEN })
+  assert.deepEqual(fakes.connections.at(-1), { host: 'gitlab.example.com', token: TOKEN, glabPath: null })
   assert.equal(lastStatusBar(host)?.text, '1')
   await worker.deactivate()
 })
@@ -106,7 +106,7 @@ test('a valid token is stored per host on save, and polling switches to it at on
   assert.deepEqual(Object.keys(host.data().storage).filter((k) => JSON.stringify(host.data().storage[k]).includes(TOKEN)), [])
   assert.deepEqual(Object.values(host.data().settings).filter((v) => String(v).includes(TOKEN)), [])
   assert.equal(reviewRequestPolls(fakes), pollsBefore + 1)
-  assert.deepEqual(fakes.connections.at(-1), { host: 'gitlab.example.com', token: TOKEN })
+  assert.deepEqual(fakes.connections.at(-1), { host: 'gitlab.example.com', token: TOKEN, glabPath: null })
   await worker.deactivate()
 })
 

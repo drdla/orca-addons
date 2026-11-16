@@ -1,6 +1,7 @@
 // Contract tests for the real OrcaCli adapter: argv out, real envelopes (fixtures) in.
 import { assert, test } from 'orca/testing'
 import { worktreeListEnvelope, worktreeShowEnvelope, worktreeShowErrorEnvelope } from './fixtures/orca-cli-captures'
+import { worktreePsEnvelope } from './fixtures/orca-cli-ps-capture'
 import { createOrcaCli, type OrcaRun } from './orca-cli-process'
 import { OrcaCliError } from './seams/orca-cli'
 
@@ -23,6 +24,18 @@ test('lists worktrees with one `orca worktree list --json` and returns its rows'
   assert.deepEqual(calls, [['worktree', 'list', '--limit', '10000', '--json']])
   assert.equal(rows.length, worktreeListEnvelope.result.worktrees.length)
   assert.equal(rows[0]!.projectId, worktreeListEnvelope.result.worktrees[0]!.projectId)
+})
+
+test("lists each worktree's agents with one `orca worktree ps --json`", async () => {
+  const { calls, cli } = runner(ok(worktreePsEnvelope))
+
+  const rows = await cli.listAgents()
+
+  assert.deepEqual(calls, [['worktree', 'ps', '--limit', '10000', '--json']])
+  assert.deepEqual(rows, [
+    { worktreeId: worktreePsEnvelope.result.worktrees[0]!.worktreeId, agents: worktreePsEnvelope.result.worktrees[0]!.agents }
+  ])
+  assert.equal(rows[0]!.agents[0]!.state, 'working')
 })
 
 test('shows a worktree by selector', async () => {

@@ -193,7 +193,7 @@ test('a refused post says why and keeps the confirm step open', async () => {
   await view.press(view.find({ type: 'Button', text: 'Post 2 to GitLab' })!)
   await view.press(view.find({ type: 'Button', text: 'Post review' })!)
 
-  assert.ok(view.find({ type: 'Callout', label: "Couldn't post the review" }))
+  assert.ok(view.find({ type: 'Callout', label: "Couldn't post the Review Draft" }))
   assert.ok(view.find({ text: /needs a token with the api scope/ }))
   assert.ok(view.find({ type: 'Heading', text: 'Post review' }))
   await view.unmount()

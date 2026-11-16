@@ -7,8 +7,10 @@ import {
   type CreateWorktreeInput,
   type OrcaCli,
   type Worktree,
+  type WorktreeAgents,
   type WorktreeDetail
 } from './seams/orca-cli'
+import { messageOf } from './errors'
 
 export const ORCA_BIN = '/Applications/Orca.app/Contents/Resources/bin/orca'
 /** Creating a workspace runs Orca's setup; give it time. */
@@ -47,6 +49,10 @@ export function createOrcaCli(run: RunOrca): OrcaCli {
       const result = await call<{ worktrees: Worktree[] }>(['worktree', 'list', '--limit', LIST_LIMIT])
       return result.worktrees
     },
+    async listAgents() {
+      const result = await call<{ worktrees: WorktreeAgents[] }>(['worktree', 'ps', '--limit', LIST_LIMIT])
+      return result.worktrees.map((row) => ({ worktreeId: row.worktreeId, agents: row.agents ?? [] }))
+    },
     async showWorktree(selector) {
       return (await call<{ worktree: WorktreeDetail }>(['worktree', 'show', '--worktree', selector])).worktree
     },
@@ -80,10 +86,6 @@ function createArgs(input: CreateWorktreeInput): string[] {
   if (input.noParent) args.push('--no-parent')
   if (input.activate) args.push('--activate')
   return args
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 /** Spawns the real CLI. */

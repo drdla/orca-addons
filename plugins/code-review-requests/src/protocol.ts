@@ -14,6 +14,22 @@ export type ReviewRequestView = {
   /** The MR's branches, for the Review Prompt (#27); absent in views stored before #27. */
   sourceBranch?: string
   targetBranch?: string
+  /** The CI badge (#10): the head pipeline's outcome, or null without one (or canceled, skipped…). */
+  ci?: CiStatus | null
+  /** The approvals badge, `given/required`; null when the MR requires none. */
+  approvals?: { given: number; required: number } | null
+  /** The comments badge: comments by people on the MR. */
+  comments?: number
+}
+
+export type CiStatus = 'passed' | 'failed' | 'running'
+
+/** An Agent Review in a Review Workspace (#10), from `orca worktree ps`. */
+export type AgentReviewView = {
+  /** An agent is working (or waiting for permission), or every agent has finished its turn. */
+  state: 'running' | 'done'
+  /** Review Comments in the Review Draft that aren't posted yet. */
+  commentsReady: number
 }
 
 /** A Review Workspace (#27): the Orca workspace linked to a Review Request's MR. */
@@ -25,7 +41,7 @@ export type ReviewWorkspaceView = {
 }
 
 /** Why a Review Request ended (#28); a Review Request made draft is not Ended. */
-export type EndedReason = 'approved' | 'merged' | 'closed' | 'unassigned' | 'gone'
+export type EndedReason = 'approved' | 'merged' | 'closed' | 'unassigned'
 
 /** An Ended Review Request that still has its Review Workspace (#7, #28): the Ended tab's cards. */
 export type EndedCard = ReviewRequestView & {
@@ -53,6 +69,12 @@ export type ReviewRequestCard = ReviewRequestView & {
   workspace?: ReviewWorkspaceView | null
   /** Why Start review can't run for it (no Orca repo, the orca CLI is broken), or null (#27). */
   startBlocked?: string | null
+  /** Appeared since the panel was opened before this time (#10): the New badge and accent border. */
+  isNew?: boolean
+  /** The Agent Review in its Review Workspace, or null when no agent ran there (#10). */
+  agentReview?: AgentReviewView | null
+  /** Checked, unposted Review Comments in its Review Draft: "Post N to GitLab" on the card (#10). */
+  toPost?: number
 }
 
 export type ReviewRequestsSnapshot = {
@@ -86,6 +108,11 @@ export type GitLabProblemView =
       version: string | null
       /** The raw error, for the Details disclosure. */
       message: string
+      /**
+       * While glab is logged out of `host`: the other hosts it is logged in to, each offered as
+       * "Use <host>" (#8). Absent or empty means none.
+       */
+      glabHosts?: string[]
     }
   | {
       /** The last poll failed transiently; the list is the last good one and a retry is due. */
@@ -201,6 +228,18 @@ declare module 'orca' {
     'rr.refresh': { output: ReviewRequestsSnapshot }
     /** Puts a Review Request's link on the clipboard (panels have no clipboard API). */
     'rr.copyLink': { input: { url: string }; output: { copied: true } }
+    /** Puts any text on the clipboard, such as the setup checklist's glab login command (#8). */
+    'rr.copyText': { input: { text: string }; output: { copied: true } }
+    /**
+     * The panel was opened (#10): its Review Requests count as seen for the bell's "M new", and
+     * at the next opening they lose the New badge.
+     */
+    'rr.markSeen': { output: { seen: true } }
+    /**
+     * The setup checklist's "Use <host>" (#8): points the instance URL setting at `host` (one glab
+     * is logged in to) and polls it at once. Answers the new snapshot.
+     */
+    'rr.useHost': { input: { host: string }; output: ReviewRequestsSnapshot }
     /**
      * Creates the Review Workspace for a Review Request through the orca CLI, linked to its MR,
      * then starts an Agent Review in it if `withAgent` (#27). Answers the new snapshot.

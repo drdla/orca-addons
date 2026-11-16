@@ -21,6 +21,7 @@ import {
 } from 'orca'
 import { canPostReviews } from './connection-section'
 import type { PostPreview, PostResult, ReviewDraftView, ReviewOutcome } from './protocol'
+import { messageOf } from './errors'
 
 export type PostStep =
   | { kind: 'idle' }
@@ -48,10 +49,6 @@ const OUTCOMES: { value: ReviewOutcome; label: string }[] = [
 ]
 
 export const API_SCOPE_HINT = 'Posting a review needs a token with the api scope.'
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 function count(n: number): string {
   return n === 1 ? '1 Review Comment' : `${n} Review Comments`
@@ -81,7 +78,8 @@ export function setupPosting(): void {
   if (current.kind === 'confirm' && current.postingSince !== null && !isPosting(current)) set(step, { kind: 'idle' })
 }
 
-function openConfirm(url: string): void {
+/** Opens the confirm step for a Review Draft (also from a card's "Post N to GitLab", #10). */
+export function openConfirm(url: string): void {
   set(step, { kind: 'loading' })
   set(failure, null)
   plugin
@@ -158,7 +156,7 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
         <Confirm preview={current.preview} posting={isPosting(current)} onDraft={onDraft} />
       )}
       {error !== null && (
-        <Callout tone="danger" icon="error" title="Couldn't post the review">
+        <Callout tone="danger" icon="error" title="Couldn't post the Review Draft">
           {error}
         </Callout>
       )}

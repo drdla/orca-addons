@@ -1,13 +1,11 @@
 // The Ended tab and Review Workspace removal end to end through the worker (#28, decided in #7):
 // which Ended Review Requests are listed, manual removal with its checks and confirmation, and
 // auto-removal. GitLab, the orca CLI, git and the clock are fakes; Orca's host is the kit's mock.
-import { assert, mockHost, mountWorker, test } from 'orca/testing'
-import { fakeDeps, type Fakes } from './fakes'
-import { createWorker } from './worker'
+import { assert, mockHost, test } from 'orca/testing'
+import { fakeDeps, FakeGitLab, type Fakes } from './fakes'
+import { CONFIGURED, MINUTE, startWorker } from './testing/worker-harness'
 
-const MINUTE = 60_000
 const DAY = 24 * 60 * MINUTE
-const CONFIGURED = { instanceUrl: 'https://gitlab.example.com', pollMinutes: 5 }
 const MR_URL = 'https://gitlab.example.com/acme/api/-/merge_requests/7'
 const REPO = { repoId: 'repo-api', projectId: 'git:gitlab.example.com/acme/api', path: '/src/api' }
 const WT_PATH = '/wt/review-api-7'
@@ -42,10 +40,8 @@ function hostWith(status: () => WorkspaceStatus, settings: Record<string, string
 
 const idle = (): WorkspaceStatus => ({ state: 'inactive', terminalCount: 0 })
 
-async function start(fakes: Fakes, host = hostWith(idle)) {
-  const worker = await mountWorker(createWorker(fakes.deps), { host })
-  await fakes.clock.advance(0)
-  return { host, worker }
+function start(fakes: Fakes, host = hostWith(idle)) {
+  return startWorker(fakes, CONFIGURED, host)
 }
 
 /** A Review Request !7 with a Review Workspace, and !8 without one. */
@@ -131,6 +127,42 @@ test('merged, closed and reviewer-removed Review Requests are Ended too, most re
       [7, 'merged']
     ]
   )
+  await worker.deactivate()
+})
+
+test('a Review Request GitLab no longer shows the user is never Ended: no entry, no auto-removal', async () => {
+  const fakes = fakeDeps()
+  arrange(fakes)
+  const { worker } = await start(fakes)
+
+  fakes.gitlab.close('acme/api', 7)
+  fakes.gitlab.hide('acme/api', 7)
+  await fakes.clock.advance(3 * DAY)
+
+  assert.equal((await worker.request('rr.snapshot')).ended, undefined)
+  assert.deepEqual(removals(fakes), [])
+  await worker.deactivate()
+})
+
+test("after the instance URL changes, the old host's Ended entries are neither shown nor auto-removed", async () => {
+  const fakes = fakeDeps()
+  arrange(fakes)
+  const other = new FakeGitLab({ clock: fakes.clock, host: 'gitlab.other.com' })
+  const gitLab = fakes.deps.gitLab
+  fakes.deps.gitLab = (connection) => (connection.host === 'gitlab.other.com' ? other : gitLab(connection))
+  const { worker, changeSetting } = await startWorker(fakes, CONFIGURED, hostWith(idle))
+  fakes.gitlab.approve('acme/api', 7)
+  await fakes.clock.advance(5 * MINUTE)
+  assert.deepEqual((await worker.request('rr.snapshot')).ended?.map((e) => e.iid), [7])
+
+  await changeSetting('instanceUrl', 'https://gitlab.other.com')
+  await fakes.clock.advance(3 * DAY)
+
+  assert.equal((await worker.request('rr.snapshot')).ended, undefined)
+  assert.deepEqual(removals(fakes), [])
+
+  await changeSetting('instanceUrl', CONFIGURED.instanceUrl)
+  assert.deepEqual(removals(fakes), [{ selector: `id:${WT_ID}`, deleteBranch: true }], 'due again on its host')
   await worker.deactivate()
 })
 

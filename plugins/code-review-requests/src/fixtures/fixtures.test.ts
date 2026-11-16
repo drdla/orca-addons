@@ -8,12 +8,16 @@ import {
   draftNoteFromDocs,
   mergeRequestNoteFromDocs,
   mergeRequestVersionFromDocs,
-  personalAccessTokenFromDocs
+  approvalsNodeFromDocs,
+  personalAccessTokenFromDocs,
+  reviewRequestNodeBadgesFromDocs
 } from './gitlab-docs-shapes'
 import { mergeRequestBody, reviewRequestsBody } from './gitlab-captures'
 import { mergeRequestReviewersBody } from './gitlab-reviewers-capture'
 import { worktreeListEnvelope, worktreeShowEnvelope, worktreeShowErrorEnvelope } from './orca-cli-captures'
+import { worktreePsEnvelope } from './orca-cli-ps-capture'
 import { shapeMismatches } from './shape'
+import { REVIEW_REQUEST_APPROVALS_QUERY, type ApprovalsResponse } from '../gitlab/approvals'
 
 // Compile-time half of the contract: the captures fit the types the plugin reads them as.
 const _rr: ReviewRequestsResponse = reviewRequestsBody.data as ReviewRequestsResponse
@@ -28,9 +32,39 @@ function seeded(): FakeGitLab {
 }
 
 test('the fake answers the Review Requests query in the shape GitLab does', async () => {
-  const response = await seeded().graphql(REVIEW_REQUESTS_QUERY, { me: 'me' })
+  const gitlab = seeded()
+  gitlab.addMergeRequest({ projectPath: 'acme/api', pipeline: 'FAILED', approvalsRequired: 1 })
+  const response = await gitlab.graphql(REVIEW_REQUESTS_QUERY, { me: 'me' })
 
-  assert.deepEqual(shapeMismatches(response, reviewRequestsBody.data, { exact: true }), [])
+  // The capture predates the badge fields (#10); their shape comes from the GraphQL docs.
+  const page = reviewRequestsBody.data.currentUser.reviewRequestedMergeRequests
+  const real = {
+    currentUser: {
+      ...reviewRequestsBody.data.currentUser,
+      reviewRequestedMergeRequests: {
+        ...page,
+        nodes: page.nodes.map((node) => ({ ...node, ...reviewRequestNodeBadgesFromDocs }))
+      }
+    }
+  }
+  assert.deepEqual(shapeMismatches(response, real, { exact: true }), [])
+})
+
+test('the fake answers the optional approvals query in the documented shape', async () => {
+  const gitlab = seeded()
+  gitlab.addMergeRequest({ projectPath: 'acme/api', approvalsRequired: 1 })
+  const response = await gitlab.graphql<ApprovalsResponse>(REVIEW_REQUEST_APPROVALS_QUERY, { me: 'me' })
+
+  const real = { pageInfo: { hasNextPage: false, endCursor: 'x' }, nodes: [approvalsNodeFromDocs] }
+  assert.deepEqual(shapeMismatches(response.currentUser.reviewRequestedMergeRequests, real, { exact: true }), [])
+})
+
+test("the fake lists worktrees' agents in the shape `orca worktree ps` does", async () => {
+  const cli = new FakeOrcaCli()
+  const row = cli.addWorktree({ name: 'review', references: [] })
+  cli.setAgents(row.id, ['done'])
+
+  assert.deepEqual(shapeMismatches(await cli.listAgents(), worktreePsEnvelope.result.worktrees), [])
 })
 
 test('the fake merge request carries only fields GitLab sends, diff_refs included', async () => {

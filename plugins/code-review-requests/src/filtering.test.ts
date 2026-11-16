@@ -1,46 +1,15 @@
 // Filters end to end (#26), through the worker's public surface: a configured worker over the fake
 // GitLab and fake clock, observed through the bell, rr.snapshot and notifications.show. The rules
 // themselves are in filters.test.ts.
-import { assert, mockHost, mountWorker, test } from 'orca/testing'
-import type { OrcaWorkerApi } from 'orca/worker'
+import { assert, test } from 'orca/testing'
 import { fakeDeps, type Fakes } from './fakes'
-import { createWorker } from './worker'
-
-const MINUTE = 60_000
-const CONFIGURED = { instanceUrl: 'https://gitlab.example.com', pollMinutes: 5 }
+import { CONFIGURED, MINUTE, startWorker as startHarness } from './testing/worker-harness'
 
 type Note = { title: string; body?: string }
 
 /** A configured worker whose settings changes reach it (the kit never fires onDidChange). */
 async function startWorker(fakes: Fakes, settings: Record<string, string | number>) {
-  const module = createWorker(fakes.deps)
-  const listeners: ((change: { key: string }) => unknown)[] = []
-  let orca: OrcaWorkerApi | undefined
-  const host = mockHost({ settings: { ...CONFIGURED, ...settings } })
-  const worker = await mountWorker(
-    {
-      default: (api: OrcaWorkerApi) => {
-        orca = api
-        // The kit's api objects are frozen, so wrap with copies rather than patching them.
-        const settingsApi = {
-          ...api.settings,
-          onDidChange(listener: (change: { key: string }) => void) {
-            listeners.push(listener)
-            return { dispose: () => void listeners.splice(listeners.indexOf(listener), 1) }
-          }
-        } as OrcaWorkerApi['settings']
-        return module.default({ ...api, settings: settingsApi })
-      },
-      deactivate: module.deactivate
-    },
-    { host }
-  )
-  await fakes.clock.advance(0)
-  const changeSetting = async (key: string, value: string | number) => {
-    await orca!.settings.set(key, value)
-    for (const listener of [...listeners]) await listener({ key })
-    await fakes.clock.advance(0)
-  }
+  const { host, worker, changeSetting } = await startHarness(fakes, { ...CONFIGURED, ...settings })
   const bell = () => host.callsOf('statusBar.update').at(-1) as { text?: string; visible?: boolean } | undefined
   const notes = () => host.callsOf('notifications.show') as Note[]
   return { host, worker, changeSetting, bell, notes }

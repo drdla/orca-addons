@@ -186,6 +186,15 @@ test('glab is located by absolute path: on PATH first, then where installers put
   assert.equal(locateGlab(env, installed('relative/bin/glab')), null)
 })
 
+test('a "glab path" setting wins over probing; one that is not executable means glab is missing', () => {
+  const env = { PATH: '/usr/bin', HOME: '/Users/me' }
+  const installed = (...paths: string[]) => (path: string) => paths.includes(path)
+
+  assert.equal(locateGlab(env, installed('/tools/glab', '/opt/homebrew/bin/glab'), '/tools/glab'), '/tools/glab')
+  assert.equal(locateGlab(env, installed('/opt/homebrew/bin/glab'), '/tools/glab'), null)
+  assert.equal(locateGlab(env, installed('/opt/homebrew/bin/glab'), null), '/opt/homebrew/bin/glab')
+})
+
 test('when glab gets no HTTP response at all (offline, DNS), the failure is Transient', async () => {
   const glab = stubGlab({
     exitCode: 1,

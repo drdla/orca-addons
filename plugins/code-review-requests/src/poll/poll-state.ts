@@ -8,13 +8,16 @@
 // A failed poll keeps the last good list (#15): only lastAttemptAt and lastError move.
 import type { ReviewRequestView, ReviewRequestsSnapshot } from '../protocol'
 import type { Disposable } from '../seams/clock'
+import { messageOf } from '../errors'
 import { cardsOf, type OverdueContext } from '../to-review'
 
 export type PollOutcome =
-  | { ok: true; at: number; reviewRequests: ReviewRequestView[]; hidden?: ReviewRequestView[] }
+  | { ok: true; at: number; host: string; reviewRequests: ReviewRequestView[]; hidden?: ReviewRequestView[] }
   | { ok: false; at: number; error: unknown }
 
 export type PollState = {
+  /** The GitLab host the last good list came from, or null before the first one. */
+  host: string | null
   /** The last good list; empty until the first poll succeeds. */
   reviewRequests: ReviewRequestView[]
   /** The rest of the last good list: what the filters hide (#26). Not counted or shown anywhere. */
@@ -41,6 +44,7 @@ export type PollStateStore = {
 }
 
 export const INITIAL_POLL_STATE: PollState = {
+  host: null,
   reviewRequests: [],
   hidden: [],
   lastSuccessAt: null,
@@ -60,7 +64,7 @@ export function createPollState(log: (message: string) => void = () => {}): Poll
       try {
         await listener(...args)
       } catch (error) {
-        log(`poll listener failed: ${error instanceof Error ? error.message : String(error)}`)
+        log(`poll listener failed: ${messageOf(error)}`)
       }
     }
   }
@@ -76,6 +80,7 @@ export function createPollState(log: (message: string) => void = () => {}): Poll
       if (outcome.ok) {
         const previous = state.lastSuccessAt === null ? null : state
         state = {
+          host: outcome.host,
           reviewRequests: outcome.reviewRequests,
           hidden: outcome.hidden ?? [],
           lastSuccessAt: outcome.at,

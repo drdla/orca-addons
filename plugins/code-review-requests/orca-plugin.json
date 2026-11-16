@@ -46,6 +46,14 @@
         "placeholder": "https://gitlab.com"
       },
       {
+        "key": "glabPath",
+        "title": "glab path",
+        "type": "string",
+        "description": "The full path of the glab command, for example /opt/homebrew/bin/glab. Blank looks for it on PATH and in the usual install folders (/opt/homebrew/bin, /usr/local/bin, ~/.local/bin).",
+        "default": "",
+        "placeholder": "/opt/homebrew/bin/glab"
+      },
+      {
         "key": "pollMinutes",
         "title": "Refresh every (minutes)",
         "type": "integer",

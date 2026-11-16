@@ -156,6 +156,50 @@ test('Needs you stops polling and shows "GitLab: set up" in place of the bell', 
   await worker.deactivate()
 })
 
+test('logged out of the configured host: the checklist offers the other hosts glab is logged in to', async () => {
+  const fakes = fakeDeps()
+  fakes.glab.loggedIn = ['gitlab.com', 'gitlab.example.com', 'gitlab.other.com']
+  fakes.gitlab.failNext(loggedOut())
+  const { worker } = await startWorker(fakes)
+
+  const problem = (await worker.request('rr.snapshot')).gitlab
+  assert.equal(problem?.status === 'needs-you' && problem.reason, 'logged-out')
+  assert.deepEqual(problem?.status === 'needs-you' ? problem.glabHosts : null, ['gitlab.com', 'gitlab.other.com'])
+  await worker.deactivate()
+})
+
+test('nothing asks glab which hosts it is logged in to until a poll finds it logged out', async () => {
+  const fakes = fakeDeps()
+  const { worker } = await startWorker(fakes)
+
+  assert.equal(fakes.glab.statusChecks, 0)
+  await worker.deactivate()
+})
+
+test('Use <host> points the instance URL at that host and polls it at once', async () => {
+  const fakes = fakeDeps()
+  fakes.glab.loggedIn = ['gitlab.other.com']
+  fakes.gitlab.failNext(loggedOut())
+  const { host, worker } = await startWorker(fakes)
+
+  await worker.request('rr.useHost', { host: 'gitlab.other.com' })
+
+  assert.equal(host.data().settings.instanceUrl, 'https://gitlab.other.com')
+  assert.equal(fakes.connections.at(-1)?.host, 'gitlab.other.com')
+  assert.equal((await worker.request('rr.snapshot')).gitlab, undefined)
+  await worker.deactivate()
+})
+
+test('rr.copyText puts the text on the clipboard', async () => {
+  const fakes = fakeDeps()
+  const { worker } = await startWorker(fakes)
+
+  await worker.request('rr.copyText', { text: 'glab auth login --hostname gitlab.example.com' })
+
+  assert.deepEqual(fakes.desktop.clipboard, ['glab auth login --hostname gitlab.example.com'])
+  await worker.deactivate()
+})
+
 test('the first run sends no notification for Needs you: the status bar covers it', async () => {
   const fakes = fakeDeps()
   fakes.gitlab.failNext(loggedOut())

@@ -1,28 +1,9 @@
 // The poll loop end to end, through the worker's public surface: a configured worker over the
 // fake GitLab and fake clock, observed through the status bar, its commands and rr.snapshot.
-import { assert, mockHost, mountWorker, test } from 'orca/testing'
-import type { OrcaWorkerApi } from 'orca/worker'
-import { fakeDeps, type Fakes } from './fakes'
+import { assert, test } from 'orca/testing'
+import { fakeDeps } from './fakes'
 import { GitLabError } from './seams/gitlab'
-import { createWorker } from './worker'
-
-const MINUTE = 60_000
-
-/** Settings as real Orca hands them over: with the declared defaults filled in. */
-const CONFIGURED = { instanceUrl: 'https://gitlab.example.com', pollMinutes: 5 }
-
-async function startWorker(fakes: Fakes, settings: Record<string, string | number> = CONFIGURED) {
-  const host = mockHost({ settings })
-  const worker = await mountWorker(createWorker(fakes.deps), { host })
-  await fakes.clock.advance(0)
-  return { host, worker }
-}
-
-type StatusBarUpdate = { id: string; text?: string; visible?: boolean; icon?: string; tone?: string; tooltip?: string }
-
-function lastStatusBar(host: ReturnType<typeof mockHost>): StatusBarUpdate | undefined {
-  return host.callsOf('statusBar.update').at(-1) as StatusBarUpdate | undefined
-}
+import { CONFIGURED, lastStatusBar, MINUTE, reviewRequestPolls, startWorker } from './testing/worker-harness'
 
 test('a configured worker polls GitLab at once and shows the count on the bell', async () => {
   const fakes = fakeDeps()
@@ -40,10 +21,6 @@ test('a configured worker polls GitLab at once and shows the count on the bell',
   assert.deepEqual(worker.refusals, [])
   await worker.deactivate()
 })
-
-function reviewRequestPolls(fakes: Fakes): number {
-  return fakes.gitlab.requests.filter((r) => r.operation === 'graphql ReviewRequests').length
-}
 
 test('the bell is hidden while there is nothing to review', async () => {
   const fakes = fakeDeps()
@@ -149,13 +126,29 @@ test('the panel snapshot lists the Review Requests from the last poll', async ()
         requestedAt: fakes.clock.now(),
         sourceBranch: 'feature-1',
         targetBranch: 'main',
+        ci: null,
+        approvals: null,
+        comments: 0,
         overdue: false,
+        isNew: false,
         workspace: null,
-        startBlocked: 'Add acme/api to Orca to review here.'
+        startBlocked: 'Add acme/api to Orca to review here.',
+        agentReview: null,
+        toPost: 0
       }
     ],
     refreshedAt: fakes.clock.now()
   })
+  await worker.deactivate()
+})
+
+test('the "glab path" setting reaches glab; changing it reconnects', async () => {
+  const fakes = fakeDeps()
+  const { changeSetting, worker } = await startWorker(fakes, { ...CONFIGURED, glabPath: ' /tools/glab ' })
+
+  assert.equal(fakes.connections.at(-1)?.glabPath, '/tools/glab')
+  await changeSetting('glabPath', '')
+  assert.equal(fakes.connections.at(-1)?.glabPath, null)
   await worker.deactivate()
 })
 
@@ -164,10 +157,10 @@ test('asks GitLab who the user is once, and polls the configured instance throug
   const { worker } = await startWorker(fakes, { ...CONFIGURED, instanceUrl: 'https://gitlab.acme.dev/' })
   await worker.command('code-review-requests.refresh')
 
-  assert.deepEqual(fakes.connections, [{ host: 'gitlab.acme.dev', token: null }])
+  assert.deepEqual(fakes.connections, [{ host: 'gitlab.acme.dev', token: null, glabPath: null }])
   assert.equal(fakes.gitlab.requests.filter((r) => r.operation === 'GET /user').length, 1)
   assert.deepEqual(
-    fakes.gitlab.requests.filter((r) => r.operation.startsWith('graphql')).map((r) => r.variables?.me),
+    fakes.gitlab.requests.filter((r) => r.operation === 'graphql ReviewRequests').map((r) => r.variables?.me),
     ['me', 'me']
   )
   await worker.deactivate()
@@ -196,47 +189,10 @@ test('follows every page of Review Requests', async () => {
   await worker.deactivate()
 })
 
-/**
- * Mounts the worker so a test can change a setting as the person would in Orca's Settings. The
- * test kit never tells the worker's settings.onDidChange listeners (real Orca does), so this
- * stands in for that one event and awaits the listeners.
- */
-async function startWorkerWithSettings(fakes: Fakes, settings: Record<string, string | number>) {
-  const module = createWorker(fakes.deps)
-  const listeners: ((change: { key: string }) => unknown)[] = []
-  let orca: OrcaWorkerApi | undefined
-  const host = mockHost({ settings })
-  const worker = await mountWorker(
-    {
-      default: (api: OrcaWorkerApi) => {
-        orca = api
-        // The kit's api objects are frozen, so wrap with copies rather than patching them.
-        const settingsApi = {
-          ...api.settings,
-          onDidChange(listener: (change: { key: string }) => void) {
-            listeners.push(listener)
-            return { dispose: () => void listeners.splice(listeners.indexOf(listener), 1) }
-          }
-        } as OrcaWorkerApi['settings']
-        return module.default({ ...api, settings: settingsApi })
-      },
-      deactivate: module.deactivate
-    },
-    { host }
-  )
-  await fakes.clock.advance(0)
-  const changeSetting = async (key: string, value: string | number) => {
-    await orca!.settings.set(key, value)
-    for (const listener of [...listeners]) await listener({ key })
-    await fakes.clock.advance(0)
-  }
-  return { host, worker, changeSetting }
-}
-
 test('starts polling as soon as the instance URL is set', async () => {
   const fakes = fakeDeps()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api' })
-  const { host, worker, changeSetting } = await startWorkerWithSettings(fakes, {})
+  const { host, worker, changeSetting } = await startWorker(fakes, {})
   assert.equal(fakes.clock.pending, 0)
 
   await changeSetting('instanceUrl', 'https://gitlab.example.com')
@@ -247,7 +203,7 @@ test('starts polling as soon as the instance URL is set', async () => {
 
 test('a new interval applies from the last poll', async () => {
   const fakes = fakeDeps()
-  const { worker, changeSetting } = await startWorkerWithSettings(fakes, CONFIGURED)
+  const { worker, changeSetting } = await startWorker(fakes, CONFIGURED)
 
   await fakes.clock.advance(2 * MINUTE)
   await changeSetting('pollMinutes', 3)
@@ -258,7 +214,7 @@ test('a new interval applies from the last poll', async () => {
 
 test('a new instance URL is polled at once', async () => {
   const fakes = fakeDeps()
-  const { worker, changeSetting } = await startWorkerWithSettings(fakes, CONFIGURED)
+  const { worker, changeSetting } = await startWorker(fakes, CONFIGURED)
 
   await changeSetting('instanceUrl', 'https://gitlab.acme.dev')
   assert.deepEqual(
