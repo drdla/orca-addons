@@ -110,6 +110,31 @@ export type ReviewDraftView = {
   importedAt: number | null
 }
 
+/**
+ * The panel's Connection section (#8, #25): which source reaches GitLab and what it may do. It
+ * never carries the token itself.
+ */
+export type ConnectionView = {
+  /** False until the settings hold an instance URL; then nothing else is checked. */
+  configured: boolean
+  /** The configured host, or null when the instance URL isn't one. */
+  host: string | null
+  /** A token stored for `host` means token mode; otherwise glab. */
+  source: 'glab' | 'token'
+  /** The signed-in GitLab user, or null when the check failed. */
+  user: string | null
+  /** The token's scopes, or null when GitLab didn't say (glab with an OAuth login). */
+  scopes: string[] | null
+  /** Can list Review Requests (`read_api` or `api`); null when not checked. */
+  canList: boolean | null
+  /** Can post a review (`api`); null when unknown, which is treated as allowed. */
+  canPost: boolean | null
+  /** `unavailable`: no OS key store, so tokens cannot be saved and only glab works. */
+  tokenStorage: 'os-keyring' | 'unavailable'
+  /** Why the check failed, or null. */
+  problem: string | null
+}
+
 declare module 'orca' {
   interface PluginRequests {
     /** The worker's current view of the Review Requests. */
@@ -140,6 +165,15 @@ declare module 'orca' {
       input: { url: string; id: string; checked?: boolean; body?: string }
       output: ReviewDraftView
     }
+    /** The Connection section (#25). `test` re-checks the user and scopes instead of the cached answer. */
+    'rr.connection': { input: { test: boolean }; output: ConnectionView }
+    /**
+     * Validates a token and stores it for the configured host only if it works with `read_api`;
+     * `error` says why it wasn't stored. Polling switches to it at once.
+     */
+    'rr.saveToken': { input: { token: string }; output: { connection: ConnectionView; error: string | null } }
+    /** Deletes the token for the configured host: back to glab, polling at once. */
+    'rr.removeToken': { output: ConnectionView }
   }
   interface PluginPanelEvents {
     /** The worker's new snapshot, after every poll. */

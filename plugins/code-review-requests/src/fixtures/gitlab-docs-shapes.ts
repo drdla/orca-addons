@@ -27,3 +27,21 @@ export const draftNoteFromDocs = {
     line_range: null
   }
 }
+
+/**
+ * A personal access token, as in the example of "Get details on a personal access token"
+ * (`GET /personal_access_tokens/self`) on https://docs.gitlab.com/api/personal_access_tokens/.
+ * Used to read the scopes of the token in use (#8, #25); `description` may be null.
+ */
+export const personalAccessTokenFromDocs = {
+  id: 4,
+  name: 'Test Token',
+  revoked: false,
+  created_at: '2020-07-23T14:31:47.729Z',
+  description: 'Test Token description',
+  scopes: ['api'],
+  user_id: 3,
+  last_used_at: '2021-10-06T17:58:37.550Z',
+  active: true,
+  expires_at: null
+}

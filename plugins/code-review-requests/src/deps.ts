@@ -3,6 +3,7 @@
 // and activates the real worker, so nothing here may spawn or reach the network on load.
 import { isExecutable, spawnGlab } from './gitlab/glab-process'
 import { createGlabTransport, locateGlab } from './gitlab/glab-transport'
+import { createTokenTransport } from './gitlab/token-transport'
 import { systemClock, type Clock } from './seams/clock'
 import { systemDesktop } from './desktop-process'
 import type { Desktop } from './seams/desktop'
@@ -10,7 +11,7 @@ import type { Git } from './seams/git'
 import type { Files } from './seams/files'
 import { systemFiles } from './files-process'
 import { systemGit } from './git-process'
-import { GitLabError, type GitLabConnection, type GitLabTransport } from './seams/gitlab'
+import type { GitLabConnection, GitLabTransport } from './seams/gitlab'
 import type { OrcaCli } from './seams/orca-cli'
 import { createOrcaCli, spawnOrca } from './orca-cli-process'
 
@@ -36,19 +37,13 @@ export function realDeps(): Deps {
             run: spawnGlab,
             locate: () => locateGlab(process.env, isExecutable)
           })
-        : notYetBuiltTransport,
+        : createTokenTransport({ host: connection.host, token: connection.token, fetch: globalThis.fetch }),
     orcaCli: () => systemOrcaCli,
     clock: systemClock,
     desktop: systemDesktop,
     git: systemGit,
     files: systemFiles
   }
-}
-
-// Placeholder until the token transport lands (#25). It only rejects, so nothing calls out by accident.
-const notYetBuiltTransport: GitLabTransport = {
-  graphql: () => Promise.reject(new GitLabError('needs-you', 'GitLab transport not built yet')),
-  rest: () => Promise.reject(new GitLabError('needs-you', 'GitLab transport not built yet'))
 }
 
 const systemOrcaCli: OrcaCli = createOrcaCli(spawnOrca)

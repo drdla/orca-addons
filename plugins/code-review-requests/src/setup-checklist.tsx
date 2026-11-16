@@ -1,8 +1,9 @@
 // The panel's "Needs you" state (#8, #15, #24): what's missing and how to fix it. Polling has
 // stopped; "Check again" asks the worker to retry. Self-contained so the panel renders it in place
-// of the list (and the tabs) while GitLab needs setting up. Token entry (Replace/Remove token,
-// path ②) is #25's to add here.
+// of the list (and the tabs) while GitLab needs setting up. While glab is the problem, a token
+// is the second path; a rejected token can be replaced or removed here (#25).
 import { Button, Callout, Code, Collapsible, Row, Stack, Text } from 'orca'
+import { TokenEntry } from './connection-section'
 import type { GitLabProblemView } from './protocol'
 
 export type NeedsYouView = Extract<GitLabProblemView, { status: 'needs-you' }>
@@ -17,6 +18,7 @@ export function SetupChecklist(props: { problem: NeedsYouView; checking: boolean
           <Steps problem={problem} />
         </Stack>
       </Callout>
+      {hasTokenPath(problem) && <TokenEntry host={problem.host} />}
       <Row gap="sm">
         <Button icon="refresh" disabled={props.checking} onPress={props.onCheckAgain}>
           {props.checking ? 'Checking…' : 'Check again'}
@@ -25,6 +27,11 @@ export function SetupChecklist(props: { problem: NeedsYouView; checking: boolean
       <ErrorDetails message={problem.message} />
     </Stack>
   )
+}
+
+/** glab missing or logged out: a token is path ②. A rejected token: replace or remove it. */
+function hasTokenPath(problem: NeedsYouView): boolean {
+  return problem.reason === 'glab-missing' || problem.reason === 'logged-out' || problem.reason === 'token-rejected'
 }
 
 function headline(problem: NeedsYouView): string {
@@ -54,6 +61,7 @@ function Steps(props: { problem: NeedsYouView }) {
           <Code>brew install glab</Code>
           <Text>2. Log in, then check again:</Text>
           <Code>{login}</Code>
+          <Text>Or paste a personal access token below.</Text>
         </Stack>
       )
     case 'logged-out':
@@ -61,10 +69,11 @@ function Steps(props: { problem: NeedsYouView }) {
         <Stack gap="xs">
           <Text>Log in in a terminal, then check again:</Text>
           <Code>{login}</Code>
+          <Text>Or paste a personal access token below.</Text>
         </Stack>
       )
     case 'token-rejected':
-      return <Text>Replace or remove the token, then check again.</Text>
+      return <Text>Replace the token below, or remove it to use glab.</Text>
     case 'gitlab-too-old':
       return <Text>Ask your GitLab admin to upgrade, or point the instance URL at another GitLab.</Text>
     case 'bad-url':
