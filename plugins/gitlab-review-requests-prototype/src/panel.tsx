@@ -50,6 +50,12 @@ const lastAction = atom('proto.lastAction', '—')
 const statusEcho = atom('proto.statusEcho', '')
 const selected = atom<string | null>('proto.selected', 'rr1')
 
+// Overdue: waiting longer than the threshold since I was added as Reviewer (setting, default 24h).
+const overdueHours = atom('proto.overdueHours', '24', { persist: 'storage' })
+function isOverdue(rr: ReviewRequest): boolean {
+  return Date.now() - rr.requestedAt > Number(read(overdueHours)) * 3_600_000
+}
+
 function act(label: string) {
   return () => set(lastAction, label)
 }
@@ -70,8 +76,9 @@ async function pushStatusBar(): Promise<void> {
   const s = read(panelState)
   const count = s === 'empty' ? 0 : rrs.length
   const newCount = s === 'empty' ? 0 : rrs.filter((r) => r.isNew).length
+  const overdueCount = s === 'empty' ? 0 : rrs.filter(isOverdue).length
   try {
-    const out = await plugin.request('proto.statusBar', { variant: read(statusVariant), state: s, count, newCount })
+    const out = await plugin.request('proto.statusBar', { variant: read(statusVariant), state: s, count, newCount, overdueCount })
     set(statusEcho, out.visible ? `"${out.text}" (${out.tone})` : 'hidden')
   } catch (e) {
     set(statusEcho, `error: ${(e as Error).message}`)
@@ -268,14 +275,24 @@ function SecondaryIcons(props: { rr: ReviewRequest }) {
 // Flat list, longest-waiting first. Every row carries its actions inline.
 function RRCard(props: { rr: ReviewRequest }) {
   const rr = props.rr
+  const overdue = isOverdue(rr)
   return (
-        <Box border={rr.isNew ? 'accent' : true} radius="md" padding="sm" direction="column" gap="xs">
+        <Box border={overdue ? 'danger' : rr.isNew ? 'accent' : true} radius="md" padding="sm" direction="column" gap="xs">
           <Row justify="between" align="start">
             <Text weight="semibold">{rr.title}</Text>
-            {rr.isNew ? <Badge tone="accent">New</Badge> : null}
+            {overdue ? <Badge tone="danger">Overdue</Badge> : rr.isNew ? <Badge tone="accent">New</Badge> : null}
           </Row>
           <Text muted size="xs">
-            {rr.project} !{String(rr.iid)} · {rr.author} · requested <RelativeTime at={rr.requestedAt} format="short" muted />
+            {rr.project} !{String(rr.iid)} · {rr.author} ·{' '}
+            {overdue ? (
+              <Text size="xs" tone="danger" weight="medium">
+                requested <RelativeTime at={rr.requestedAt} format="short" tone="danger" />
+              </Text>
+            ) : (
+              <>
+                requested <RelativeTime at={rr.requestedAt} format="short" muted />
+              </>
+            )}
           </Text>
           <Row gap="xs" wrap>
             {pipelineBadge(rr.pipeline)}
@@ -308,6 +325,7 @@ function VariantA() {
 }
 
 // ---------- Variant D: C's tabs on top, A's cards inside ----------
+const dTab = atom('proto.tab', 'todo', { persist: 'storage' })
 function VariantD() {
   const rrs = visibleRRs()
   const todo = rrs.filter((r) => !r.workspace)
@@ -324,11 +342,11 @@ function VariantD() {
       <Text muted size="sm">Nothing here.</Text>
     )
   return (
-    <Tabs label="Stage" defaultValue="todo">
-      <Tab value="todo" label={`To review ${todo.length}`}>
+    <Tabs label="Stage" value={read(dTab)} onChange={(t) => set(dTab, t)}>
+      <Tab value="todo" label={`To review ${todo.length}`} icon={todo.some(isOverdue) ? 'warning' : undefined}>
         {cards(todo)}
       </Tab>
-      <Tab value="in" label={`In review ${inReview.length}`}>
+      <Tab value="in" label={`In review ${inReview.length}`} icon={inReview.some(isOverdue) ? 'warning' : undefined}>
         {cards(inReview)}
       </Tab>
       <Tab value="ended" label={`Ended ${done.length}`}>
@@ -504,6 +522,19 @@ function PrototypeBar() {
         ]}
         onChange={(x) => {
           set(statusVariant, x as StatusVariant)
+          void pushStatusBar()
+        }}
+      />
+      <Select
+        label="Overdue after"
+        value={read(overdueHours)}
+        options={[
+          { value: '4', label: 'Overdue after: 4h' },
+          { value: '24', label: 'Overdue after: 24h (default)' },
+          { value: '48', label: 'Overdue after: 48h' }
+        ]}
+        onChange={(x) => {
+          set(overdueHours, x)
           void pushStatusBar()
         }}
       />

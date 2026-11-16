@@ -11,7 +11,7 @@ type Look = {
   visible: boolean
 }
 
-function look(variant: StatusVariant, state: PanelState, count: number, newCount: number): Look {
+function look(variant: StatusVariant, state: PanelState, count: number, newCount: number, overdue = 0): Look {
   if (state === 'setup')
     return { text: 'GitLab: set up', icon: 'plug', tone: 'warning', tooltip: 'Connect GitLab to see Review Requests', visible: true }
   if (state === 'offline')
@@ -26,7 +26,7 @@ function look(variant: StatusVariant, state: PanelState, count: number, newCount
     return { text: variant === 'label' ? 'Reviews …' : '…', icon: 'refresh', tone: 'neutral', tooltip: 'Loading Review Requests', visible: true }
 
   const tooltip =
-    `${count} Review Request${count === 1 ? '' : 's'}` + (newCount ? `, ${newCount} new` : '') + '. Click to open.'
+    `${count} Review Request${count === 1 ? '' : 's'}` + (overdue ? `, ${overdue} overdue` : '') + (newCount ? `, ${newCount} new` : '') + '. Click to open.'
 
   switch (variant) {
     case 'icon-count':
@@ -43,25 +43,28 @@ function look(variant: StatusVariant, state: PanelState, count: number, newCount
       }
     case 'quiet':
       // Hidden at zero; warning tone once anything waits.
-      return { text: `${count}`, icon: 'bell', tone: count ? 'warning' : 'neutral', tooltip, visible: count > 0 }
+      // Danger while anything is overdue.
+      return { text: `${count}`, icon: 'bell', tone: overdue ? 'danger' : count ? 'warning' : 'neutral', tooltip, visible: count > 0 }
   }
 }
 
 export default function activate(orca: OrcaWorkerApi): void {
-  orca.panels.handle('proto.statusBar', async ({ variant, state, count, newCount }) => {
-    const l = look(variant, state, count, newCount)
+  orca.panels.handle('proto.statusBar', async ({ variant, state, count, newCount, overdueCount }) => {
+    const l = look(variant, state, count, newCount, overdueCount)
     await orca.host.call('statusBar.update', { id: 'review-requests', ...l } as never)
     return { text: l.text, tone: l.tone, visible: l.visible }
   })
 
-  orca.panels.handle('proto.set', async ({ variant, state, status }) => {
+  orca.panels.handle('proto.set', async ({ variant, state, status, overdueHours, tab }) => {
+    if (tab) await orca.storage.set('proto.tab', tab)
+    if (overdueHours) await orca.storage.set('proto.overdueHours', overdueHours)
     if (variant) await orca.storage.set('proto.variant', variant)
     if (state) await orca.storage.set('proto.state', state)
     if (status) await orca.storage.set('proto.status', status)
     const st = ((await orca.storage.get('proto.state')) ?? 'loaded') as PanelState
     const sv = ((await orca.storage.get('proto.status')) ?? 'icon-count') as StatusVariant
     const empty = st === 'empty'
-    await orca.host.call('statusBar.update', { id: 'review-requests', ...look(sv, st, empty ? 0 : 5, empty ? 0 : 2) } as never)
+    await orca.host.call('statusBar.update', { id: 'review-requests', ...look(sv, st, empty ? 0 : 5, empty ? 0 : 2, empty ? 0 : 2) } as never)
     return { ok: true as const }
   })
 
