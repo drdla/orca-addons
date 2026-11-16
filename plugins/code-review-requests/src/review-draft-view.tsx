@@ -24,6 +24,7 @@ import {
 } from 'orca'
 import type { ReviewCommentView, ReviewDraftView } from './protocol'
 import { openConfirm, PostSection, resetPosting, setupPosting } from './review-post-view'
+import { messageOf } from './errors'
 
 /** The Review Request whose draft is open (its MR URL), or null for the tabs. Kept across reloads. */
 const draftUrl = atom<string | null>('rr.draftUrl', null, { persist: 'plugin' })
@@ -35,10 +36,6 @@ const importing = atom(false)
 const edits = atom<Record<string, string>>({})
 /** Per-comment errors, by comment id. */
 const commentErrors = atom<Record<string, string>>({})
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 /** Is a Review Draft open (the panel shows it instead of the tabs)? */
 export function isReviewDraftOpen(): boolean {

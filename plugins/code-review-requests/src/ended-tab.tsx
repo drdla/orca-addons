@@ -23,6 +23,7 @@ import {
 import type { EndedCard, EndedReason, RemovalCheck, ReviewRequestsSnapshot } from './protocol'
 import { openReviewDraft } from './review-draft-view'
 import { ErrorDetails } from './setup-checklist'
+import { messageOf } from './errors'
 
 /** Open confirmations, by Review Request URL: what removal would lose. */
 const confirming = atom<Record<string, RemovalCheck>>({})
@@ -36,10 +37,6 @@ const REASONS: Record<EndedReason, string> = {
   merged: 'Merged',
   closed: 'Closed',
   unassigned: 'Removed as reviewer'
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 function patch<T>(store: typeof confirming | typeof busy | typeof errors, url: string, value: T | null): void {

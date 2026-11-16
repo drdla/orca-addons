@@ -8,6 +8,7 @@
 // A failed poll keeps the last good list (#15): only lastAttemptAt and lastError move.
 import type { ReviewRequestView, ReviewRequestsSnapshot } from '../protocol'
 import type { Disposable } from '../seams/clock'
+import { messageOf } from '../errors'
 import { cardsOf, type OverdueContext } from '../to-review'
 
 export type PollOutcome =
@@ -63,7 +64,7 @@ export function createPollState(log: (message: string) => void = () => {}): Poll
       try {
         await listener(...args)
       } catch (error) {
-        log(`poll listener failed: ${error instanceof Error ? error.message : String(error)}`)
+        log(`poll listener failed: ${messageOf(error)}`)
       }
     }
   }

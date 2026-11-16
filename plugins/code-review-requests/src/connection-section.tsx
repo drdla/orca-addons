@@ -5,6 +5,7 @@
 // beyond the field it is typed into, and clears that once it is stored.
 import { atom, Button, Code, Collapsible, Input, Link, plugin, read, Row, set, Stack, Text } from 'orca'
 import type { ConnectionView } from './protocol'
+import { messageOf } from './errors'
 
 /** The worker's last answer about the connection; null until it answers. */
 const connection = atom<ConnectionView | null>(null)
@@ -21,10 +22,6 @@ const tokenError = atom<string | null>(null)
 const busy = atom(false)
 /** The person opened or closed the section; null follows the connection's health. */
 const openOverride = atom<boolean | null>(null)
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 /** Asks the worker about the connection; `test` re-checks the user and scopes. */
 export function loadConnection(test = false): Promise<void> {

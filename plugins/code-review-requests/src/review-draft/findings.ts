@@ -11,6 +11,7 @@
 //   }
 //
 // A bare array of findings is accepted too. Bad entries are skipped, each with a warning (#15).
+import { messageOf } from '../errors'
 
 /** The file the Agent Review writes, relative to its Review Workspace. */
 export const FINDINGS_FILE = '.orca-review/findings.json'
@@ -83,8 +84,4 @@ function isLineNumber(value: unknown): value is number {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

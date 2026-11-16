@@ -14,6 +14,7 @@ import type { Git } from '../seams/git'
 import type { DiffComment, OrcaCli } from '../seams/orca-cli'
 import { FINDINGS_FILE, parseFindings, type AgentFinding } from './findings'
 import { isPosted, type FailedDraft, type ReviewComment, type ReviewDraft, type ReviewDrafts } from './review-drafts'
+import { messageOf } from '../errors'
 
 /** The Review Request a draft belongs to, with its Review Workspace if it has one. */
 export type DraftTarget = {
@@ -209,8 +210,4 @@ function commentView(comment: ReviewComment, failed: FailedDraft | undefined): R
     sha: comment.sha,
     posted
   }
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

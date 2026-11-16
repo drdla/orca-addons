@@ -15,6 +15,7 @@ import type { PostPreview, PostResult, ReviewOutcome } from '../protocol'
 import { GitLabError, type GitLabTransport, type Json } from '../seams/gitlab'
 import { redactError } from '../gitlab/http-response'
 import type { FailedDraft, PostedComment, ReviewComment, ReviewDraft, ReviewDrafts } from './review-drafts'
+import { messageOf } from '../errors'
 
 /** Which MR to post to. */
 export type PostTarget = { url: string; projectPath: string; iid: number }
@@ -282,10 +283,6 @@ function postingError(error: unknown, token: string | null): Error {
     return new Error(`${API_SCOPE_HINT} GitLab said: ${redacted.message}`)
   }
   return redacted instanceof Error ? redacted : new Error(String(redacted))
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 function atLeast(version: string, major: number, minor: number): boolean {

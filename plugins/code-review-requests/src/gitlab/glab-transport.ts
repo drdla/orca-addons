@@ -2,7 +2,7 @@
 // run, spawned by absolute path. `--include` puts the HTTP status line and headers before the
 // body on stdout, which is how failures are told apart (glab itself only exits 1).
 import { GitLabError, type GitLabTransport, type HttpMethod, type Json } from '../seams/gitlab'
-import { messageOf, parseBody, retryAfter } from './http-response'
+import { errorTextOf, parseBody, retryAfter } from './http-response'
 
 /** One finished glab run. Rejects only when glab could not be started (errno error). */
 export type GlabRun = { exitCode: number; stdout: string; stderr: string }
@@ -40,7 +40,7 @@ export function createGlabTransport(options: GlabTransportOptions): GitLabTransp
     const { status } = response
     if (status >= 200 && status < 300) return { status, body: parsed }
 
-    const message = `${host}: ${messageOf(parsed) ?? oneLine(result.stderr)}`
+    const message = `${host}: ${errorTextOf(parsed) ?? oneLine(result.stderr)}`
     if (status === 401) {
       throw new GitLabError('needs-you', `${message}. Run \`glab auth login --hostname ${host}\`.`, {
         status,

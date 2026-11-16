@@ -13,7 +13,7 @@ export function parseBody(body: string): unknown {
 }
 
 /** GitLab's error text: `{"message": …}` (a string or a field → errors object) or `{"error": …}`. */
-export function messageOf(body: unknown): string | undefined {
+export function errorTextOf(body: unknown): string | undefined {
   if (!body || typeof body !== 'object') return undefined
   const { message, error } = body as { message?: unknown; error?: unknown }
   const value = message ?? error

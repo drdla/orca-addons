@@ -20,6 +20,7 @@ import type { OrcaCli } from '../seams/orca-cli'
 import { isEnded, type Dropped } from '../notify/changes'
 import { findReviewWorkspace } from '../workspaces/review-workspaces'
 import type { WorkspaceTracker } from '../workspaces/workspace-tracker'
+import { messageOf } from '../errors'
 
 export const ENDED_KEY = 'ended.entries'
 
@@ -242,7 +243,3 @@ export function createEndedWorkspaces(deps: EndedWorkspacesDeps) {
 }
 
 export type EndedWorkspaces = ReturnType<typeof createEndedWorkspaces>
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}

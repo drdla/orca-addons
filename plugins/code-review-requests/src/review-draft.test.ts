@@ -8,9 +8,7 @@ import type { ReviewCommentView } from './protocol'
 import { createReviewDrafts } from './review-draft/review-drafts'
 import type { DiffComment } from './seams/orca-cli'
 import { OrcaCliError } from './seams/orca-cli'
-import { createWorker } from './worker'
-
-const CONFIGURED = { instanceUrl: 'https://gitlab.example.com', pollMinutes: 5 }
+import { CONFIGURED, startWorker as startHarness } from './testing/worker-harness'
 const MR_URL = 'https://gitlab.example.com/acme/api/-/merge_requests/7'
 const REPO = { repoId: 'repo-api', projectId: 'git:gitlab.example.com/acme/api', path: '/src/api' }
 const WT_PATH = '/wt/review-api-7'
@@ -42,10 +40,8 @@ function arrange(options: { workspace?: boolean } = {}): Fakes {
   return fakes
 }
 
-async function startWorker(fakes: Fakes, host = mockHost({ settings: CONFIGURED })) {
-  const worker = await mountWorker(createWorker(fakes.deps), { host })
-  await fakes.clock.advance(0)
-  return { host, worker }
+function startWorker(fakes: Fakes, host = mockHost({ settings: CONFIGURED })) {
+  return startHarness(fakes, CONFIGURED, host)
 }
 
 /** The plugin's storage on `host`, as another worker of the plugin (#28, #30) sees it. */

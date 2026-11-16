@@ -12,6 +12,7 @@ import type { Settings } from '../settings'
 import { reviewCommandFor, reviewPromptFor } from './review-prompt'
 import { findRepo, findReviewWorkspace } from './review-workspaces'
 import type { WorkspaceState, WorkspaceTracker } from './workspace-tracker'
+import { messageOf } from '../errors'
 
 export type ReviewActionsDeps = {
   cli: () => OrcaCli
@@ -117,8 +118,4 @@ export async function hostWorkspaceIdOf(
   const row = workspaces.find((w) => w.path === workspace.path)
   if (!row) throw new Error(`Orca doesn't list the workspace ${workspace.name}.`)
   return row.id
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

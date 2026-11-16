@@ -18,6 +18,7 @@ import { GitLabError } from '../seams/gitlab'
 import type { StatusBarRefiner } from '../status-bar'
 import type { PollState } from './poll-state'
 import type { Poller } from './poller'
+import { messageOf } from '../errors'
 
 const MINUTE = 60_000
 
@@ -176,10 +177,6 @@ function summaryOf(problem: NeedsYou): string {
     case 'bad-url':
       return 'The GitLab instance URL is not valid'
   }
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 /** `HH:MM` in the worker's local time zone, as in "Rate-limited until 14:05". */

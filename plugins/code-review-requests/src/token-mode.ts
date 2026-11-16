@@ -11,6 +11,7 @@ import { redact } from './gitlab/http-response'
 import type { ConnectionView } from './protocol'
 import { GitLabError, type GitLabConnection, type GitLabTransport } from './seams/gitlab'
 import type { Settings } from './settings'
+import { messageOf } from './errors'
 
 export type TokenModeOptions = {
   deps: Pick<Deps, 'gitLab'>
@@ -183,8 +184,4 @@ export function createTokenMode(options: TokenModeOptions) {
 /** Identifies a connection; the same key the worker caches its transport under. */
 export function keyOf(connection: GitLabConnection | null): string {
   return connection === null ? '' : `${connection.host}\n${connection.token ?? ''}`
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

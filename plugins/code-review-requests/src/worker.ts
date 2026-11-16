@@ -11,6 +11,7 @@
 // (with its listener extension points), the bell in status-bar.ts.
 import type { OrcaWorkerApi } from 'orca/worker'
 import { connectionFor } from './connection'
+import { messageOf } from './errors'
 import { realDeps, type Deps } from './deps'
 import { fetchReviewRequests, fetchUsername } from './gitlab/fetch-review-requests'
 import { clockTime, createFailureHandling } from './poll/failures'
@@ -128,7 +129,7 @@ export function createWorker(deps: Deps) {
         }
         // A token GitLab or the network echoes back must not reach logs, the panel or the bell.
         const error = redactError(caught, token)
-        orca.log(`poll failed: ${error instanceof Error ? error.message : String(error)}`)
+        orca.log(`poll failed: ${messageOf(error)}`)
         await state.record({ ok: false, at, error })
       }
     }

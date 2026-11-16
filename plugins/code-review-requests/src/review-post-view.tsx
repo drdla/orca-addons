@@ -21,6 +21,7 @@ import {
 } from 'orca'
 import { canPostReviews } from './connection-section'
 import type { PostPreview, PostResult, ReviewDraftView, ReviewOutcome } from './protocol'
+import { messageOf } from './errors'
 
 export type PostStep =
   | { kind: 'idle' }
@@ -48,10 +49,6 @@ const OUTCOMES: { value: ReviewOutcome; label: string }[] = [
 ]
 
 export const API_SCOPE_HINT = 'Posting a review needs a token with the api scope.'
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 function count(n: number): string {
   return n === 1 ? '1 Review Comment' : `${n} Review Comments`

@@ -1,25 +1,12 @@
 // The worker side of the To review tab (#22): what rr.snapshot tells the panel about waiting
 // time, order and overdue, and the overdue bell, through the worker's public surface.
-import { assert, mockHost, mountWorker, test } from 'orca/testing'
-import { fakeDeps, type Fakes } from './fakes'
+import { assert, test } from 'orca/testing'
+import { fakeDeps } from './fakes'
 import { GitLabError } from './seams/gitlab'
-import { createWorker } from './worker'
+import { CONFIGURED, lastStatusBar, MINUTE, startWorker } from './testing/worker-harness'
 
-const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
-const CONFIGURED = { instanceUrl: 'https://gitlab.example.com', pollMinutes: 5 }
-
-async function startWorker(fakes: Fakes, settings: Record<string, string | number> = CONFIGURED) {
-  const host = mockHost({ settings })
-  const worker = await mountWorker(createWorker(fakes.deps), { host })
-  await fakes.clock.advance(0)
-  return { host, worker }
-}
-
-function lastStatusBar(host: ReturnType<typeof mockHost>) {
-  return host.callsOf('statusBar.update').at(-1) as { tone?: string; tooltip?: string; text?: string } | undefined
-}
 
 // The fake clock starts on Monday 2026-11-16, 09:00 UTC. Tuesday-to-Monday spans are 4 working
 // days in any time zone, and an hour ago is never overdue.

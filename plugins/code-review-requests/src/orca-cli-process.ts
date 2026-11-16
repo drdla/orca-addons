@@ -10,6 +10,7 @@ import {
   type WorktreeAgents,
   type WorktreeDetail
 } from './seams/orca-cli'
+import { messageOf } from './errors'
 
 export const ORCA_BIN = '/Applications/Orca.app/Contents/Resources/bin/orca'
 /** Creating a workspace runs Orca's setup; give it time. */
@@ -85,10 +86,6 @@ function createArgs(input: CreateWorktreeInput): string[] {
   if (input.noParent) args.push('--no-parent')
   if (input.activate) args.push('--activate')
   return args
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 /** Spawns the real CLI. */
