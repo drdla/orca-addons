@@ -126,9 +126,15 @@ test('the panel snapshot lists the Review Requests from the last poll', async ()
         requestedAt: fakes.clock.now(),
         sourceBranch: 'feature-1',
         targetBranch: 'main',
+        ci: null,
+        approvals: null,
+        comments: 0,
         overdue: false,
+        isNew: false,
         workspace: null,
-        startBlocked: 'Add acme/api to Orca to review here.'
+        startBlocked: 'Add acme/api to Orca to review here.',
+        agentReview: null,
+        toPost: 0
       }
     ],
     refreshedAt: fakes.clock.now()

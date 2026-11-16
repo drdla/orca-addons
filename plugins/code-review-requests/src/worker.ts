@@ -28,7 +28,14 @@ import { applyFilters, parseFilters, passesFilters } from './filters'
 import { createRequestedAtCache } from './gitlab/requested-at'
 import { overdueRefiner, type OverdueContext } from './to-review'
 import { isOverdue } from './overdue'
-import { createWorkspaceTracker, hasWorkspace, withWorkspaces } from './workspaces/workspace-tracker'
+import {
+  createWorkspaceTracker,
+  hasWorkspace,
+  withWorkspaces,
+  type DraftCounts
+} from './workspaces/workspace-tracker'
+import { createSeenTracker, seenRefiner } from './seen'
+import { isPosted, isUnposted } from './review-draft/review-drafts'
 import { createReviewActions, hostWorkspaceIdOf } from './workspaces/review-actions'
 import { createEndedWorkspaces } from './ended/ended-workspaces'
 import { registerDraftRequests } from './review-draft/draft-requests'
@@ -137,8 +144,10 @@ export function createWorker(deps: Deps) {
       storage: orca.storage,
       notify: (notification) => orca.host.call('notifications.show', notification)
     })
+    // What the panel has shown, per host: the cards' New mark and the bell's "M new" (#10).
+    const seen = createSeenTracker(orca.storage)
     // The problem states replace the whole look, so they come last.
-    const statusBar = createStatusBar(orca, [overdueRefiner(overdue), failures.refineStatusBar])
+    const statusBar = createStatusBar(orca, [seenRefiner(seen), overdueRefiner(overdue), failures.refineStatusBar])
 
     // Features hang off the poll state here, one listener each (see poll/poll-state.ts):
     // diffing for notifications (#23) on onSucceeded, failure handling (#24) on onFailed with
@@ -170,11 +179,12 @@ export function createWorker(deps: Deps) {
     // Ended tab (#28): Review Requests listed again leave it; each tick (good poll or not) forgets
     // entries whose workspace is gone and auto-removes the clean ones past the deadline.
     state.onSucceeded((_previous, next) => ended.onListed([...next.reviewRequests, ...next.hidden]))
+    state.onSucceeded((_previous, next) => seen.onGoodPoll(next.host!, next.reviewRequests))
     state.onChange(async () => {
       await ended.tick()
     })
     state.onChange((current) => statusBar.render(current))
-    state.onChange(() => orca.panels.post('rr.changed', snapshot()))
+    state.onChange(async () => orca.panels.post('rr.changed', await snapshot()))
 
     /** Starts, stops or re-times polling to match the settings. */
     async function applySettings(options: { pollAtOnce?: boolean } = {}): Promise<void> {
@@ -205,21 +215,44 @@ export function createWorker(deps: Deps) {
       }
     }
 
-    /** The panel's view: the poll state plus, while GitLab fails, the problem (#24). */
-    function snapshot(): ReviewRequestsSnapshot {
+    /** The Review Draft counts of the listed Review Requests, as of the last snapshot(). */
+    let draftCounts = new Map<string, DraftCounts>()
+
+    /** The panel's view, with each card's Review Draft counts read afresh. */
+    async function snapshot(): Promise<ReviewRequestsSnapshot> {
+      const next = new Map<string, DraftCounts>()
+      for (const { url } of state.current().reviewRequests) {
+        const comments = (await drafts.get(url))?.comments ?? []
+        next.set(url, {
+          unposted: comments.filter((c) => !isPosted(c)).length,
+          toPost: comments.filter(isUnposted).length
+        })
+      }
+      draftCounts = next
+      return viewNow()
+    }
+
+    /**
+     * The panel's view: the poll state plus, while GitLab fails, the problem (#24), with each
+     * card's Review Workspace, Agent Review, New mark and the last read Review Draft counts.
+     */
+    function viewNow(): ReviewRequestsSnapshot {
       const current = state.current()
       let problem = failures.problemView(current)
       if (problem?.status === 'needs-you' && problem.reason === 'logged-out' && glabHosts.length > 0) {
         problem = { ...problem, glabHosts }
       }
+      const base = snapshotOf(current, overdue)
       return withWorkspaces(
         {
-          ...snapshotOf(current, overdue),
+          ...base,
+          reviewRequests: base.reviewRequests.map((card) => ({ ...card, isNew: seen.isNew(current.host, card.url) })),
           ...(problem === undefined ? {} : { gitlab: problem }),
           ...(filters.invalid.length === 0 ? {} : { invalidFilterEntries: filters.invalid }),
           ...endedView()
         },
-        workspaces.current()
+        workspaces.current(),
+        (url) => draftCounts.get(url) ?? { unposted: 0, toPost: 0 }
       )
     }
 
@@ -234,6 +267,13 @@ export function createWorker(deps: Deps) {
     }
 
     orca.panels.handle('rr.snapshot', async () => snapshot())
+    // The panel opened (#10): what it lists is seen; the bell drops it from "M new" at once.
+    orca.panels.handle('rr.markSeen', async () => {
+      const current = state.current()
+      if (current.host !== null) await seen.markSeen(current.host, current.reviewRequests)
+      await statusBar.render(current)
+      return { seen: true as const }
+    })
     // Also the panel's Retry / Check again; it waits out a rate limit instead of polling.
     orca.panels.handle('rr.refresh', async () => {
       if ((await isConfigured(orca)) && failures.rateLimitedUntil() === null) await poller.pollNow()
@@ -267,7 +307,7 @@ export function createWorker(deps: Deps) {
       try {
         await reviewActions.startReview(url, withAgent)
       } finally {
-        await orca.panels.post('rr.changed', snapshot())
+        await orca.panels.post('rr.changed', await snapshot())
       }
       return snapshot()
     })
@@ -286,7 +326,7 @@ export function createWorker(deps: Deps) {
       try {
         await ended.remove(url, force)
       } finally {
-        await orca.panels.post('rr.changed', snapshot())
+        await orca.panels.post('rr.changed', await snapshot())
       }
       return snapshot()
     })
@@ -294,7 +334,7 @@ export function createWorker(deps: Deps) {
     const removedWatch = orca.events.on('workspace.removed', async ({ path }) => {
       await workspaces.refresh()
       await ended.onWorkspaceRemoved(path)
-      await orca.panels.post('rr.changed', snapshot())
+      await orca.panels.post('rr.changed', await snapshot())
     })
     orca.panels.handle('rr.runAgentReview', async ({ url }) => {
       await reviewActions.runAgentReview(url)
@@ -303,17 +343,27 @@ export function createWorker(deps: Deps) {
     // The Review Draft (#29): import and curation, also for an Ended Review Request whose
     // workspace is still there; posting it (#30).
     const draftCards = (): ReviewRequestCard[] => [
-      ...snapshot().reviewRequests,
+      ...viewNow().reviewRequests,
       ...ended.entries().map((entry) => ({ ...entry, overdue: false }))
     ]
-    registerDraftRequests(orca, { deps, cards: draftCards, workspaceState: () => workspaces.current() })
+    // The cards show their Review Draft's counts (#10), so open panels hear of each change.
+    const draftChanged = async () => {
+      await orca.panels.post('rr.changed', await snapshot())
+    }
+    registerDraftRequests(orca, {
+      deps,
+      cards: draftCards,
+      workspaceState: () => workspaces.current(),
+      onChanged: draftChanged
+    })
     registerPostRequests(orca, {
       drafts,
       cards: draftCards,
       connection: async () => {
         const connection = await connectionFor(await readSettings(orca.settings), orca.secrets)
         return { transport: deps.gitLab(connection), token: connection.token }
-      }
+      },
+      onChanged: draftChanged
     })
 
     // Token mode and the Connection section (#25).

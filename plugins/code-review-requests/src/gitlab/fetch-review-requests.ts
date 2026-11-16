@@ -1,9 +1,10 @@
 // Reads the user's Review Requests from GitLab through the transport seam: who am I, then every
 // page of the Review Requests query, mapped to the views the rest of the plugin uses.
-import type { ReviewRequestView } from '../protocol'
+import type { CiStatus, ReviewRequestView } from '../protocol'
 import type { GitLabTransport } from '../seams/gitlab'
 import {
   REVIEW_REQUESTS_QUERY,
+  type PipelineStatus,
   type ReviewRequestNode,
   type ReviewRequestsResponse
 } from './review-requests-query'
@@ -59,6 +60,37 @@ function toView(node: ReviewRequestNode): ReviewRequestView {
     // Until withRequestedAt() knows better: the earliest the user can have been added.
     requestedAt: Date.parse(node.createdAt),
     sourceBranch: node.sourceBranch,
-    targetBranch: node.targetBranch
+    targetBranch: node.targetBranch,
+    ci: ciOf(node.headPipeline?.status ?? null),
+    approvals: approvalsOf(node),
+    comments: node.userNotesCount ?? 0
   }
+}
+
+/** Passed, failed or running; nothing for no pipeline or one that was canceled, skipped or manual. */
+function ciOf(status: PipelineStatus | null): CiStatus | null {
+  switch (status) {
+    case 'SUCCESS':
+      return 'passed'
+    case 'FAILED':
+      return 'failed'
+    case 'CREATED':
+    case 'WAITING_FOR_RESOURCE':
+    case 'PREPARING':
+    case 'WAITING_FOR_CALLBACK':
+    case 'PENDING':
+    case 'RUNNING':
+    case 'SCHEDULED':
+      return 'running'
+    default:
+      return null
+  }
+}
+
+/** `given/required`, with given = required - left (the query stays scalar to keep it cheap). */
+function approvalsOf(node: ReviewRequestNode): { given: number; required: number } | null {
+  const required = node.approvalsRequired ?? 0
+  if (required <= 0) return null
+  const left = Math.max(0, Math.min(required, node.approvalsLeft ?? required))
+  return { given: required - left, required }
 }

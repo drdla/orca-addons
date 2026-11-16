@@ -81,7 +81,8 @@ export function setupPosting(): void {
   if (current.kind === 'confirm' && current.postingSince !== null && !isPosting(current)) set(step, { kind: 'idle' })
 }
 
-function openConfirm(url: string): void {
+/** Opens the confirm step for a Review Draft (also from a card's "Post N to GitLab", #10). */
+export function openConfirm(url: string): void {
   set(step, { kind: 'loading' })
   set(failure, null)
   plugin

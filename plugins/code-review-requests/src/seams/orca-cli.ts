@@ -76,8 +76,20 @@ export type CreateWorktreeInput = {
 
 export type RemoveWorktreeOptions = { force?: boolean; deleteBranch?: boolean }
 
+/** An agent in a worktree, as `orca worktree ps --json` lists it (only the fields read). */
+export type WorktreeAgent = {
+  /** `working`, `blocked` (waiting for permission), `waiting` (for input), `done`… */
+  state: string
+  agentType?: string
+}
+
+/** A row of `orca worktree ps --json`: a worktree's agents (only the fields the plugin reads). */
+export type WorktreeAgents = { worktreeId: string; agents: WorktreeAgent[] }
+
 export interface OrcaCli {
   listWorktrees(): Promise<Worktree[]>
+  /** `orca worktree ps`: the agents in each worktree, for the Agent Review line (#10). */
+  listAgents(): Promise<WorktreeAgents[]>
   /** `selector` is an Orca worktree selector such as `id:<id>` or `path:<abs path>`. */
   showWorktree(selector: string): Promise<WorktreeDetail>
   createWorktree(input: CreateWorktreeInput): Promise<Worktree>

@@ -13,6 +13,7 @@ import {
   type Json
 } from '../seams/gitlab'
 import type {
+  PipelineStatus,
   ReviewRequestNode,
   ReviewRequestsResponse,
   ReviewState
@@ -35,6 +36,12 @@ export type MergeRequestSeed = {
   labels?: string[]
   /** When the seeded reviewers were added (ms); defaults to now. */
   requestedAt?: number
+  /** The head pipeline's status; none by default. */
+  pipeline?: PipelineStatus
+  /** Approvals the MR requires; 0 by default. */
+  approvalsRequired?: number
+  /** Comments by people on the MR; 0 by default. */
+  userNotesCount?: number
 }
 
 export type FakeMergeRequest = {
@@ -68,6 +75,9 @@ export type FakeMergeRequest = {
   notes: string[]
   /** GitLab no longer shows it to the user (deleted, access lost). */
   hidden: boolean
+  pipeline: PipelineStatus | null
+  approvalsRequired: number
+  userNotesCount: number
 }
 
 export type FakeVersion = { id: number; baseSha: string; startSha: string; headSha: string; createdAt: number }
@@ -150,7 +160,10 @@ export class FakeGitLab implements GitLabTransport {
       outsideDiff: new Set(),
       refusedTexts: [],
       notes: [],
-      hidden: false
+      hidden: false,
+      pipeline: seed.pipeline ?? null,
+      approvalsRequired: seed.approvalsRequired ?? 0,
+      userNotesCount: seed.userNotesCount ?? 0
     }
     this.#addVersion(mr)
     this.#mergeRequests.push(mr)
@@ -397,7 +410,11 @@ export class FakeGitLab implements GitLabTransport {
             reviewed: (mr.reviewStates[username] ?? 'UNREVIEWED') !== 'UNREVIEWED'
           }
         }))
-      }
+      },
+      approvalsRequired: mr.approvalsRequired,
+      approvalsLeft: Math.max(0, mr.approvalsRequired - mr.approvedBy.length),
+      userNotesCount: mr.userNotesCount,
+      headPipeline: mr.pipeline === null ? null : { status: mr.pipeline }
     }
   }
 

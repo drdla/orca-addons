@@ -8,6 +8,7 @@ import {
   type OrcaCli,
   type RemoveWorktreeOptions,
   type Worktree,
+  type WorktreeAgents,
   type WorktreeDetail
 } from '../seams/orca-cli'
 
@@ -42,6 +43,7 @@ export class FakeOrcaCli implements OrcaCli {
   readonly calls: FakeCliCall[] = []
   #worktrees: FakeWorktree[] = []
   #failures: OrcaCliError[] = []
+  #agents = new Map<string, string[]>()
 
   // --- Arrange -----------------------------------------------------------------------------
 
@@ -85,6 +87,15 @@ export class FakeOrcaCli implements OrcaCli {
     this.#byId(worktreeId).dirty = dirty
   }
 
+  /** The agents `orca worktree ps` reports in a worktree, by state (`working`, `done`…). */
+  setAgents(worktreeId: string, states: string[]): void {
+    this.#byId(worktreeId)
+    this.#agents.set(worktreeId, states)
+  }
+
+  /** While true, `orca worktree ps` fails (and only it). */
+  failAgents = false
+
   /** The next calls reject with these errors, one each. */
   failNext(...errors: OrcaCliError[]): void {
     this.#failures.push(...errors)
@@ -95,6 +106,15 @@ export class FakeOrcaCli implements OrcaCli {
   async listWorktrees(): Promise<Worktree[]> {
     this.#record('worktree list')
     return this.#worktrees.map(publicRow)
+  }
+
+  async listAgents(): Promise<WorktreeAgents[]> {
+    this.#record('worktree ps')
+    if (this.failAgents) throw new OrcaCliError('unavailable', 'The orca CLI failed (exit 1): ps broke')
+    return this.#worktrees.map((w) => ({
+      worktreeId: w.id,
+      agents: (this.#agents.get(w.id) ?? []).map((state) => ({ state, agentType: 'claude' }))
+    }))
   }
 
   async showWorktree(selector: string): Promise<WorktreeDetail> {

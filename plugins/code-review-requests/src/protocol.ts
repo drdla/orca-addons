@@ -14,6 +14,22 @@ export type ReviewRequestView = {
   /** The MR's branches, for the Review Prompt (#27); absent in views stored before #27. */
   sourceBranch?: string
   targetBranch?: string
+  /** The CI badge (#10): the head pipeline's outcome, or null without one (or canceled, skipped…). */
+  ci?: CiStatus | null
+  /** The approvals badge, `given/required`; null when the MR requires none. */
+  approvals?: { given: number; required: number } | null
+  /** The comments badge: comments by people on the MR. */
+  comments?: number
+}
+
+export type CiStatus = 'passed' | 'failed' | 'running'
+
+/** An Agent Review in a Review Workspace (#10), from `orca worktree ps`. */
+export type AgentReviewView = {
+  /** An agent is working (or waiting for permission), or every agent has finished its turn. */
+  state: 'running' | 'done'
+  /** Review Comments in the Review Draft that aren't posted yet. */
+  commentsReady: number
 }
 
 /** A Review Workspace (#27): the Orca workspace linked to a Review Request's MR. */
@@ -53,6 +69,12 @@ export type ReviewRequestCard = ReviewRequestView & {
   workspace?: ReviewWorkspaceView | null
   /** Why Start review can't run for it (no Orca repo, the orca CLI is broken), or null (#27). */
   startBlocked?: string | null
+  /** Appeared since the panel was opened before this time (#10): the New badge and accent border. */
+  isNew?: boolean
+  /** The Agent Review in its Review Workspace, or null when no agent ran there (#10). */
+  agentReview?: AgentReviewView | null
+  /** Checked, unposted Review Comments in its Review Draft: "Post N to GitLab" on the card (#10). */
+  toPost?: number
 }
 
 export type ReviewRequestsSnapshot = {
@@ -208,6 +230,11 @@ declare module 'orca' {
     'rr.copyLink': { input: { url: string }; output: { copied: true } }
     /** Puts any text on the clipboard, such as the setup checklist's glab login command (#8). */
     'rr.copyText': { input: { text: string }; output: { copied: true } }
+    /**
+     * The panel was opened (#10): its Review Requests count as seen for the bell's "M new", and
+     * at the next opening they lose the New badge.
+     */
+    'rr.markSeen': { output: { seen: true } }
     /**
      * The setup checklist's "Use <host>" (#8): points the instance URL setting at `host` (one glab
      * is logged in to) and polls it at once. Answers the new snapshot.

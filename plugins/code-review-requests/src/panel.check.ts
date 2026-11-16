@@ -278,6 +278,39 @@ export default defineCheck({
   inReview: { requests: { 'rr.snapshot': inReview }, persisted: { plugin: { 'rr.tab': 'in' } } },
   /** To review next to an In review card: Start review and its Agent Review button (#27). */
   startReview: { requests: { 'rr.snapshot': inReview } },
+  /** Card badges (#10): New with its accent border, CI, approvals and comments. */
+  cardBadges: {
+    requests: {
+      'rr.snapshot': {
+        reviewRequests: [
+          { ...card(12, 'Add login with SSO', 5), isNew: true, ci: 'failed', approvals: { given: 1, required: 2 }, comments: 3 },
+          { ...card(14, 'Fix flaky upload test', 1), ci: 'running', approvals: null, comments: 1 },
+          { ...card(9, 'Migrate billing to the new API', 72, true), isNew: true, ci: 'passed', comments: 0 }
+        ],
+        refreshedAt: NOW
+      } satisfies ReviewRequestsSnapshot
+    }
+  },
+  /** In review (#10): an Agent Review running, and one done with comments ready to post. */
+  inReviewAgentReview: {
+    requests: {
+      'rr.snapshot': {
+        reviewRequests: [
+          { ...card(12, 'Add login with SSO', 5), workspace: WORKSPACE, startBlocked: null, agentReview: { state: 'done', commentsReady: 4 }, toPost: 3 },
+          {
+            ...card(14, 'Fix flaky upload test', 1),
+            workspace: { ...WORKSPACE, id: 'repo-api::/wt/review-api-14', path: '/wt/review-api-14' },
+            startBlocked: null,
+            agentReview: { state: 'running', commentsReady: 0 },
+            toPost: 0
+          }
+        ],
+        refreshedAt: NOW
+      } satisfies ReviewRequestsSnapshot,
+      'rr.connection': connection()
+    },
+    persisted: { plugin: { 'rr.tab': 'in' } }
+  },
   /** Start review disabled, with the hint why (#27). */
   startBlocked: { requests: { 'rr.snapshot': startBlocked } },
   /** The person left the panel on Ended, with nothing there. */

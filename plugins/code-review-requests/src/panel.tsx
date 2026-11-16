@@ -32,15 +32,24 @@ import {
   ui,
   update,
   type IconName,
+  type Tone,
   type OrcaNode,
   type PanelContext
 } from 'orca'
-import type { ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
-import { ConnectionSection, loadConnection } from './connection-section'
+import type { CiStatus, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
+import { canPostReviews, ConnectionSection, loadConnection } from './connection-section'
+import { messageOf } from './errors'
 import { RefreshProblem } from './refresh-problem'
 import { SetupChecklist } from './setup-checklist'
 import { EndedList, WorkspacesUnavailable } from './ended-tab'
-import { isReviewDraftOpen, openReviewDraft, ReviewDraftScreen, setupReviewDraft } from './review-draft-view'
+import {
+  isReviewDraftOpen,
+  openReviewDraft,
+  openReviewDraftToPost,
+  ReviewDraftScreen,
+  setupReviewDraft
+} from './review-draft-view'
+import { API_SCOPE_HINT } from './review-post-view'
 
 type TabId = 'todo' | 'in' | 'ended'
 
@@ -57,10 +66,6 @@ const cardErrors = atom<Record<string, string>>({})
 /** Review Request URLs with a workspace action under way (#27); their buttons wait. */
 const busyCards = atom<Record<string, true>>({})
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
 function received(answer: ReviewRequestsSnapshot): void {
   set(snapshot, answer)
   set(failure, null)
@@ -72,6 +77,8 @@ export function setup(ctx: PanelContext): void {
     .request('rr.snapshot')
     .then(received)
     .catch((error: unknown) => set(failure, messageOf(error)))
+  // Opening the panel shows its Review Requests: the bell stops counting them as new (#10).
+  plugin.request('rr.markSeen').catch(() => {})
   setupReviewDraft()
   void loadConnection()
 }
@@ -350,6 +357,17 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
         <Button size="xs" variant="outline" icon="edit" onPress={() => openReviewDraft(card.url)}>
           Review draft
         </Button>
+        {(card.toPost ?? 0) > 0 && (
+          <Button
+            size="xs"
+            icon="upload"
+            disabled={canPostReviews() === false}
+            tooltip={canPostReviews() === false ? API_SCOPE_HINT : 'Post the Review Draft to GitLab as one review'}
+            onPress={() => openReviewDraftToPost(card.url)}
+          >
+            {`Post ${card.toPost} to GitLab`}
+          </Button>
+        )}
         {busy && <Spinner label="Working" labelHidden />}
       </Row>
     )
@@ -380,19 +398,60 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
   )
 }
 
+const CI_BADGES: Record<CiStatus, { text: string; tone: Tone }> = {
+  passed: { text: 'CI passed', tone: 'success' },
+  failed: { text: 'CI failed', tone: 'danger' },
+  running: { text: 'CI running', tone: 'neutral' }
+}
+
+/** CI, approvals given/required and comments (#10); each only when there is something to say. */
+function StatusBadges({ card }: { card: ReviewRequestCard }) {
+  const ci = card.ci == null ? null : CI_BADGES[card.ci]
+  const comments = card.comments ?? 0
+  if (ci === null && card.approvals == null && comments === 0) return null
+  return (
+    <Row gap="xs" wrap>
+      {ci !== null && <Badge tone={ci.tone}>{ci.text}</Badge>}
+      {card.approvals != null && <Badge>{`${card.approvals.given}/${card.approvals.required} approvals`}</Badge>}
+      {comments > 0 && <Badge>{comments === 1 ? '1 comment' : `${comments} comments`}</Badge>}
+    </Row>
+  )
+}
+
+/** "Agent Review running", or "Agent Review done · N comments ready" (#10). */
+function agentReviewLine(card: ReviewRequestCard): string | null {
+  const review = card.agentReview
+  if (card.workspace == null || review == null) return null
+  if (review.state === 'running') return 'Agent Review running'
+  const ready = review.commentsReady
+  if (ready === 0) return 'Agent Review done'
+  return `Agent Review done · ${ready === 1 ? '1 comment' : `${ready} comments`} ready`
+}
+
 function Card({ card }: { card: ReviewRequestCard }) {
   const error = read(cardErrors)[card.url]
   const blocked = card.workspace == null ? (card.startBlocked ?? null) : null
+  // Overdue takes precedence over New (#10).
+  const isNew = card.isNew === true && !card.overdue
+  const agentLine = agentReviewLine(card)
   return (
-    <Box border={card.overdue ? 'danger' : true} radius="md" padding="sm" direction="column" gap="xs">
+    <Box border={card.overdue ? 'danger' : isNew ? 'accent' : true} radius="md" padding="sm" direction="column" gap="xs">
       <Row justify="between" align="start">
         <Text weight="semibold">{card.title}</Text>
         {card.overdue && <Badge tone="danger">Overdue</Badge>}
+        {isNew && <Badge tone="accent">New</Badge>}
       </Row>
       <Text muted size="xs">
         {`${card.projectPath} !${card.iid} · ${card.author} · requested `}
         <When at={card.requestedAt} overdue={card.overdue} />
       </Text>
+      <StatusBadges card={card} />
+      {agentLine !== null && (
+        <Row gap="xs" align="center">
+          {card.agentReview?.state === 'running' && <Spinner label="Agent Review running" labelHidden />}
+          <Text size="xs">{agentLine}</Text>
+        </Row>
+      )}
       <Row justify="between" gap="xs">
         <WorkspaceActions card={card} />
         <Row gap="xs">

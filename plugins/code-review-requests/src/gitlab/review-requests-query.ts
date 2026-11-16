@@ -23,6 +23,8 @@ export const REVIEW_REQUESTS_QUERY = `query ReviewRequests($me: String!, $after:
         author { username name }
         labels { nodes { title } }
         reviewers { nodes { username mergeRequestInteraction { reviewState approved reviewed } } }
+        approvalsRequired approvalsLeft userNotesCount
+        headPipeline { status }
       }
     }
   }
@@ -59,7 +61,31 @@ export type ReviewRequestNode = {
       mergeRequestInteraction: { reviewState: ReviewState; approved: boolean; reviewed: boolean } | null
     }[]
   }
+  /** Approvals the MR needs in all; 0 or null when none are required (#10's approvals badge). */
+  approvalsRequired: number | null
+  /** Approvals still missing. */
+  approvalsLeft: number | null
+  /** Comments by people (system notes excluded), for the comments badge. */
+  userNotesCount: number | null
+  /** The latest pipeline on the source branch, or null without CI. */
+  headPipeline: { status: PipelineStatus } | null
 }
+
+/** GitLab's PipelineStatusEnum. */
+export type PipelineStatus =
+  | 'CREATED'
+  | 'WAITING_FOR_RESOURCE'
+  | 'PREPARING'
+  | 'WAITING_FOR_CALLBACK'
+  | 'PENDING'
+  | 'RUNNING'
+  | 'FAILED'
+  | 'SUCCESS'
+  | 'CANCELED'
+  | 'CANCELING'
+  | 'SKIPPED'
+  | 'MANUAL'
+  | 'SCHEDULED'
 
 export type ReviewRequestsResponse = {
   currentUser: {

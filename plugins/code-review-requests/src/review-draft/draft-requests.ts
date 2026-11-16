@@ -14,6 +14,8 @@ export function registerDraftRequests(
     /** The cards as the panel has them (with their Review Workspace). */
     cards: () => ReviewRequestCard[]
     workspaceState: () => WorkspaceState
+    /** After a Review Draft changed. */
+    onChanged?: () => Promise<void>
   }
 ): ReviewDrafts {
   const { deps } = options
@@ -32,7 +34,16 @@ export function registerDraftRequests(
     }
   }
 
-  orca.panels.handle('rr.draft', async ({ url }) => draftImport.open(targetOf(url)))
-  orca.panels.handle('rr.updateDraftComment', async ({ url, ...change }) => draftImport.change(targetOf(url), change))
+  /** Runs a request, then tells open panels (the card's counts follow the Review Draft, #10). */
+  async function thenChanged<T>(result: Promise<T>): Promise<T> {
+    const answer = await result
+    await options.onChanged?.()
+    return answer
+  }
+
+  orca.panels.handle('rr.draft', async ({ url }) => thenChanged(draftImport.open(targetOf(url))))
+  orca.panels.handle('rr.updateDraftComment', async ({ url, ...change }) =>
+    thenChanged(draftImport.change(targetOf(url), change))
+  )
   return drafts
 }
