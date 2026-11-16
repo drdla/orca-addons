@@ -11,12 +11,14 @@ import type { Disposable } from '../seams/clock'
 import { cardsOf, type OverdueContext } from '../to-review'
 
 export type PollOutcome =
-  | { ok: true; at: number; reviewRequests: ReviewRequestView[] }
+  | { ok: true; at: number; reviewRequests: ReviewRequestView[]; hidden?: ReviewRequestView[] }
   | { ok: false; at: number; error: unknown }
 
 export type PollState = {
   /** The last good list; empty until the first poll succeeds. */
   reviewRequests: ReviewRequestView[]
+  /** The rest of the last good list: what the filters hide (#26). Not counted or shown anywhere. */
+  hidden: ReviewRequestView[]
   /** When the last poll that succeeded started, or null if none has. */
   lastSuccessAt: number | null
   /** When the last poll started, whatever its outcome. */
@@ -40,6 +42,7 @@ export type PollStateStore = {
 
 export const INITIAL_POLL_STATE: PollState = {
   reviewRequests: [],
+  hidden: [],
   lastSuccessAt: null,
   lastAttemptAt: null,
   lastError: null
@@ -74,6 +77,7 @@ export function createPollState(log: (message: string) => void = () => {}): Poll
         const previous = state.lastSuccessAt === null ? null : state
         state = {
           reviewRequests: outcome.reviewRequests,
+          hidden: outcome.hidden ?? [],
           lastSuccessAt: outcome.at,
           lastAttemptAt: outcome.at,
           lastError: null
@@ -93,5 +97,7 @@ export function createPollState(log: (message: string) => void = () => {}): Poll
 
 /** What the panel gets from rr.snapshot and rr.changed. Extend it with ReviewRequestsSnapshot. */
 export function snapshotOf(state: PollState, overdue: OverdueContext): ReviewRequestsSnapshot {
-  return { reviewRequests: cardsOf(state, overdue), refreshedAt: state.lastSuccessAt }
+  const snapshot: ReviewRequestsSnapshot = { reviewRequests: cardsOf(state, overdue), refreshedAt: state.lastSuccessAt }
+  if (state.hidden.length > 0) snapshot.hiddenByFilters = state.hidden.length
+  return snapshot
 }

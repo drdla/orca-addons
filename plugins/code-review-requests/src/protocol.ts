@@ -24,6 +24,10 @@ export type ReviewRequestsSnapshot = {
   reviewRequests: ReviewRequestCard[]
   /** When the last successful poll started (ms), or null if none has. */
   refreshedAt: number | null
+  /** How many Review Requests the filter settings hide (#26). Absent means none. */
+  hiddenByFilters?: number
+  /** Filter setting entries that are not valid rules and are ignored (#26). Absent means none. */
+  invalidFilterEntries?: string[]
 }
 
 declare module 'orca' {

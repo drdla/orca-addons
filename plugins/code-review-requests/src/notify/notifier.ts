@@ -29,6 +29,12 @@ export type NotifierOptions = {
    * failed) stay in the baseline and are asked about again on the next poll.
    */
   explainDropped(dropped: ReviewRequestView[]): Promise<Map<string, DropReason>>
+  /**
+   * Whether a Review Request may notify (#26: not hidden by the filters). Hand the notifier the
+   * whole list, hidden ones included: one that only became hidden or shown has not come or gone,
+   * so it is never notified as new or ended, and a hidden one that drops off is never looked up.
+   */
+  isShown?(view: ReviewRequestView): boolean
   log?(message: string): void
 }
 
@@ -42,6 +48,7 @@ export async function loadBaseline(storage: Pick<Storage, 'get'>): Promise<Basel
 
 export function createNotifier(options: NotifierOptions) {
   const log = options.log ?? (() => {})
+  const isShown = options.isShown ?? (() => true)
   let baseline: Baseline | null | undefined
   let sawGoodPoll = false
 
@@ -61,11 +68,13 @@ export function createNotifier(options: NotifierOptions) {
 
       if (baseline === null) {
         await save({ reviewRequests, lastSuccessAt: at })
-        await send([firstRunNote(reviewRequests)])
+        await send([firstRunNote(reviewRequests.filter(isShown))])
         return
       }
 
-      const { added, dropped } = diffReviewRequests(baseline.reviewRequests, reviewRequests)
+      const changes = diffReviewRequests(baseline.reviewRequests, reviewRequests)
+      const added = changes.added.filter(isShown)
+      const dropped = changes.dropped.filter(isShown)
       const reasons = dropped.length > 0 ? await options.explainDropped(dropped) : new Map()
       const explained: Dropped[] = []
       const unexplained: ReviewRequestView[] = []

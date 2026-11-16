@@ -9,10 +9,10 @@ export const DEFAULT_SETTINGS = {
   pollMinutes: 5,
   /** A Review Request waiting longer than this, in working hours Mon–Fri, is Overdue (#22). */
   overdueHours: 24,
-  /** Path rules, one per line or comma-separated (#26). */
+  /** Path rules, separated by commas, spaces or new lines (src/filters.ts, #26). */
   pathAllowlist: '',
   pathBlocklist: '',
-  /** Usernames, one per line or comma-separated (#26). */
+  /** Usernames, separated by commas, spaces or new lines (#26). */
   authorBlocklist: '',
   /** The Orca agent id an Agent Review runs (#27). */
   reviewAgent: 'claude',
