@@ -232,7 +232,7 @@ test("the memory keeps a card's entry when its ticket could not be read, and dro
 })
 
 const writesOf = (result: ReturnType<typeof sync>) =>
-  result.writes.map((w) => (w.kind === 'set-state' ? `${w.identifier} → ${w.state}` : `${w.identifier} → assign me`))
+  result.writes.map((w) => (w.kind === 'set-state' ? `${w.ref.identifier} → ${w.state}` : `${w.ref.identifier} → assign me`))
 
 const START_CASES: [title: string, ticket: Ticket, writes: string[]][] = [
   ['my Todo ticket is set to In Progress', ticket('OEO-1', 'Todo', 'unstarted'), ['OEO-1 → In Progress']],

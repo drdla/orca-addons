@@ -77,20 +77,21 @@ export function createWorker(deps: Deps) {
         warnings.push(...result.warnings)
         const memory = result.memory
         // Linear writes first, in order; a failed one skips that ticket's later writes and its card move.
-        const failed = new Set<string>()
+        const failedPaths = new Set<string>()
         for (const write of result.writes) {
-          if (failed.has(write.path)) continue
+          if (failedPaths.has(write.path)) continue
           try {
-            if (write.kind === 'assign-me') await cli.assignToMe(write)
-            else await cli.setState(write, write.state)
+            if (write.kind === 'assign-me') await cli.assignToMe(write.ref)
+            else await cli.setState(write.ref, write.state)
           } catch (error) {
             // Not retried: only creating the workspace Starts its ticket, and the next poll applies Linear as it is.
-            warnings.push(`${write.identifier}: couldn't Start the ticket in Linear: ${messageOf(error)}`)
-            failed.add(write.path)
+            const what = write.kind === 'assign-me' ? 'assign it to you' : `set it to "${write.state}"`
+            warnings.push(`${write.ref.identifier}: couldn't Start the ticket in Linear (${what}): ${messageOf(error)}`)
+            failedPaths.add(write.path)
             revertFailedMove(memory, before, write.path)
           }
         }
-        for (const move of result.moves.filter((m) => !failed.has(m.path))) {
+        for (const move of result.moves.filter((m) => !failedPaths.has(m.path))) {
           try {
             await cli.setColumn(move.worktreeId, move.to)
             moved++

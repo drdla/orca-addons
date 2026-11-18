@@ -42,10 +42,7 @@ export type Memory = Record<string, MemoryEntry>
 export type CardMove = { worktreeId: string; path: string; identifier: string; from: string | null; to: string }
 
 /** A write to a Linear ticket, for the Linked Workspace at `path`. Applied in order, per ticket. */
-export type LinearWrite = { path: string; identifier: string; workspaceId: string | null } & (
-  | { kind: 'assign-me' }
-  | { kind: 'set-state'; state: string }
-)
+export type LinearWrite = { path: string; ref: TicketRef } & ({ kind: 'assign-me' } | { kind: 'set-state'; state: string })
 
 export type SyncInput = {
   linear: { teams: LinearTeam[]; tickets: Ticket[] }
@@ -53,13 +50,13 @@ export type SyncInput = {
   memory: Memory
   settings: SyncSettings
   /** The path of the workspace just created (workspace.created), which may Start its ticket. */
-  created?: string | null
+  created: string | null
 }
 
 export type SyncResult = { moves: CardMove[]; writes: LinearWrite[]; warnings: string[]; memory: Memory }
 
 /** The state a Start sets. */
-export const IN_PROGRESS = 'In Progress'
+const IN_PROGRESS = 'In Progress'
 /** The state types a Start moves on from. */
 const NOT_STARTED = new Set(['triage', 'backlog', 'unstarted'])
 
@@ -98,7 +95,7 @@ export function syncBoard(input: SyncInput): SyncResult {
     }
     if (!teamAllowed({ key: ticket.teamKey, workspace: ticket.workspace }, input.settings)) continue
     if (card.path === input.created && isStart(ticket)) {
-      const target = { identifier: ticket.identifier, workspaceId: ticket.workspaceId, path: card.path }
+      const target = { path: card.path, ref: { identifier: ticket.identifier, workspaceId: ticket.workspaceId } }
       if (ticket.assignee === null) writes.push({ ...target, kind: 'assign-me' })
       writes.push({ ...target, kind: 'set-state', state: IN_PROGRESS })
       // The card follows the ticket as it will be: In Progress, through the State Mapping.

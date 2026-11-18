@@ -106,28 +106,28 @@ export function createOrcaCli(run: RunOrca): OrcaCli {
 
   /**
    * The user's Linear id in a Linear workspace, from any ticket assigned to them; the CLI has no
-   * "who am I". Null when no ticket is: then no ticket is theirs. Not remembered until found.
+   * "who am I". Null when no ticket is (then no ticket is theirs) or the lookup fails. Not
+   * remembered until found.
    */
   async function myId(workspaceId: string): Promise<string | null> {
     const known = myIds.get(workspaceId)
     if (known !== undefined) return known
-    const { issues } = await call<{ issues?: IssueRow[] }>([
-      'linear',
-      'list-issues',
-      '--assignee',
-      'me',
-      '--limit',
-      '1',
-      '--workspace',
-      workspaceId
-    ])
+    let issues: IssueRow[] | undefined
+    try {
+      ;({ issues } = await call<{ issues?: IssueRow[] }>([
+        'linear', 'list-issues', '--assignee', 'me', '--limit', '1', ...whereOf({ workspaceId })
+      ]))
+    } catch {
+      // Unknown, so treated as not the user's: the ticket still syncs one way, and is never written.
+      return null
+    }
     const id = issues?.[0]?.assignee?.id ?? null
     if (id !== null) myIds.set(workspaceId, id)
     return id
   }
 }
 
-function whereOf(ref: TicketRef): string[] {
+function whereOf(ref: Pick<TicketRef, 'workspaceId'>): string[] {
   return ref.workspaceId === null ? [] : ['--workspace', ref.workspaceId]
 }
 

@@ -118,6 +118,16 @@ test('with no ticket ever assigned to the user, an assigned ticket is a colleagu
   assert.equal((await cli.ticket({ identifier: 'OEO-1577', workspaceId: 'ws-v' })).assignee, 'colleague')
 })
 
+test("when the user's Linear id can't be looked up, the ticket is still read, as a colleague's (never written)", async () => {
+  const issue = { ...issueEnvelope.result.issue, assignee: { id: 'u1', displayName: 'x' } }
+  const { cli } = runner(async (args) =>
+    args[1] === 'list-issues'
+      ? { exitCode: 1, stdout: JSON.stringify(issueNotFoundEnvelope), stderr: '' }
+      : ok({ ...issueEnvelope, result: { ...issueEnvelope.result, issue } })
+  )
+  assert.equal((await cli.ticket({ identifier: 'OEO-1577', workspaceId: 'ws-v' })).assignee, 'colleague')
+})
+
 test('sets a ticket state with `orca linear status set`, in its Linear workspace when known', async () => {
   const { calls, cli } = runner(ok({ id: 'e8', ok: true, result: {} }))
   await cli.setState({ identifier: 'OEO-1', workspaceId: 'ws-v' }, 'In Progress')
