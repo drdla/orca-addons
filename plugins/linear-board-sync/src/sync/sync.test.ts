@@ -349,9 +349,9 @@ for (const [title, from, to, theTicket, writes] of WRITE_BACK_CASES) {
 }
 
 const REVERT_CASES: [title: string, from: string, to: string, ticket: Ticket, message: RegExp][] = [
-  ['a drag into In Review', 'in-progress', 'in-review', ticket('OEO-1', 'In Progress', 'started'), /OEO-1.*in-review.*GitLab or the PO/],
-  ['a drag into PO Acceptance', 'in-review', 'po-acceptance', ticket('OEO-1', 'Review', 'started'), /OEO-1.*po-acceptance.*GitLab or the PO/],
-  ['a drag into Done', 'in-review', 'completed', ticket('OEO-1', 'Review', 'started'), /OEO-1.*completed.*GitLab or the PO/],
+  ['a drag into In Review', 'in-progress', 'in-review', ticket('OEO-1', 'In Progress', 'started'), /OEO-1.*"in-review" is not a Writable Column/],
+  ['a drag into PO Acceptance', 'in-review', 'po-acceptance', ticket('OEO-1', 'Review', 'started'), /OEO-1.*"po-acceptance" is not a Writable Column/],
+  ['a drag into Done', 'in-review', 'completed', ticket('OEO-1', 'Review', 'started'), /OEO-1.*"completed" is not a Writable Column/],
   [
     "a drag of a colleague's card, even into a Writable Column",
     'todo',

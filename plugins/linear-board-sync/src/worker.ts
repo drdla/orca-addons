@@ -63,10 +63,6 @@ export function createWorker(deps: Deps) {
     }
 
     /**
-     * One sync. A `poll` reads every Linked Workspace's ticket; a `board-check` reads only the tickets
-     * of dragged cards, and does nothing more when there are none; `created` reads the one new workspace's.
-     */
-    /**
      * Reads the settings afresh, so a change applies from the next tick without a restart: the
      * poll interval at once, the rest at the next sync. A problem is logged when it first appears.
      */
@@ -80,11 +76,15 @@ export function createWorker(deps: Deps) {
       return parsed
     }
 
-    function syncedStatus(): SyncStatus {
+    function currentStatus(): SyncStatus {
       if (paused) return { kind: 'paused' }
       return { kind: 'synced', at: syncedAt ?? clock.now(), warnings: [...settingsProblems, ...shownWarnings] }
     }
 
+    /**
+     * One sync. A `poll` reads every Linked Workspace's ticket; a `board-check` reads only the tickets
+     * of dragged cards, and does nothing more when there are none; `created` reads the one new workspace's.
+     */
     async function sync(mode: SyncMode): Promise<SyncOutcome> {
       const parsed = await readSettings()
       const warnings: string[] = []
@@ -154,7 +154,7 @@ export function createWorker(deps: Deps) {
       // A poll replaces what the status bar shows; a board check or a new workspace adds to it until then.
       shownWarnings = mode.kind === 'poll' ? warnings : [...new Set([...shownWarnings, ...warnings])]
       syncedAt = clock.now()
-      await statusBar.render(syncedStatus())
+      await statusBar.render(currentStatus())
       return { moved, warnings: [...parsed.problems, ...warnings] }
     }
 
@@ -219,8 +219,10 @@ export function createWorker(deps: Deps) {
     async function settingsChanged(): Promise<void> {
       await startIfConfigured()
       if (!poller.running) return
-      await readSettings()
-      if (syncedAt !== null) await render(syncedStatus())
+      await serially(async () => {
+        await readSettings()
+        if (syncedAt !== null) await render(currentStatus())
+      })
     }
 
     const settingsWatch = orca.settings.onDidChange(() =>

@@ -44,16 +44,16 @@ export function parseSettings(stored: Record<string, unknown>): ParsedSettings {
 }
 
 /** The bounds of the poll interval, as the manifest declares them. */
-export const POLL_MINUTES = { min: 1, max: 1440 }
+export const POLL_MINUTES_RANGE = { min: 1, max: 1440 }
 
-/** Whole minutes within POLL_MINUTES; unset is the default without a problem (the test host sets none). */
+/** Whole minutes within POLL_MINUTES_RANGE; unset is the default without a problem (the test host sets none). */
 function parsePollMinutes(value: unknown, problems: string[]): number {
   if (value === undefined) return DEFAULT_SETTINGS.pollMinutes
-  if (typeof value === 'number' && Number.isInteger(value) && value >= POLL_MINUTES.min && value <= POLL_MINUTES.max) {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= POLL_MINUTES_RANGE.min && value <= POLL_MINUTES_RANGE.max) {
     return value
   }
   problems.push(
-    `Check Linear every (minutes): ${JSON.stringify(value) ?? String(value)} is not a whole number of minutes from ${POLL_MINUTES.min} to ${POLL_MINUTES.max}; using ${DEFAULT_SETTINGS.pollMinutes}.`
+    `Check Linear every (minutes): ${JSON.stringify(value) ?? String(value)} is not a whole number of minutes from ${POLL_MINUTES_RANGE.min} to ${POLL_MINUTES_RANGE.max}; using ${DEFAULT_SETTINGS.pollMinutes}.`
   )
   return DEFAULT_SETTINGS.pollMinutes
 }
@@ -69,7 +69,7 @@ function parseTeams(text: string, problems: string[]): TeamEntry[] {
     const parts = word.split('/')
     const key = parts.at(-1)!
     if (parts.length > 2 || !TEAM_KEY.test(key) || (parts.length === 2 && parts[0] === '')) {
-      problems.push(`Teams: "${word}" is not a team key like OEO or vestigas/OEO.`)
+      problems.push(`Teams: "${word}" is not a team key like OEO or vestigas/OEO; skipped.`)
       continue
     }
     entries.push({ key: key.toUpperCase(), workspace: parts.length === 2 ? parts[0]!.toLowerCase() : null })
@@ -88,22 +88,15 @@ const TEAM_KEY = /^[A-Za-z][A-Za-z0-9]*$/
 function parseOverrides(text: string, problems: string[]): StateOverride[] {
   if (text.trim() === '') return []
   const fail = (why: string): StateOverride[] => {
-    problems.push(`State Mapping overrides: ${why} Using none, so states map by type.`)
+    problems.push(`State Mapping overrides: ${why}; using none, so states map by type.`)
     return []
   }
-  let value: unknown
-  try {
-    value = JSON.parse(text)
-  } catch {
-    return fail('not valid JSON.')
-  }
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return fail('not a JSON object like {"Review": "in-review"}.')
-  }
+  const value = readJsonObject(text, '{"Review": "in-review"}')
+  if (typeof value === 'string') return fail(value)
   const overrides: StateOverride[] = []
   for (const [key, column] of Object.entries(value)) {
     if (typeof column !== 'string' || column.trim() === '') {
-      return fail(`"${key}" needs a Board Column id as a string.`)
+      return fail(`"${key}" needs a Board Column id as a string`)
     }
     const slash = key.indexOf('/')
     const prefix = slash === -1 ? '' : key.slice(0, slash).trim()
@@ -125,18 +118,12 @@ function parseOverrides(text: string, problems: string[]): StateOverride[] {
 function parseWritableColumns(text: string, problems: string[]): Record<string, string> {
   if (text.trim() === '') return {}
   const fail = (why: string): Record<string, string> => {
-    problems.push(`Writable Columns: ${why}; using the default (Todo, In Progress, Blocked).`)
-    return parseWritableColumns(DEFAULT_SETTINGS.writableColumns, [])
+    const defaults = parseWritableColumns(DEFAULT_SETTINGS.writableColumns, [])
+    problems.push(`Writable Columns: ${why}; using the default (${Object.values(defaults).join(', ')}).`)
+    return defaults
   }
-  let value: unknown
-  try {
-    value = JSON.parse(text)
-  } catch {
-    return fail('not valid JSON')
-  }
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return fail('not a JSON object like {"todo": "Todo"}')
-  }
+  const value = readJsonObject(text, '{"todo": "Todo"}')
+  if (typeof value === 'string') return fail(value)
   const columns: Record<string, string> = {}
   for (const [key, state] of Object.entries(value)) {
     const column = key.trim()
@@ -149,7 +136,22 @@ function parseWritableColumns(text: string, problems: string[]): Record<string, 
   return columns
 }
 
-/** A Board Column id: the slug of the column's label, so lower case and without spaces. */
+/** A JSON object setting's value, or why it isn't one (`example` shows the expected shape). */
+function readJsonObject(text: string, example: string): Record<string, unknown> | string {
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch {
+    return 'not valid JSON'
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return `not a JSON object like ${example}`
+  return value as Record<string, unknown>
+}
+
+/**
+ * Shaped like a Board Column id (the slug of a label): no spaces or capitals. Catches a label written
+ * instead of an id; a misspelt id passes, since the plugin can't list the board's columns.
+ */
 const COLUMN_ID = /^[^\sA-Z]+$/
 
 /** State names compare ignoring case and surrounding spaces. */

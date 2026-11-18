@@ -373,7 +373,7 @@ test('a drag into a column GitLab or the PO own is moved back, with a status-bar
 
   assert.deepEqual(cli.writes(), [])
   assert.equal(cli.columnOf('mine'), 'in-progress')
-  assert.match(statusBar()?.tooltip ?? '', /OEO-1.*GitLab or the PO/)
+  assert.match(statusBar()?.tooltip ?? '', /OEO-1.*not a Writable Column/)
 })
 
 test("a drag of a colleague's card is moved back", async () => {

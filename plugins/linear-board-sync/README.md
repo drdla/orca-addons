@@ -36,7 +36,7 @@ In Orca's **Settings → Plugins → Linear Board Sync**. A change applies from 
 - **Teams:** an entry that is not a team key is skipped; the other entries apply (none left means all teams, the default).
 - **Check Linear every (minutes):** anything but a whole number from 1 to 1440 means the default, 2.
 - **State Mapping overrides:** text that is not valid JSON, not an object, or has a state with no column id as a string means no overrides, the default.
-- **Writable Columns:** text that is not valid JSON, not an object, has a key that is a column label rather than an id (`"PO Acceptance"` instead of `"po-acceptance"`) or a state that is not a non-empty string means the default Writable Columns.
+- **Writable Columns:** text that is not valid JSON, not an object, has a key that is a column label rather than an id (`"PO Acceptance"` instead of `"po-acceptance"`) or a state that is not a non-empty string means the default Writable Columns. A misspelt column id (`"in-progres"`) can't be caught, since the plugin can't list the board's columns: that column just isn't writable.
 
 The warning goes away once the setting is fixed.
 
