@@ -1,5 +1,5 @@
 // The plugin's worker: gathers the sync's inputs through the orca CLI, runs the pure sync
-// (src/sync/sync.ts), applies the card moves and persists the memory. Orca transpiles this file
+// (src/sync/sync.ts), applies the Linear writes and card moves, and persists the memory. Orca transpiles this file
 // on load; a save, update or crash restarts it, so the memory lives in orca.storage.
 //
 // activate() stays side-effect-free until the settings hold `pollMinutes`: real Orca fills in the
@@ -67,10 +67,30 @@ export function createWorker(deps: Deps) {
         }
         const before = await memoryStore.load()
         // The whole board goes in: cards whose ticket wasn't read keep their memory.
-        const result = syncBoard({ linear: { teams, tickets }, board, memory: before, settings: parsed.settings })
+        const result = syncBoard({
+          linear: { teams, tickets },
+          board,
+          memory: before,
+          settings: parsed.settings,
+          created: onlyPath ?? null
+        })
         warnings.push(...result.warnings)
         const memory = result.memory
-        for (const move of result.moves) {
+        // Linear writes first, in order; a failed one skips that ticket's later writes and its card move.
+        const failed = new Set<string>()
+        for (const write of result.writes) {
+          if (failed.has(write.path)) continue
+          try {
+            if (write.kind === 'assign-me') await cli.assignToMe(write)
+            else await cli.setState(write, write.state)
+          } catch (error) {
+            // Not retried: only creating the workspace Starts its ticket, and the next poll applies Linear as it is.
+            warnings.push(`${write.identifier}: couldn't Start the ticket in Linear: ${messageOf(error)}`)
+            failed.add(write.path)
+            revertFailedMove(memory, before, write.path)
+          }
+        }
+        for (const move of result.moves.filter((m) => !failed.has(m.path))) {
           try {
             await cli.setColumn(move.worktreeId, move.to)
             moved++

@@ -12,6 +12,10 @@ export interface OrcaCli {
   ticket(ref: TicketRef): Promise<Ticket>
   /** Moves a card to a Board Column (`orca worktree set --workspace-status`). */
   setColumn(worktreeId: string, column: string): Promise<void>
+  /** Sets a ticket's state by its exact name (`orca linear status set`). */
+  setState(ref: TicketRef, state: string): Promise<void>
+  /** Assigns a ticket to the user (`orca linear assignee set --me`). */
+  assignToMe(ref: TicketRef): Promise<void>
 }
 
 /** A failed `orca` call: `code` is the envelope's error code, or `unavailable`/`unexpected_output`. */

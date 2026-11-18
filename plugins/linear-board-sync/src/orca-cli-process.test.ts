@@ -1,14 +1,21 @@
 // Contract tests for the real OrcaCli adapter: argv out, real envelopes (fixtures) in.
 import { assert, test } from 'orca/testing'
-import { issueEnvelope, issueNotFoundEnvelope, teamListEnvelope, worktreeListEnvelope } from './fixtures/orca-cli-captures'
+import {
+  issueEnvelope,
+  issueNotFoundEnvelope,
+  myIssuesEnvelope,
+  noIssuesEnvelope,
+  teamListEnvelope,
+  worktreeListEnvelope
+} from './fixtures/orca-cli-captures'
 import { createOrcaCli, type OrcaRun } from './orca-cli-process'
 import { OrcaCliError } from './seams/orca-cli'
 
-function runner(answer: OrcaRun | (() => Promise<OrcaRun>)) {
+function runner(answer: OrcaRun | ((args: string[]) => Promise<OrcaRun>)) {
   const calls: string[][] = []
   const run = async (args: string[]) => {
     calls.push(args)
-    return typeof answer === 'function' ? answer() : answer
+    return typeof answer === 'function' ? answer(args) : answer
   }
   return { calls, cli: createOrcaCli(run) }
 }
@@ -54,23 +61,77 @@ test('reads the Linear teams with their workspace URL key', async () => {
 })
 
 test('reads a ticket by identifier, in its Linear workspace when known', async () => {
-  const { calls, cli } = runner(ok(issueEnvelope))
+  const { calls, cli } = linearRunner('u1')
 
   const ticket = await cli.ticket({ identifier: 'OEO-1577', workspaceId: 'ws-v' })
   await cli.ticket({ identifier: 'OEO-1577', workspaceId: null })
 
-  assert.deepEqual(calls, [
-    ['linear', 'issue', 'OEO-1577', '--workspace', 'ws-v', '--json'],
-    ['linear', 'issue', 'OEO-1577', '--json']
-  ])
+  assert.deepEqual(
+    calls.filter((args) => args[1] === 'issue'),
+    [
+      ['linear', 'issue', 'OEO-1577', '--workspace', 'ws-v', '--json'],
+      ['linear', 'issue', 'OEO-1577', '--json']
+    ]
+  )
   assert.deepEqual(ticket, {
     identifier: 'OEO-1577',
     workspaceId: 'ws-v',
     workspace: 'vestigas',
     teamKey: 'OEO',
     stateName: 'Review',
-    stateType: 'started'
+    stateType: 'started',
+    assignee: 'me'
   })
+})
+
+/** Answers `linear issue` with the fixture, assigned to `assigneeId`, and `list-issues` with `mine`. */
+function linearRunner(assigneeId: string | null, mine: unknown = myIssuesEnvelope) {
+  const issue = { ...issueEnvelope.result.issue, assignee: assigneeId === null ? null : { id: assigneeId, displayName: 'x' } }
+  return runner(async (args) =>
+    ok(args[1] === 'list-issues' ? mine : { ...issueEnvelope, result: { ...issueEnvelope.result, issue } })
+  )
+}
+
+test("a ticket's assignee is me when it is the user's Linear id, which is learned once per Linear workspace", async () => {
+  const { calls, cli } = linearRunner('u1')
+
+  assert.equal((await cli.ticket({ identifier: 'OEO-1577', workspaceId: 'ws-v' })).assignee, 'me')
+  assert.equal((await cli.ticket({ identifier: 'OEO-1577', workspaceId: null })).assignee, 'me')
+
+  assert.deepEqual(
+    calls.filter((args) => args[1] === 'list-issues'),
+    [['linear', 'list-issues', '--assignee', 'me', '--limit', '1', '--workspace', 'ws-v', '--json']]
+  )
+})
+
+test("a ticket assigned to someone else is a colleague's; an unassigned one has no assignee and needs no lookup", async () => {
+  const colleague = linearRunner('u2')
+  assert.equal((await colleague.cli.ticket({ identifier: 'OEO-1577', workspaceId: 'ws-v' })).assignee, 'colleague')
+
+  const nobody = linearRunner(null)
+  assert.equal((await nobody.cli.ticket({ identifier: 'OEO-1577', workspaceId: 'ws-v' })).assignee, null)
+  assert.ok(!nobody.calls.some((args) => args[1] === 'list-issues'))
+})
+
+test('with no ticket ever assigned to the user, an assigned ticket is a colleague’s', async () => {
+  const { cli } = linearRunner('u2', noIssuesEnvelope)
+  assert.equal((await cli.ticket({ identifier: 'OEO-1577', workspaceId: 'ws-v' })).assignee, 'colleague')
+})
+
+test('sets a ticket state with `orca linear status set`, in its Linear workspace when known', async () => {
+  const { calls, cli } = runner(ok({ id: 'e8', ok: true, result: {} }))
+  await cli.setState({ identifier: 'OEO-1', workspaceId: 'ws-v' }, 'In Progress')
+  await cli.setState({ identifier: 'OEO-1', workspaceId: null }, 'In Progress')
+  assert.deepEqual(calls, [
+    ['linear', 'status', 'set', 'OEO-1', '--to', 'In Progress', '--workspace', 'ws-v', '--json'],
+    ['linear', 'status', 'set', 'OEO-1', '--to', 'In Progress', '--json']
+  ])
+})
+
+test('assigns a ticket to the user with `orca linear assignee set --me`', async () => {
+  const { calls, cli } = runner(ok({ id: 'e9', ok: true, result: {} }))
+  await cli.assignToMe({ identifier: 'OEO-1', workspaceId: 'ws-v' })
+  assert.deepEqual(calls, [['linear', 'assignee', 'set', 'OEO-1', '--me', '--workspace', 'ws-v', '--json']])
 })
 
 test('moves a card with `orca worktree set --workspace-status`', async () => {

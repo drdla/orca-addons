@@ -1,6 +1,6 @@
 // The sync core, a pure function: given the Linear tickets, the board, the memory and the
-// settings, it says which cards move, what to warn about, and what to remember. The worker only
-// gathers the inputs, applies the moves and persists the memory.
+// settings, it says which cards move, what to write to Linear, what to warn about, and what to
+// remember. The worker only gathers the inputs, applies the writes and moves, and persists the memory.
 import { normalState, type SyncSettings } from '../settings'
 
 /** A workspace on Orca's board: a row of `orca worktree list`. */
@@ -31,6 +31,8 @@ export type Ticket = {
   teamKey: string
   stateName: string
   stateType: string
+  /** Who it is assigned to: the user, someone else, or nobody (null). */
+  assignee: 'me' | 'colleague' | null
 }
 
 /** What the plugin remembers per Linked Workspace (keyed by path). */
@@ -39,14 +41,27 @@ export type Memory = Record<string, MemoryEntry>
 
 export type CardMove = { worktreeId: string; path: string; identifier: string; from: string | null; to: string }
 
+/** A write to a Linear ticket, for the Linked Workspace at `path`. Applied in order, per ticket. */
+export type LinearWrite = { path: string; identifier: string; workspaceId: string | null } & (
+  | { kind: 'assign-me' }
+  | { kind: 'set-state'; state: string }
+)
+
 export type SyncInput = {
   linear: { teams: LinearTeam[]; tickets: Ticket[] }
   board: BoardCard[]
   memory: Memory
   settings: SyncSettings
+  /** The path of the workspace just created (workspace.created), which may Start its ticket. */
+  created?: string | null
 }
 
-export type SyncResult = { moves: CardMove[]; warnings: string[]; memory: Memory }
+export type SyncResult = { moves: CardMove[]; writes: LinearWrite[]; warnings: string[]; memory: Memory }
+
+/** The state a Start sets. */
+export const IN_PROGRESS = 'In Progress'
+/** The state types a Start moves on from. */
+const NOT_STARTED = new Set(['triage', 'backlog', 'unstarted'])
 
 /** Default State Mapping by Linear state type. Only ever Orca's built-in Board Column ids. */
 const BY_TYPE: Record<string, string> = {
@@ -60,6 +75,7 @@ const BY_TYPE: Record<string, string> = {
 
 export function syncBoard(input: SyncInput): SyncResult {
   const moves: CardMove[] = []
+  const writes: LinearWrite[] = []
   const warnings: string[] = []
   const memory: Memory = {}
   for (const card of input.board) {
@@ -72,7 +88,7 @@ export function syncBoard(input: SyncInput): SyncResult {
       continue
     }
     const { ref } = link
-    const ticket = input.linear.tickets.find(
+    let ticket = input.linear.tickets.find(
       (t) => t.identifier === ref.identifier && (ref.workspaceId === null || t.workspaceId === ref.workspaceId)
     )
     if (!ticket) {
@@ -81,6 +97,13 @@ export function syncBoard(input: SyncInput): SyncResult {
       continue
     }
     if (!teamAllowed({ key: ticket.teamKey, workspace: ticket.workspace }, input.settings)) continue
+    if (card.path === input.created && isStart(ticket)) {
+      const target = { identifier: ticket.identifier, workspaceId: ticket.workspaceId, path: card.path }
+      if (ticket.assignee === null) writes.push({ ...target, kind: 'assign-me' })
+      writes.push({ ...target, kind: 'set-state', state: IN_PROGRESS })
+      // The card follows the ticket as it will be: In Progress, through the State Mapping.
+      ticket = { ...ticket, stateName: IN_PROGRESS, stateType: 'started' }
+    }
     const column = columnFor(ticket, input.settings)
     if (column === null) {
       warnings.push(`${ticket.identifier}: no Board Column for state "${ticket.stateName}" (${ticket.stateType}); add a State Mapping override.`)
@@ -92,7 +115,12 @@ export function syncBoard(input: SyncInput): SyncResult {
     }
     memory[card.path] = { column, linearState: ticket.stateName }
   }
-  return { moves, warnings, memory }
+  return { moves, writes, warnings, memory }
+}
+
+/** A Start: the ticket is not started yet, and is the user's or nobody's. */
+function isStart(ticket: Ticket): boolean {
+  return NOT_STARTED.has(ticket.stateType) && ticket.assignee !== 'colleague'
 }
 
 /**

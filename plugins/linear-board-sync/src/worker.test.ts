@@ -204,3 +204,83 @@ test("syncing a newly created workspace keeps the last poll's warnings in the st
 
   assert.match(statusBar()?.tooltip ?? '', /OEO-1.*blocked/)
 })
+
+async function create(worker: Awaited<ReturnType<typeof start>>['worker'], cli: FakeOrcaCli, name: string) {
+  const card = cli.addCard({ name, column: 'todo' })
+  await worker.emit('workspace.created', { workspaceId: `ws-${name}`, kind: 'worktree', path: card.path, branch: name })
+}
+
+test('creating a workspace for my Todo ticket Starts it: In Progress in Linear, and its card in In Progress', async () => {
+  const { cli, worker } = await start(() => {})
+  cli.setTicket('OEO-7', 'Todo', 'unstarted', 'me')
+
+  await create(worker, cli, 'oeo-7-new-thing')
+
+  assert.deepEqual(cli.writes(), ['setState OEO-7 → In Progress'])
+  assert.equal(cli.ticketOf('OEO-7')?.stateName, 'In Progress')
+  assert.equal(cli.columnOf('oeo-7-new-thing'), 'in-progress')
+})
+
+test('creating a workspace for an unassigned ticket also assigns it to me, before setting In Progress', async () => {
+  const { cli, worker } = await start(() => {})
+  cli.setTicket('OEO-7', 'Backlog', 'backlog', null)
+
+  await create(worker, cli, 'oeo-7-new-thing')
+
+  assert.deepEqual(cli.writes(), ['assignToMe OEO-7', 'setState OEO-7 → In Progress'])
+  assert.equal(cli.ticketOf('OEO-7')?.assignee, 'me')
+})
+
+test("creating a workspace for a colleague's ticket writes nothing to Linear; its card still syncs one way", async () => {
+  const { cli, worker } = await start(() => {})
+  cli.setTicket('OEO-7', 'Review', 'started', 'colleague')
+  cli.setTicket('OEO-8', 'Todo', 'unstarted', 'colleague')
+
+  await create(worker, cli, 'oeo-7-review')
+  await create(worker, cli, 'oeo-8-todo')
+
+  assert.deepEqual(cli.writes(), [])
+  assert.equal(cli.columnOf('oeo-7-review'), 'in-progress')
+  assert.equal(cli.columnOf('oeo-8-todo'), 'todo')
+})
+
+test('after a Start, the next Linear poll sees In Progress and writes nothing more (no echo)', async () => {
+  const { cli, clock, worker } = await start(() => {})
+  cli.setTicket('OEO-7', 'Todo', 'unstarted', null)
+  await create(worker, cli, 'oeo-7-new-thing')
+  const writes = cli.writes().length
+  const moves = cli.moves().length
+
+  await clock.advance(2 * MINUTE)
+
+  assert.equal(cli.writes().length, writes)
+  assert.equal(cli.moves().length, moves)
+  assert.equal(cli.columnOf('oeo-7-new-thing'), 'in-progress')
+})
+
+test('a failed Linear write is a status-bar warning, its card is not moved, and it is not retried', async () => {
+  const { cli, clock, worker, statusBar } = await start(() => {})
+  cli.setTicket('OEO-7', 'Todo', 'unstarted', null)
+  cli.fail('assignToMe')
+
+  await create(worker, cli, 'oeo-7-new-thing')
+
+  assert.deepEqual(cli.writes(), ['assignToMe OEO-7'], 'In Progress is not set once the assignment failed')
+  assert.equal(cli.columnOf('oeo-7-new-thing'), 'todo')
+  assert.equal(statusBar()?.tone, 'warning')
+  assert.match(statusBar()?.tooltip ?? '', /OEO-7.*couldn't Start/)
+  assert.ok(worker.logs.some((line) => /OEO-7.*couldn't Start/.test(line)))
+
+  await clock.advance(10 * MINUTE)
+  assert.deepEqual(cli.writes(), ['assignToMe OEO-7'])
+  assert.equal(cli.columnOf('oeo-7-new-thing'), 'todo')
+})
+
+test('a poll never Starts a ticket; only creating its workspace does', async () => {
+  const { cli, clock } = await start((cli) => {
+    cli.addCard({ name: 'oeo-7-old', column: 'todo' })
+    cli.setTicket('OEO-7', 'Todo', 'unstarted', 'me')
+  })
+  await clock.advance(10 * MINUTE)
+  assert.deepEqual(cli.writes(), [])
+})
