@@ -405,3 +405,9 @@ test('a Linked Workspace with no memory entry gets Linear applied, and no drag i
   assert.deepEqual(movesOf(result), ['/w/a → todo'])
   assert.deepEqual(result.warnings, [])
 })
+
+test('state names compare ignoring case when spotting a conflict, so a renamed-case state is not a Linear change', () => {
+  const result = drag({ from: 'todo', to: 'in-progress', state: 'todo', ticket: ticket('OEO-1', 'Todo', 'unstarted') })
+  assert.deepEqual(writesOf(result), ['OEO-1 → In Progress'])
+  assert.deepEqual(result.warnings, [])
+})

@@ -61,13 +61,13 @@ export class FakeOrcaCli implements OrcaCli {
 
   /** The user drags a card on the board: its column changes, with no CLI call. */
   drag(name: string, column: string): void {
-    const card = this.#cards.find((c) => c.path === `/worktrees/${name}`)
+    const card = this.#card(name)
     if (!card) throw new Error(`no card ${name}`)
     card.column = column
   }
 
   columnOf(name: string): string | null {
-    return this.#cards.find((c) => c.path === `/worktrees/${name}`)?.column ?? null
+    return this.#card(name)?.column ?? null
   }
 
   moves(): string[] {
@@ -116,6 +116,10 @@ export class FakeOrcaCli implements OrcaCli {
     const ticket = this.#tickets.get(ref.identifier)
     if (!ticket) throw new OrcaCliError('linear_network_error', 'Entity not found: Issue')
     this.#tickets.set(ref.identifier, { ...ticket, assignee: 'me' })
+  }
+
+  #card(name: string): BoardCard | undefined {
+    return this.#cards.find((c) => c.path === `/worktrees/${name}`)
   }
 
   #record(command: string, args?: string): void {

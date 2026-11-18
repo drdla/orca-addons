@@ -12,7 +12,7 @@ import { createMemoryStore } from './memory'
 import { createPoller } from './poller'
 import { parseSettings } from './settings'
 import { createStatusBar, type SyncStatus } from './status-bar'
-import { isDrag, revertFailedMove, syncBoard, ticketsToFetch, type LinearTeam, type Ticket } from './sync/sync'
+import { forgetFailedWrite, isDrag, revertFailedMove, syncBoard, ticketsToFetch, type LinearTeam, type Ticket } from './sync/sync'
 import { counted } from './words'
 
 export const SYNC_NOW_COMMAND = 'linear-board-sync.syncNow'
@@ -21,6 +21,11 @@ export const PAUSE_COMMAND = 'linear-board-sync.pause'
 const MINUTE = 60_000
 /** How often the board is checked for drags; the Linear poll keeps its own interval. */
 const BOARD_CHECK_MS = 15_000
+/**
+ * The board check's tick. Shorter than its interval: a tick that lands a hair before the check is
+ * due would otherwise skip a whole 15 s period.
+ */
+const BOARD_CHECK_TICK_MS = 5_000
 
 type SyncMode = { kind: 'poll' } | { kind: 'board-check' } | { kind: 'created'; path: string }
 
@@ -101,14 +106,12 @@ export function createWorker(deps: Deps) {
             if (write.kind === 'assign-me') await cli.assignToMe(write.ref)
             else await cli.setState(write.ref, write.state)
           } catch (error) {
-            // Not retried: the workspace is forgotten, so the next Linear poll applies Linear as it is
-            // and infers no drag. Only creating a workspace Starts its ticket; a card dragged back is.
             const what = write.kind === 'assign-me' ? 'assign it to you' : `set it to "${write.state}"`
             warnings.push(
               `${write.ref.identifier}: couldn't ${what} in Linear; the card follows Linear at the next poll: ${messageOf(error)}`
             )
             failedPaths.add(write.path)
-            delete memory[write.path]
+            forgetFailedWrite(memory, write.path)
           }
         }
         for (const move of result.moves.filter((m) => !failedPaths.has(m.path))) {
@@ -142,7 +145,7 @@ export function createWorker(deps: Deps) {
     const boardCheck = createPoller({
       clock,
       intervalMs: BOARD_CHECK_MS,
-      tickMs: BOARD_CHECK_MS,
+      tickMs: BOARD_CHECK_TICK_MS,
       poll: async () => {
         await serially(() => sync({ kind: 'board-check' }))
       }
@@ -185,7 +188,7 @@ export function createWorker(deps: Deps) {
       // Resuming forgets every card, so drags made while paused are discarded and Linear re-applied.
       await serially(() => memoryStore.save({}))
       await startIfConfigured()
-      await poller.pollNow()
+      if (poller.running) await poller.pollNow()
       return 'Linear Board Sync resumed.'
     })
 

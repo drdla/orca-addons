@@ -96,25 +96,24 @@ export function syncBoard(input: SyncInput): SyncResult {
     if (!teamAllowed({ key: ticket.teamKey, workspace: ticket.workspace }, input.settings)) continue
     const target = { path: card.path, ref: { identifier: ticket.identifier, workspaceId: ticket.workspaceId } }
     // A drag Linear doesn't take is reverted below like any card out of step, with this reason.
-    let discarded: string | null = null
+    let undoneReason: string | null = null
     if (card.column !== null && isDrag(card, input.memory)) {
-      const state = input.settings.writable[card.column]
-      if (ticket.stateName !== input.memory[card.path]!.linearState) {
-        discarded = `${ticket.identifier}: Linear changed to "${ticket.stateName}" since the last check, so Linear wins and the drag to "${card.column}" was undone.`
+      const state = input.settings.writableColumns[card.column]
+      if (normalState(ticket.stateName) !== normalState(input.memory[card.path]!.linearState)) {
+        undoneReason = `${ticket.identifier}: Linear changed to "${ticket.stateName}" since the last check, so Linear wins and the drag to "${card.column}" was undone.`
       } else if (ticket.assignee === 'colleague') {
-        discarded = `${ticket.identifier} is assigned to someone else; only Linear moves its card, so the drag to "${card.column}" was undone.`
+        undoneReason = `${ticket.identifier} is assigned to someone else; only Linear moves its card, so the drag to "${card.column}" was undone.`
       } else if (state === undefined) {
-        discarded = `${ticket.identifier}: "${card.column}" is set by GitLab or the PO, not from the board, so the drag was undone.`
+        undoneReason = `${ticket.identifier}: "${card.column}" is set by GitLab or the PO, not from the board, so the drag was undone.`
       } else {
-        if (ticket.assignee === null && state === IN_PROGRESS && isStart(ticket)) writes.push({ ...target, kind: 'assign-me' })
-        if (normalState(state) !== normalState(ticket.stateName)) writes.push({ ...target, kind: 'set-state', state })
+        if (normalState(state) === normalState(IN_PROGRESS) && isStart(ticket)) writes.push(...startWrites(target, ticket))
+        else if (normalState(state) !== normalState(ticket.stateName)) writes.push({ ...target, kind: 'set-state', state })
         memory[card.path] = { column: card.column, linearState: state }
         continue
       }
     }
     if (card.path === input.created && isStart(ticket)) {
-      if (ticket.assignee === null) writes.push({ ...target, kind: 'assign-me' })
-      writes.push({ ...target, kind: 'set-state', state: IN_PROGRESS })
+      writes.push(...startWrites(target, ticket))
       // The card follows the ticket as it will be: In Progress, through the State Mapping.
       ticket = { ...ticket, stateName: IN_PROGRESS, stateType: 'started' }
     }
@@ -125,7 +124,7 @@ export function syncBoard(input: SyncInput): SyncResult {
       continue
     }
     if (card.column !== column) {
-      if (discarded !== null) warnings.push(discarded)
+      if (undoneReason !== null) warnings.push(undoneReason)
       moves.push({ worktreeId: card.worktreeId, path: card.path, identifier: ticket.identifier, from: card.column, to: column })
     }
     memory[card.path] = { column, linearState: ticket.stateName }
@@ -145,6 +144,22 @@ export function isDrag(card: BoardCard, memory: Memory): boolean {
 /** A Start: the ticket is not started yet, and is the user's or nobody's. */
 function isStart(ticket: Ticket): boolean {
   return NOT_STARTED.has(ticket.stateType) && ticket.assignee !== 'colleague'
+}
+
+/** What a Start writes: assign an unassigned ticket to the user, then set In Progress. */
+function startWrites(target: { path: string; ref: TicketRef }, ticket: Ticket): LinearWrite[] {
+  const writes: LinearWrite[] = []
+  if (ticket.assignee === null) writes.push({ ...target, kind: 'assign-me' })
+  writes.push({ ...target, kind: 'set-state', state: IN_PROGRESS })
+  return writes
+}
+
+/**
+ * A Linear write that failed: the workspace is forgotten, so no drag is inferred from where its
+ * card is now and the next Linear poll applies Linear as it is. Not retried.
+ */
+export function forgetFailedWrite(memory: Memory, path: string): void {
+  delete memory[path]
 }
 
 /**
