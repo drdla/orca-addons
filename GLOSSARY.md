@@ -1,6 +1,6 @@
 # Orca Add-ons
 
-Plugins that extend the Orca desktop app. The first one surfaces GitLab merge request reviews that are waiting on the user.
+Plugins that extend the Orca desktop app. Code Review Requests surfaces GitLab merge request reviews that are waiting on the user; Linear Board Sync keeps Orca's workspace board in step with Linear.
 
 ## Language
 
@@ -17,7 +17,7 @@ A Review Request that has waited longer than the overdue threshold (default 24 h
 _Avoid_: late review, stale review, SLA breach
 
 **Review Workspace**:
-An Orca workspace linked to the merge request of a Review Request.
+An Orca workspace linked to the merge request of a Review Request. A Review Workspace is also a Linked Workspace when its branch names a Linear ticket.
 _Avoid_: MR worktree, review branch
 
 **Review Prompt**:
@@ -43,3 +43,25 @@ _Avoid_: AI comment, suggestion
 **Forge**:
 The code-hosting service a plugin reads data from (here, GitLab, either gitlab.com or a self-hosted instance), as distinct from where the plugin's own source lives (GitHub).
 _Avoid_: host, remote, provider
+
+### Linear Board Sync
+
+**Linked Workspace**:
+An Orca workspace tied to one Linear ticket: by Orca's own Linear link first, otherwise by an issue identifier (`<team key>-<number>`, any case) in its branch name. A workspace with neither is not a Linked Workspace and the plugin never touches it.
+_Avoid_: ticket workspace, linked worktree, synced workspace
+
+**Board Column**:
+A column of Orca's workspace board, named by its id (`todo`, `in-progress`, `in-review`, `completed` built in; a custom column's id is the slug of its label at creation). Orca's CLI calls it the workspace status.
+_Avoid_: status, lane, workspace status
+
+**State Mapping**:
+The rule that turns a Linear ticket's state into a Board Column: a team-scoped override by state name (`"OEO/Review"`), then an unscoped one (`"Review"`), then the default by state type (triage, backlog, unstarted → `todo`; started → `in-progress`; completed, canceled → `completed`).
+_Avoid_: column mapping, status map
+
+**Writable Column**:
+A Board Column whose drag the plugin writes back to Linear as a set state (by default Todo, In Progress, Blocked). A drag into any other column is reverted, because GitLab or the PO own those states.
+_Avoid_: editable column, two-way column
+
+**Start**:
+Creating a workspace for, or dragging into In Progress, a ticket that is not started yet and is assigned to the user or unassigned: the ticket goes to In Progress in Linear (and, if unassigned, to the user).
+_Avoid_: pick up, claim, begin

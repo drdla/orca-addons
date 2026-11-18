@@ -1,0 +1,63 @@
+{
+  "manifestVersion": 2,
+  "id": "linear-board-sync",
+  "name": "Linear Board Sync",
+  "version": "0.1.0",
+  "description": "Keeps each Linked Workspace's Board Column in step with its Linear ticket.",
+  "author": { "name": "Dominik Rodler" },
+  "repository": "https://github.com/drdla/orca-addons",
+  "license": "MIT",
+  "engines": {
+    "orca": ">=1.4.259"
+  },
+  "execution": "trusted-worker",
+  "pluginApi": 1,
+  "main": "src/worker.ts",
+  "contributes": {
+    "commands": [
+      { "id": "linear-board-sync.syncNow", "title": "Linear Board Sync: Sync now" },
+      { "id": "linear-board-sync.pause", "title": "Linear Board Sync: Pause" }
+    ],
+    "statusBarItems": [
+      {
+        "id": "linear-board-sync",
+        "icon": "refresh",
+        "tooltip": "Linear Board Sync",
+        "command": "linear-board-sync.syncNow"
+      }
+    ],
+    "events": [{ "on": "workspace.created" }, { "on": "workspace.removed" }],
+    "settings": [
+      {
+        "key": "teams",
+        "title": "Teams",
+        "type": "string",
+        "description": "Linear team keys to sync, separated by commas, spaces or new lines, for example OEO. Write <workspace>/<key> (the workspace as in your Linear URLs, linear.app/<workspace>/…) when a key exists in several Linear workspaces. Empty means all teams.",
+        "default": "",
+        "multiline": true
+      },
+      {
+        "key": "pollMinutes",
+        "title": "Check Linear every (minutes)",
+        "type": "integer",
+        "default": 2,
+        "minimum": 1,
+        "maximum": 1440
+      },
+      {
+        "key": "stateMapping",
+        "title": "State Mapping overrides",
+        "type": "string",
+        "description": "JSON mapping Linear state names to Board Column ids, for example {\"Blocked\": \"blocked\", \"Review\": \"in-review\"}. Prefix a state with a team key to apply it to that team only: {\"OEO/Review\": \"in-review\"}. States not listed map by type: triage, backlog and unstarted to todo, started to in-progress, completed and canceled to completed.",
+        "default": "{}",
+        "multiline": true
+      }
+    ]
+  },
+  "capabilities": [
+    { "kind": "storage:own" },
+    { "kind": "settings:own" },
+    { "kind": "workspace:read" },
+    { "kind": "notifications:show" }
+  ]
+}
