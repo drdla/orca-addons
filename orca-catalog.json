@@ -42,6 +42,35 @@
           ]
         }
       ]
+    },
+    {
+      "id": "drdla.linear-board-sync",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/drdla/orca-addons.git",
+        "ref": "main",
+        "path": "plugins/linear-board-sync"
+      },
+      "description": "Keeps each Linked Workspace's Board Column in step with its Linear ticket, and writes your drags into Writable Columns back to Linear.",
+      "categories": ["productivity"],
+      "releases": [
+        {
+          "version": "0.4.0",
+          "commit": "8c666ca029972a43e6b8915f0d3933b6e5c13caa",
+          "contentHash": "d3f7c6a995043d68af05a0a5e873f51aeb5277f18f175c75d1eb4ccd7c4740ae",
+          "execution": "trusted-worker",
+          "minimumOrca": "1.4.259",
+          "name": "Linear Board Sync",
+          "contributes": [
+            { "kind": "commands", "name": "Linear Board Sync: Sync now" },
+            { "kind": "commands", "name": "Linear Board Sync: Pause" },
+            { "kind": "events", "name": "workspace.created" },
+            { "kind": "events", "name": "workspace.removed" },
+            { "kind": "statusBarItems", "name": "linear-board-sync" }
+          ],
+          "capabilities": ["storage:own", "settings:own", "workspace:read", "notifications:show"]
+        }
+      ]
     }
   ]
 }

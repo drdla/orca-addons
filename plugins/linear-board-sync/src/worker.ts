@@ -45,8 +45,16 @@ export function createWorker(deps: Deps) {
     const memoryStore = createMemoryStore(orca.storage)
     const statusBar = createStatusBar(orca)
     let paused = false
+    /** Set by deactivate: nothing may start after it, even a startup already under way. */
+    let stopped = false
+    /** The startup under way, so callers arriving together start the timers (and draw "starting") once. */
+    let starting: Promise<void> | null = null
     /** What the status bar lists: the last poll's warnings, plus any board check or new workspace's since. */
     let shownWarnings: string[] = []
+    /** The settings that could not be read, as of the last read; listed first in the status bar. */
+    let settingsProblems: string[] = []
+    /** When a sync last drew the status bar, or null before the first. */
+    let syncedAt: number | null = null
     /** The Linear teams as last read. */
     let knownTeams: LinearTeam[] | null = null
 
@@ -59,13 +67,31 @@ export function createWorker(deps: Deps) {
     }
 
     /**
+     * Reads the settings afresh, so a change applies from the next tick without a restart: the
+     * poll interval at once, the rest at the next sync. A problem is logged when it first appears.
+     */
+    async function readSettings() {
+      const parsed = parseSettings(await orca.settings.get())
+      poller.setIntervalMs(parsed.pollMinutes * MINUTE)
+      for (const problem of parsed.problems) {
+        if (!settingsProblems.includes(problem)) log(`warning: ${problem}`)
+      }
+      settingsProblems = parsed.problems
+      return parsed
+    }
+
+    function currentStatus(): SyncStatus {
+      if (paused) return { kind: 'paused' }
+      return { kind: 'synced', at: syncedAt ?? clock.now(), warnings: [...settingsProblems, ...shownWarnings] }
+    }
+
+    /**
      * One sync. A `poll` reads every Linked Workspace's ticket; a `board-check` reads only the tickets
      * of dragged cards, and does nothing more when there are none; `created` reads the one new workspace's.
      */
     async function sync(mode: SyncMode): Promise<SyncOutcome> {
-      const parsed = parseSettings(await orca.settings.get())
-      poller.setIntervalMs(Math.max(1, parsed.pollMinutes) * MINUTE)
-      const warnings = [...parsed.problems]
+      const parsed = await readSettings()
+      const warnings: string[] = []
       let moved = 0
       try {
         const board = await cli.board()
@@ -76,7 +102,7 @@ export function createWorker(deps: Deps) {
             : mode.kind === 'created'
               ? board.filter((card) => card.path === mode.path)
               : board.filter((card) => isDrag(card, before))
-        if (mode.kind === 'board-check' && scope.length === 0) return { moved, warnings: [] }
+        if (mode.kind === 'board-check' && scope.length === 0) return { moved, warnings: parsed.problems }
         // The board check reuses the teams of the last read, so a quiet board costs one `orca` call.
         if (mode.kind !== 'board-check' || knownTeams === null) knownTeams = await cli.linearTeams()
         const teams = knownTeams
@@ -121,7 +147,7 @@ export function createWorker(deps: Deps) {
           } catch (error) {
             // Skipped, not retried: the next sync tries again, once.
             warnings.push(`${move.identifier}: couldn't move the card to "${move.to}": ${messageOf(error)}`)
-            revertFailedMove(memory, before, move.path)
+            revertFailedMove(memory, before, move)
           }
         }
         await memoryStore.save(memory)
@@ -131,8 +157,9 @@ export function createWorker(deps: Deps) {
       for (const warning of warnings) log(`warning: ${warning}`)
       // A poll replaces what the status bar shows; a board check or a new workspace adds to it until then.
       shownWarnings = mode.kind === 'poll' ? warnings : [...new Set([...shownWarnings, ...warnings])]
-      await statusBar.render(paused ? { kind: 'paused' } : { kind: 'synced', at: clock.now(), warnings: shownWarnings })
-      return { moved, warnings }
+      syncedAt = clock.now()
+      await statusBar.render(currentStatus())
+      return { moved, warnings: [...parsed.problems, ...warnings] }
     }
 
     const poller = createPoller({
@@ -155,12 +182,22 @@ export function createWorker(deps: Deps) {
       await statusBar.render(status).catch((error: unknown) => log(`status bar: ${messageOf(error)}`))
     }
 
-    async function startIfConfigured(): Promise<void> {
-      if (paused || poller.running || !isConfigured(await orca.settings.get())) return
-      await render({ kind: 'starting' })
-      // The Linear poll first, so the board check finds the teams read and every card placed.
-      poller.start()
-      boardCheck.start()
+    function startIfConfigured(): Promise<void> {
+      starting ??= (async () => {
+        try {
+          const canStart = () => !stopped && !paused && !poller.running
+          if (!canStart() || !isConfigured(await orca.settings.get()) || !canStart()) return
+          await render({ kind: 'starting' })
+          // Deactivated or paused while drawing: leave no timers behind.
+          if (!canStart()) return
+          // The Linear poll first, so the board check finds the teams read and every card placed.
+          poller.start()
+          boardCheck.start()
+        } finally {
+          starting = null
+        }
+      })()
+      return starting
     }
 
     orca.events.on('workspace.created', async ({ path }) => {
@@ -192,10 +229,21 @@ export function createWorker(deps: Deps) {
       return 'Linear Board Sync resumed.'
     })
 
+    /** A settings change: start if now configured; once running, re-read and redraw the status bar's settings problems. */
+    async function settingsChanged(): Promise<void> {
+      await startIfConfigured()
+      if (!poller.running) return
+      await serially(async () => {
+        await readSettings()
+        if (syncedAt !== null) await render(currentStatus())
+      })
+    }
+
     const settingsWatch = orca.settings.onDidChange(() =>
-      startIfConfigured().catch((error: unknown) => log(`settings: ${messageOf(error)}`))
+      settingsChanged().catch((error: unknown) => log(`settings: ${messageOf(error)}`))
     )
     stopWorker = () => {
+      stopped = true
       settingsWatch.dispose()
       poller.stop()
       boardCheck.stop()
