@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "linear-board-sync",
   "name": "Linear Board Sync",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Keeps each Linked Workspace's Board Column in step with its Linear ticket.",
   "author": { "name": "Dominik Rodler" },
   "repository": "https://github.com/drdla/orca-addons",

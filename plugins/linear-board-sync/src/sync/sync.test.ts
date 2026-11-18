@@ -24,8 +24,14 @@ function card(over: Partial<BoardCard> & { path: string }): BoardCard {
   }
 }
 
-function ticket(identifier: string, stateName: string, stateType: string, where = VESTIGAS): Ticket {
-  return { identifier, teamKey: identifier.split('-')[0]!, stateName, stateType, ...where }
+function ticket(
+  identifier: string,
+  stateName: string,
+  stateType: string,
+  where = VESTIGAS,
+  assignee: Ticket['assignee'] = 'me'
+): Ticket {
+  return { identifier, teamKey: identifier.split('-')[0]!, stateName, stateType, assignee, ...where }
 }
 
 function sync(input: {
@@ -33,12 +39,14 @@ function sync(input: {
   tickets: Ticket[]
   memory?: Memory
   settings?: Record<string, unknown>
+  created?: string
 }) {
   return syncBoard({
     linear: { teams: TEAMS, tickets: input.tickets },
     board: input.board,
     memory: input.memory ?? {},
-    settings: parseSettings(input.settings ?? {}).settings
+    settings: parseSettings(input.settings ?? {}).settings,
+    created: input.created ?? null
   })
 }
 
@@ -221,4 +229,74 @@ test("the memory keeps a card's entry when its ticket could not be read, and dro
     memory
   })
   assert.deepEqual(result.memory, { '/w/unread': { column: 'in-review', linearState: 'Review' } })
+})
+
+const writesOf = (result: ReturnType<typeof sync>) =>
+  result.writes.map((w) => (w.kind === 'set-state' ? `${w.ref.identifier} → ${w.state}` : `${w.ref.identifier} → assign me`))
+
+const START_CASES: [title: string, ticket: Ticket, writes: string[]][] = [
+  ['my Todo ticket is set to In Progress', ticket('OEO-1', 'Todo', 'unstarted'), ['OEO-1 → In Progress']],
+  ['my Backlog ticket is set to In Progress', ticket('OEO-1', 'Backlog', 'backlog'), ['OEO-1 → In Progress']],
+  ['my Triage ticket is set to In Progress', ticket('OEO-1', 'Triage', 'triage'), ['OEO-1 → In Progress']],
+  [
+    'an unassigned ticket is assigned to me, then set to In Progress',
+    ticket('OEO-1', 'Todo', 'unstarted', VESTIGAS, null),
+    ['OEO-1 → assign me', 'OEO-1 → In Progress']
+  ],
+  ["a colleague's ticket is never written", ticket('OEO-1', 'Todo', 'unstarted', VESTIGAS, 'colleague'), []],
+  ['a started ticket is not written', ticket('OEO-1', 'Review', 'started'), []],
+  ['a completed ticket is not written', ticket('OEO-1', 'Done', 'completed'), []],
+  ['a canceled ticket is not written', ticket('OEO-1', 'Canceled', 'canceled'), []]
+]
+
+for (const [title, theTicket, writes] of START_CASES) {
+  test(`Start, on creating a workspace: ${title}`, () => {
+    const result = sync({
+      board: [card({ path: '/w/new', column: 'todo', linkedIssue: 'OEO-1' })],
+      tickets: [theTicket],
+      created: '/w/new'
+    })
+    assert.deepEqual(writesOf(result), writes)
+  })
+}
+
+test('a Start moves the new card to In Progress and remembers In Progress, so the next poll writes nothing', () => {
+  const started = sync({
+    board: [card({ path: '/w/new', column: 'todo', linkedIssue: 'OEO-1' })],
+    tickets: [ticket('OEO-1', 'Todo', 'unstarted')],
+    created: '/w/new'
+  })
+  assert.deepEqual(movesOf(started), ['/w/new → in-progress'])
+  assert.deepEqual(started.memory, { '/w/new': { column: 'in-progress', linearState: 'In Progress' } })
+
+  const nextPoll = sync({
+    board: [card({ path: '/w/new', column: 'in-progress', linkedIssue: 'OEO-1' })],
+    tickets: [ticket('OEO-1', 'In Progress', 'started')],
+    memory: started.memory
+  })
+  assert.deepEqual(nextPoll.writes, [])
+  assert.deepEqual(nextPoll.moves, [])
+})
+
+test("a Start's card lands where the State Mapping puts In Progress", () => {
+  const result = sync({
+    board: [card({ path: '/w/new', column: 'todo', linkedIssue: 'OEO-1' })],
+    tickets: [ticket('OEO-1', 'Todo', 'unstarted')],
+    settings: { stateMapping: '{"OEO/In Progress": "doing"}' },
+    created: '/w/new'
+  })
+  assert.deepEqual(movesOf(result), ['/w/new → doing'])
+})
+
+test('a poll never Starts: only the workspace just created does', () => {
+  const result = sync({
+    board: [
+      card({ path: '/w/old', column: 'todo', linkedIssue: 'OEO-1' }),
+      card({ path: '/w/new', column: 'todo', linkedIssue: 'OEO-2' })
+    ],
+    tickets: [ticket('OEO-1', 'Todo', 'unstarted'), ticket('OEO-2', 'Todo', 'unstarted')],
+    created: '/w/new'
+  })
+  assert.deepEqual(writesOf(result), ['OEO-2 → In Progress'])
+  assert.deepEqual(writesOf(sync({ board: [card({ path: '/w/old', column: 'todo', linkedIssue: 'OEO-1' })], tickets: [ticket('OEO-1', 'Todo', 'unstarted')] })), [])
 })

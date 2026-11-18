@@ -92,9 +92,43 @@ export const issueEnvelope = {
       createdAt: '2026-10-27T11:41:37.799Z',
       updatedAt: '2026-11-17T17:22:08.278Z'
     },
-    meta: {},
+    meta: {
+      resolved: { id: 'i-1577', identifier: 'OEO-1577', workspaceId: 'ws-v', workspaceName: 'vestigas' },
+      partial: false
+    },
     inlineMedia: []
   }
+}
+
+/** `orca linear list-issues --assignee me --limit 1`: how the plugin learns the user's Linear id. */
+export const myIssuesEnvelope = {
+  id: 'e6',
+  ok: true,
+  result: {
+    issues: [
+      {
+        id: 'i-1705',
+        identifier: 'OEO-1705',
+        title: 'Add an export button',
+        url: 'https://linear.app/vestigas/issue/OEO-1705/add-an-export-button',
+        state: { name: 'Review', type: 'started', color: '#75d9a7' },
+        team: { id: 't-oeo', name: 'Orders, ESG, Onboarding, Self-Service', key: 'OEO' },
+        assignee: { id: 'u1', displayName: 'me', avatarUrl: 'https://example.invalid/a.png' },
+        workspace: { id: 'ws-v', name: 'vestigas' }
+      }
+    ],
+    truncated: true,
+    meta: { limit: 1, returned: 1, hasMore: true, orderBy: 'updatedAt', workspaceId: 'ws-v', partial: false, workspaceErrors: [] }
+  },
+  _meta: { runtimeId: 'r1' }
+}
+
+/** The same, for a user with no ticket ever assigned to them. */
+export const noIssuesEnvelope = {
+  id: 'e7',
+  ok: true,
+  result: { issues: [], truncated: false, meta: { limit: 1, returned: 0, hasMore: false, workspaceId: 'ws-v', partial: false, workspaceErrors: [] } },
+  _meta: { runtimeId: 'r1' }
 }
 
 /** What `orca linear issue` prints for an identifier Linear doesn't know. */

@@ -4,7 +4,7 @@
 import { execFile } from 'node:child_process'
 import { messageOf } from './errors'
 import { OrcaCliError, type OrcaCli } from './seams/orca-cli'
-import type { BoardCard, LinearTeam, Ticket } from './sync/sync'
+import type { BoardCard, LinearTeam, Ticket, TicketRef } from './sync/sync'
 
 export const ORCA_BIN = '/Applications/Orca.app/Contents/Resources/bin/orca'
 const TIMEOUT_MS = 60_000
@@ -32,9 +32,12 @@ type IssueRow = {
   url: string
   state: { name: string; type: string } | null
   team: { key: string } | null
+  assignee?: { id: string } | null
 }
 
 export function createOrcaCli(run: RunOrca): OrcaCli {
+  /** The user's Linear id per Linear workspace id; it doesn't change while the worker runs. */
+  const myIds = new Map<string, string>()
   async function call<T>(args: string[]): Promise<T> {
     let output: OrcaRun
     try {
@@ -67,24 +70,65 @@ export function createOrcaCli(run: RunOrca): OrcaCli {
       )
     },
     async ticket(ref) {
-      const where = ref.workspaceId === null ? [] : ['--workspace', ref.workspaceId]
-      const { issue } = await call<{ issue: IssueRow }>(['linear', 'issue', ref.identifier, ...where])
+      const { issue, meta } = await call<{ issue: IssueRow; meta?: { resolved?: { workspaceId?: string } } }>([
+        'linear',
+        'issue',
+        ref.identifier,
+        ...whereOf(ref)
+      ])
       if (!issue?.state || !issue.team) {
         throw new OrcaCliError('unexpected_output', `orca linear issue ${ref.identifier} returned no state or team`)
       }
+      const assigneeId = issue.assignee?.id ?? null
+      const workspaceId = ref.workspaceId ?? meta?.resolved?.workspaceId ?? null
+      const assignee =
+        assigneeId === null ? null : workspaceId !== null && assigneeId === (await myId(workspaceId)) ? 'me' : 'colleague'
       return {
         identifier: issue.identifier.toUpperCase(),
         workspaceId: ref.workspaceId,
         workspace: urlKeyOf(issue.url),
         teamKey: issue.team.key.toUpperCase(),
         stateName: issue.state.name,
-        stateType: issue.state.type
+        stateType: issue.state.type,
+        assignee
       } satisfies Ticket
     },
     async setColumn(worktreeId, column) {
       await call(['worktree', 'set', '--worktree', `id:${worktreeId}`, '--workspace-status', column])
+    },
+    async setState(ref, state) {
+      await call(['linear', 'status', 'set', ref.identifier, '--to', state, ...whereOf(ref)])
+    },
+    async assignToMe(ref) {
+      await call(['linear', 'assignee', 'set', ref.identifier, '--me', ...whereOf(ref)])
     }
   }
+
+  /**
+   * The user's Linear id in a Linear workspace, from any ticket assigned to them; the CLI has no
+   * "who am I". Null when no ticket is (then no ticket is theirs) or the lookup fails. Not
+   * remembered until found.
+   */
+  async function myId(workspaceId: string): Promise<string | null> {
+    const known = myIds.get(workspaceId)
+    if (known !== undefined) return known
+    let issues: IssueRow[] | undefined
+    try {
+      ;({ issues } = await call<{ issues?: IssueRow[] }>([
+        'linear', 'list-issues', '--assignee', 'me', '--limit', '1', ...whereOf({ workspaceId })
+      ]))
+    } catch {
+      // Unknown, so treated as not the user's: the ticket still syncs one way, and is never written.
+      return null
+    }
+    const id = issues?.[0]?.assignee?.id ?? null
+    if (id !== null) myIds.set(workspaceId, id)
+    return id
+  }
+}
+
+function whereOf(ref: Pick<TicketRef, 'workspaceId'>): string[] {
+  return ref.workspaceId === null ? [] : ['--workspace', ref.workspaceId]
 }
 
 function cardOf(row: WorktreeRow): BoardCard {

@@ -38,18 +38,23 @@ export class FakeOrcaCli implements OrcaCli {
     this.#cards = this.#cards.filter((c) => c.path !== `/worktrees/${name}`)
   }
 
-  setTicket(identifier: string, stateName: string, stateType: string): void {
+  setTicket(identifier: string, stateName: string, stateType: string, assignee: Ticket['assignee'] = 'me'): void {
     this.#tickets.set(identifier, {
       identifier,
       workspaceId: 'ws-v',
       workspace: 'vestigas',
       teamKey: identifier.split('-')[0]!,
       stateName,
-      stateType
+      stateType,
+      assignee
     })
   }
 
-  /** Makes every call of `command` (board, linearTeams, ticket, setColumn) fail until cleared. */
+  ticketOf(identifier: string): Ticket | undefined {
+    return this.#tickets.get(identifier)
+  }
+
+  /** Makes every call of `command` (board, linearTeams, ticket, setColumn, setState, assignToMe) fail until cleared. */
   fail(command: string, error = new OrcaCliError('unavailable', `${command} failed`)): void {
     this.#failing.set(command, error)
   }
@@ -60,6 +65,11 @@ export class FakeOrcaCli implements OrcaCli {
 
   moves(): string[] {
     return this.calls.filter((c) => c.startsWith('setColumn ')).map((c) => c.slice('setColumn '.length))
+  }
+
+  /** The Linear writes, as `setState <identifier> → <state>` and `assignToMe <identifier>`. */
+  writes(): string[] {
+    return this.calls.filter((c) => c.startsWith('setState ') || c.startsWith('assignToMe '))
   }
 
   async board(): Promise<BoardCard[]> {
@@ -84,6 +94,21 @@ export class FakeOrcaCli implements OrcaCli {
     this.#record('setColumn', `${card?.path.split('/').at(-1)} → ${column}`)
     if (!this.columns.has(column)) throw new OrcaCliError('invalid_argument', `Unknown workspace status: ${column}`)
     if (card) card.column = column
+  }
+
+  async setState(ref: TicketRef, state: string): Promise<void> {
+    this.#record('setState', `${ref.identifier} → ${state}`)
+    const ticket = this.#tickets.get(ref.identifier)
+    if (!ticket) throw new OrcaCliError('linear_network_error', 'Entity not found: Issue')
+    // Every team in the fakes has an "In Progress" state of type started.
+    this.#tickets.set(ref.identifier, { ...ticket, stateName: state, stateType: state === 'In Progress' ? 'started' : ticket.stateType })
+  }
+
+  async assignToMe(ref: TicketRef): Promise<void> {
+    this.#record('assignToMe', ref.identifier)
+    const ticket = this.#tickets.get(ref.identifier)
+    if (!ticket) throw new OrcaCliError('linear_network_error', 'Entity not found: Issue')
+    this.#tickets.set(ref.identifier, { ...ticket, assignee: 'me' })
   }
 
   #record(command: string, args?: string): void {
