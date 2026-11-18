@@ -3,23 +3,58 @@
 import { assert, mockHost, mountWorker, test } from 'orca/testing'
 import { FakeClock } from './fakes/fake-clock'
 import { FakeOrcaCli } from './fakes/fake-orca-cli'
+import type { OrcaWorkerApi } from 'orca/worker'
 import { createWorker, PAUSE_COMMAND, SYNC_NOW_COMMAND } from './worker'
 
 const MINUTE = 60_000
 /** Settings as real Orca hands them over: with the declared defaults filled in. */
-const CONFIGURED = { teams: '', pollMinutes: 2, stateMapping: '{}' }
+const CONFIGURED = {
+  teams: '',
+  pollMinutes: 2,
+  stateMapping: '{}',
+  writableColumns: '{"todo": "Todo", "in-progress": "In Progress", "blocked": "Blocked"}'
+}
 
 type StatusBarUpdate = { id: string; text?: string; icon?: string; tone?: string; tooltip?: string; visible?: boolean }
 
+/**
+ * Mounts a worker over the fakes and lets its first sync run. `changeSetting` stands in for Orca's
+ * settings.onDidChange, which the test kit never fires (as in code-review-requests).
+ */
 async function start(arrange: (cli: FakeOrcaCli) => void, settings: Record<string, string | number> = CONFIGURED) {
   const cli = new FakeOrcaCli()
   const clock = new FakeClock()
   arrange(cli)
   const host = mockHost({ settings })
-  const worker = await mountWorker(createWorker({ cli, clock }), { host })
+  const module = createWorker({ cli, clock })
+  const listeners: ((change: { key: string }) => unknown)[] = []
+  let orca: OrcaWorkerApi | undefined
+  const worker = await mountWorker(
+    {
+      default: (api: OrcaWorkerApi) => {
+        orca = api
+        // The kit's api objects are frozen, so wrap with copies rather than patching them.
+        const settingsApi = {
+          ...api.settings,
+          onDidChange(listener: (change: { key: string }) => void) {
+            listeners.push(listener)
+            return { dispose: () => void listeners.splice(listeners.indexOf(listener), 1) }
+          }
+        } as OrcaWorkerApi['settings']
+        return module.default({ ...api, settings: settingsApi })
+      },
+      deactivate: module.deactivate
+    },
+    { host }
+  )
   await clock.advance(0)
   const statusBar = () => host.callsOf('statusBar.update').at(-1) as StatusBarUpdate | undefined
-  return { cli, clock, host, worker, statusBar }
+  const changeSetting = async (key: string, value: string | number) => {
+    await orca!.settings.set(key, value)
+    for (const listener of [...listeners]) await listener({ key })
+    await clock.advance(0)
+  }
+  return { cli, clock, host, worker, statusBar, changeSetting }
 }
 
 test("on start, each Linked Workspace's card moves to the column its ticket maps to; other cards stay", async () => {
@@ -397,4 +432,63 @@ test('Sync now also writes back a drag at once', async () => {
   cli.drag('mine', 'in-progress')
   await worker.command(SYNC_NOW_COMMAND)
   assert.deepEqual(cli.writes(), ['setState OEO-1 → In Progress'])
+})
+
+test('a changed poll interval applies at the next tick, without a restart', async () => {
+  const { cli, clock, changeSetting } = await start(
+    (cli) => {
+      cli.addCard({ name: 'linked', column: 'todo', linkedIssue: 'OEO-1' })
+      cli.setTicket('OEO-1', 'Todo', 'unstarted')
+    },
+    { ...CONFIGURED, pollMinutes: 60 }
+  )
+  await clock.advance(5 * MINUTE)
+  await changeSetting('pollMinutes', 2)
+  cli.setTicket('OEO-1', 'Done', 'completed')
+
+  await clock.advance(30 * SECOND)
+  assert.equal(cli.columnOf('linked'), 'completed')
+})
+
+test('changed Writable Columns apply to the next drag, without a restart', async () => {
+  const { cli, clock, changeSetting } = await startWithMyTicket()
+  await changeSetting('writableColumns', '{}')
+  cli.drag('mine', 'in-progress')
+
+  await clock.advance(15 * SECOND)
+
+  assert.deepEqual(cli.writes(), [])
+  assert.equal(cli.columnOf('mine'), 'todo')
+})
+
+test('an invalid setting is a status-bar warning naming it as soon as it is saved; sync goes on with the default, and fixing it clears the warning', async () => {
+  const { cli, clock, statusBar, changeSetting } = await startWithMyTicket()
+
+  await changeSetting('writableColumns', '{"todo": ')
+
+  assert.equal(statusBar()?.tone, 'warning')
+  assert.match(statusBar()?.tooltip ?? '', /Writable Columns: not valid JSON/)
+  assert.equal(cli.calls.length, 0, 'showing it reads neither Linear nor the board')
+
+  cli.drag('mine', 'in-progress')
+  await clock.advance(15 * SECOND)
+  assert.deepEqual(cli.writes(), ['setState OEO-1 → In Progress'], 'the default Writable Columns still apply')
+  assert.match(statusBar()?.tooltip ?? '', /Writable Columns/, 'a board check keeps the warning')
+
+  await changeSetting('writableColumns', '{}')
+  assert.equal(statusBar()?.tone, 'neutral')
+})
+
+test('an invalid poll interval is a warning and polls every 2 minutes', async () => {
+  const { cli, clock, statusBar } = await start(
+    (cli) => {
+      cli.addCard({ name: 'linked', column: 'todo', linkedIssue: 'OEO-1' })
+      cli.setTicket('OEO-1', 'Todo', 'unstarted')
+    },
+    { ...CONFIGURED, pollMinutes: 0 }
+  )
+  assert.match(statusBar()?.tooltip ?? '', /Check Linear every \(minutes\)/)
+  cli.setTicket('OEO-1', 'Done', 'completed')
+  await clock.advance(2 * MINUTE)
+  assert.equal(cli.columnOf('linked'), 'completed')
 })

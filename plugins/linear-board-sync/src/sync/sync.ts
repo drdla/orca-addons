@@ -104,7 +104,7 @@ export function syncBoard(input: SyncInput): SyncResult {
       } else if (ticket.assignee === 'colleague') {
         undoneReason = `${ticket.identifier} is assigned to someone else; only Linear moves its card, so the drag to "${card.column}" was undone.`
       } else if (state === undefined) {
-        undoneReason = `${ticket.identifier}: "${card.column}" is set by GitLab or the PO, not from the board, so the drag was undone.`
+        undoneReason = `${ticket.identifier}: "${card.column}" is not a Writable Column (GitLab or the PO set that state, not the board), so the drag was undone.`
       } else {
         if (normalState(state) === normalState(IN_PROGRESS) && isStart(ticket)) writes.push(...startWrites(target, ticket))
         else if (normalState(state) !== normalState(ticket.stateName)) writes.push({ ...target, kind: 'set-state', state })

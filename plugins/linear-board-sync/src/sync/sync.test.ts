@@ -411,3 +411,26 @@ test('state names compare ignoring case when spotting a conflict, so a renamed-c
   assert.deepEqual(writesOf(result), ['OEO-1 → In Progress'])
   assert.deepEqual(result.warnings, [])
 })
+
+test('with Writable Columns set to {}, every drag is reverted, even into Todo or In Progress', () => {
+  const result = sync({
+    board: [card({ path: '/w/a', column: 'in-progress', linkedIssue: 'OEO-1' })],
+    tickets: [ticket('OEO-1', 'Todo', 'unstarted')],
+    memory: { '/w/a': { column: 'todo', linearState: 'Todo' } },
+    settings: { writableColumns: '{}' }
+  })
+  assert.deepEqual(result.writes, [])
+  assert.deepEqual(movesOf(result), ['/w/a → todo'])
+  assert.match(result.warnings[0]!, /OEO-1.*"in-progress" is not a Writable Column/)
+})
+
+test('Writable Columns from the settings: a drag into a column the map names sets its state', () => {
+  const result = sync({
+    board: [card({ path: '/w/a', column: 'po-acceptance', linkedIssue: 'OEO-1' })],
+    tickets: [ticket('OEO-1', 'Review', 'started')],
+    memory: { '/w/a': { column: 'in-review', linearState: 'Review' } },
+    settings: { stateMapping: DRAG_MAPPING, writableColumns: '{"po-acceptance": "PO Acceptance"}' }
+  })
+  assert.deepEqual(writesOf(result), ['OEO-1 → PO Acceptance'])
+  assert.deepEqual(result.moves, [])
+})

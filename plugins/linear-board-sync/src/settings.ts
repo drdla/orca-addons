@@ -8,7 +8,9 @@ export const DEFAULT_SETTINGS = {
   /** The Linear poll interval in minutes. */
   pollMinutes: 2,
   /** State Mapping overrides: JSON `{ "<state name>" | "<team key>/<state name>": "<column id>" }`. */
-  stateMapping: '{}'
+  stateMapping: '{}',
+  /** Writable Columns: JSON `{ "<column id>": "<Linear state name>" }`. */
+  writableColumns: '{"todo": "Todo", "in-progress": "In Progress", "blocked": "Blocked"}'
 }
 
 /** One entry of the Teams setting. `workspace` is the Linear workspace's URL key, lower case. */
@@ -25,13 +27,6 @@ export type SyncSettings = {
   writableColumns: Record<string, string>
 }
 
-/** The default Writable Columns. Not a setting yet: hard-coded until a later slice exposes it. */
-export const DEFAULT_WRITABLE_COLUMNS: Record<string, string> = {
-  todo: 'Todo',
-  'in-progress': 'In Progress',
-  blocked: 'Blocked'
-}
-
 export type ParsedSettings = {
   settings: SyncSettings
   pollMinutes: number
@@ -41,13 +36,26 @@ export type ParsedSettings = {
 
 export function parseSettings(stored: Record<string, unknown>): ParsedSettings {
   const problems: string[] = []
-  const overrides = parseOverrides(stringOr(stored.stateMapping, DEFAULT_SETTINGS.stateMapping), problems)
   const teams = parseTeams(stringOr(stored.teams, DEFAULT_SETTINGS.teams), problems)
-  const pollMinutes =
-    typeof stored.pollMinutes === 'number' && Number.isFinite(stored.pollMinutes) && stored.pollMinutes >= 1
-      ? stored.pollMinutes
-      : DEFAULT_SETTINGS.pollMinutes
-  return { settings: { teams, overrides, writableColumns: { ...DEFAULT_WRITABLE_COLUMNS } }, pollMinutes, problems }
+  const overrides = parseOverrides(stringOr(stored.stateMapping, DEFAULT_SETTINGS.stateMapping), problems)
+  const writableColumns = parseWritableColumns(stringOr(stored.writableColumns, DEFAULT_SETTINGS.writableColumns), problems)
+  const pollMinutes = parsePollMinutes(stored.pollMinutes, problems)
+  return { settings: { teams, overrides, writableColumns }, pollMinutes, problems }
+}
+
+/** The bounds of the poll interval, as the manifest declares them. */
+export const POLL_MINUTES = { min: 1, max: 1440 }
+
+/** Whole minutes within POLL_MINUTES; unset is the default without a problem (the test host sets none). */
+function parsePollMinutes(value: unknown, problems: string[]): number {
+  if (value === undefined) return DEFAULT_SETTINGS.pollMinutes
+  if (typeof value === 'number' && Number.isInteger(value) && value >= POLL_MINUTES.min && value <= POLL_MINUTES.max) {
+    return value
+  }
+  problems.push(
+    `Check Linear every (minutes): ${JSON.stringify(value) ?? String(value)} is not a whole number of minutes from ${POLL_MINUTES.min} to ${POLL_MINUTES.max}; using ${DEFAULT_SETTINGS.pollMinutes}.`
+  )
+  return DEFAULT_SETTINGS.pollMinutes
 }
 
 function stringOr(value: unknown, fallback: string): string {
@@ -80,7 +88,7 @@ const TEAM_KEY = /^[A-Za-z][A-Za-z0-9]*$/
 function parseOverrides(text: string, problems: string[]): StateOverride[] {
   if (text.trim() === '') return []
   const fail = (why: string): StateOverride[] => {
-    problems.push(`State Mapping overrides ignored: ${why}`)
+    problems.push(`State Mapping overrides: ${why} Using none, so states map by type.`)
     return []
   }
   let value: unknown
@@ -108,6 +116,41 @@ function parseOverrides(text: string, problems: string[]): StateOverride[] {
   }
   return overrides
 }
+
+/**
+ * `{"todo": "Todo", "blocked": "Blocked"}`. Empty text or `{}`: no column is writable, so every
+ * drag is reverted. Anything else that is not an object of column ids to state names is reported,
+ * and the default is used as a whole, so a typo never turns drag write-back off or half on.
+ */
+function parseWritableColumns(text: string, problems: string[]): Record<string, string> {
+  if (text.trim() === '') return {}
+  const fail = (why: string): Record<string, string> => {
+    problems.push(`Writable Columns: ${why}; using the default (Todo, In Progress, Blocked).`)
+    return parseWritableColumns(DEFAULT_SETTINGS.writableColumns, [])
+  }
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch {
+    return fail('not valid JSON')
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return fail('not a JSON object like {"todo": "Todo"}')
+  }
+  const columns: Record<string, string> = {}
+  for (const [key, state] of Object.entries(value)) {
+    const column = key.trim()
+    if (!COLUMN_ID.test(column)) {
+      return fail(`"${key}" is not a Board Column id, which is lower case without spaces, like po-acceptance`)
+    }
+    if (typeof state !== 'string' || state.trim() === '') return fail(`"${key}" needs a Linear state name as a string`)
+    columns[column] = state.trim()
+  }
+  return columns
+}
+
+/** A Board Column id: the slug of the column's label, so lower case and without spaces. */
+const COLUMN_ID = /^[^\sA-Z]+$/
 
 /** State names compare ignoring case and surrounding spaces. */
 export function normalState(name: string): string {
