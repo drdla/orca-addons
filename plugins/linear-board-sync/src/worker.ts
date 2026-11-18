@@ -12,7 +12,8 @@ import { createMemoryStore } from './memory'
 import { createPoller } from './poller'
 import { parseSettings } from './settings'
 import { createStatusBar, type SyncStatus } from './status-bar'
-import { syncBoard, ticketsToFetch, type Ticket } from './sync/sync'
+import { revertFailedMove, syncBoard, ticketsToFetch, type Ticket } from './sync/sync'
+import { counted } from './words'
 
 export const SYNC_NOW_COMMAND = 'linear-board-sync.syncNow'
 export const PAUSE_COMMAND = 'linear-board-sync.pause'
@@ -35,6 +36,8 @@ export function createWorker(deps: Deps) {
     const memoryStore = createMemoryStore(orca.storage)
     const statusBar = createStatusBar(orca)
     let paused = false
+    /** The last full sync's warnings; a one-workspace sync adds to them instead of replacing them. */
+    let lastPollWarnings: string[] = []
 
     /** Syncs run one at a time, so two never move the same card or race on the memory. */
     let queue: Promise<unknown> = Promise.resolve()
@@ -74,9 +77,7 @@ export function createWorker(deps: Deps) {
           } catch (error) {
             // Skipped, not retried: the next sync tries again, once.
             warnings.push(`${move.identifier}: couldn't move the card to "${move.to}": ${messageOf(error)}`)
-            const known = before[move.path]
-            if (known) memory[move.path] = known
-            else delete memory[move.path]
+            revertFailedMove(memory, before, move.path)
           }
         }
         await memoryStore.save(memory)
@@ -84,7 +85,9 @@ export function createWorker(deps: Deps) {
         warnings.push(`Couldn't sync: ${messageOf(error)}`)
       }
       for (const warning of warnings) log(`warning: ${warning}`)
-      await statusBar.render(paused ? { kind: 'paused' } : { kind: 'synced', at: clock.now(), warnings })
+      if (onlyPath === undefined) lastPollWarnings = warnings
+      const shown = onlyPath === undefined ? warnings : [...new Set([...lastPollWarnings, ...warnings])]
+      await statusBar.render(paused ? { kind: 'paused' } : { kind: 'synced', at: clock.now(), warnings: shown })
       return { moved, warnings }
     }
 
@@ -154,9 +157,9 @@ export function createWorker(deps: Deps) {
 }
 
 function summary(outcome: SyncOutcome): string {
-  const moved = `${outcome.moved} ${outcome.moved === 1 ? 'card' : 'cards'} moved`
+  const moved = `${counted(outcome.moved, 'card')} moved`
   if (outcome.warnings.length === 0) return `Synced with Linear: ${moved}.`
-  return `Synced with Linear: ${moved}, ${outcome.warnings.length} ${outcome.warnings.length === 1 ? 'warning' : 'warnings'}: ${outcome.warnings.join(' ')}`
+  return `Synced with Linear: ${moved}, ${counted(outcome.warnings.length, 'warning')}: ${outcome.warnings.join(' ')}`
 }
 
 const worker = createWorker(realDeps())

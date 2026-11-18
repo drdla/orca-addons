@@ -1,6 +1,7 @@
 // The status bar item: whether sync is running, paused, or has warnings (a failed card move, a
 // ticket or Linear that couldn't be read, a setting that couldn't be parsed).
 import type { OrcaWorkerApi } from 'orca/worker'
+import { counted } from './words'
 
 export const STATUS_BAR_ID = 'linear-board-sync'
 
@@ -31,7 +32,7 @@ export function lookOf(status: SyncStatus): Look {
   const listed = status.warnings.slice(0, LISTED).map((w) => `• ${w}`)
   if (count > LISTED) listed.push(`• and ${count - LISTED} more (see the plugin log)`)
   return {
-    text: `Linear: ${count} ${count === 1 ? 'warning' : 'warnings'}`,
+    text: `Linear: ${counted(count, 'warning')}`,
     icon: 'warning',
     tone: 'warning',
     visible: true,

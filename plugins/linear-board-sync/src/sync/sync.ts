@@ -77,16 +77,14 @@ export function syncBoard(input: SyncInput): SyncResult {
     )
     if (!ticket) {
       // Not read this time: remember what we knew until it can be read again.
-      const known = input.memory[card.path]
-      if (known) memory[card.path] = known
+      keepKnown(memory, input.memory, card.path)
       continue
     }
     if (!teamAllowed({ key: ticket.teamKey, workspace: ticket.workspace }, input.settings)) continue
     const column = columnFor(ticket, input.settings)
     if (column === null) {
       warnings.push(`${ticket.identifier}: no Board Column for state "${ticket.stateName}" (${ticket.stateType}); add a State Mapping override.`)
-      const known = input.memory[card.path]
-      if (known) memory[card.path] = known
+      keepKnown(memory, input.memory, card.path)
       continue
     }
     if (card.column !== column) {
@@ -95,6 +93,20 @@ export function syncBoard(input: SyncInput): SyncResult {
     memory[card.path] = { column, linearState: ticket.stateName }
   }
   return { moves, warnings, memory }
+}
+
+/**
+ * A card move that failed: the memory keeps what it held before the sync for that workspace, as
+ * if the move had not been planned, so the next sync plans it again (once).
+ */
+export function revertFailedMove(memory: Memory, before: Memory, path: string): void {
+  delete memory[path]
+  keepKnown(memory, before, path)
+}
+
+function keepKnown(memory: Memory, known: Memory, path: string): void {
+  const entry = known[path]
+  if (entry) memory[path] = entry
 }
 
 /** The State Mapping: a team-scoped override, then an unscoped one, then the type default. */

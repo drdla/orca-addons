@@ -188,3 +188,19 @@ test('the poll interval comes from the settings', async () => {
   await clock.advance(1 * MINUTE)
   assert.equal(cli.columnOf('linked'), 'completed')
 })
+
+test("syncing a newly created workspace keeps the last poll's warnings in the status bar", async () => {
+  const { cli, worker, statusBar } = await start(
+    (cli) => {
+      cli.addCard({ name: 'blocked', column: 'in-progress', linkedIssue: 'OEO-1' })
+      cli.setTicket('OEO-1', 'Blocked', 'started')
+    },
+    { ...CONFIGURED, stateMapping: '{"Blocked": "blocked"}' }
+  )
+  const card = cli.addCard({ name: 'oeo-7-new', column: 'todo' })
+  cli.setTicket('OEO-7', 'Todo', 'unstarted')
+
+  await worker.emit('workspace.created', { workspaceId: 'ws-7', kind: 'worktree', path: card.path, branch: 'oeo-7-new' })
+
+  assert.match(statusBar()?.tooltip ?? '', /OEO-1.*blocked/)
+})
