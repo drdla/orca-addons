@@ -94,8 +94,25 @@ export function syncBoard(input: SyncInput): SyncResult {
       continue
     }
     if (!teamAllowed({ key: ticket.teamKey, workspace: ticket.workspace }, input.settings)) continue
+    const target = { path: card.path, ref: { identifier: ticket.identifier, workspaceId: ticket.workspaceId } }
+    // A drag Linear doesn't take is reverted below like any card out of step, with this reason.
+    let discarded: string | null = null
+    if (card.column !== null && isDrag(card, input.memory)) {
+      const state = input.settings.writable[card.column]
+      if (ticket.stateName !== input.memory[card.path]!.linearState) {
+        discarded = `${ticket.identifier}: Linear changed to "${ticket.stateName}" since the last check, so Linear wins and the drag to "${card.column}" was undone.`
+      } else if (ticket.assignee === 'colleague') {
+        discarded = `${ticket.identifier} is assigned to someone else; only Linear moves its card, so the drag to "${card.column}" was undone.`
+      } else if (state === undefined) {
+        discarded = `${ticket.identifier}: "${card.column}" is set by GitLab or the PO, not from the board, so the drag was undone.`
+      } else {
+        if (ticket.assignee === null && state === IN_PROGRESS && isStart(ticket)) writes.push({ ...target, kind: 'assign-me' })
+        if (normalState(state) !== normalState(ticket.stateName)) writes.push({ ...target, kind: 'set-state', state })
+        memory[card.path] = { column: card.column, linearState: state }
+        continue
+      }
+    }
     if (card.path === input.created && isStart(ticket)) {
-      const target = { path: card.path, ref: { identifier: ticket.identifier, workspaceId: ticket.workspaceId } }
       if (ticket.assignee === null) writes.push({ ...target, kind: 'assign-me' })
       writes.push({ ...target, kind: 'set-state', state: IN_PROGRESS })
       // The card follows the ticket as it will be: In Progress, through the State Mapping.
@@ -108,11 +125,21 @@ export function syncBoard(input: SyncInput): SyncResult {
       continue
     }
     if (card.column !== column) {
+      if (discarded !== null) warnings.push(discarded)
       moves.push({ worktreeId: card.worktreeId, path: card.path, identifier: ticket.identifier, from: card.column, to: column })
     }
     memory[card.path] = { column, linearState: ticket.stateName }
   }
   return { moves, writes, warnings, memory }
+}
+
+/**
+ * A drag: the card is in a column other than the one the plugin last set. A workspace with no
+ * memory entry (first run, reinstall, resumed) was never placed by the plugin, so it has no drag.
+ */
+export function isDrag(card: BoardCard, memory: Memory): boolean {
+  const known = memory[card.path]
+  return known !== undefined && card.column !== null && card.column !== known.column
 }
 
 /** A Start: the ticket is not started yet, and is the user's or nobody's. */

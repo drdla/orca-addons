@@ -12,13 +12,17 @@ import { createMemoryStore } from './memory'
 import { createPoller } from './poller'
 import { parseSettings } from './settings'
 import { createStatusBar, type SyncStatus } from './status-bar'
-import { revertFailedMove, syncBoard, ticketsToFetch, type Ticket } from './sync/sync'
+import { isDrag, revertFailedMove, syncBoard, ticketsToFetch, type LinearTeam, type Ticket } from './sync/sync'
 import { counted } from './words'
 
 export const SYNC_NOW_COMMAND = 'linear-board-sync.syncNow'
 export const PAUSE_COMMAND = 'linear-board-sync.pause'
 
 const MINUTE = 60_000
+/** How often the board is checked for drags; the Linear poll keeps its own interval. */
+const BOARD_CHECK_MS = 15_000
+
+type SyncMode = { kind: 'poll' } | { kind: 'board-check' } | { kind: 'created'; path: string }
 
 type SyncOutcome = { moved: number; warnings: string[] }
 
@@ -36,8 +40,10 @@ export function createWorker(deps: Deps) {
     const memoryStore = createMemoryStore(orca.storage)
     const statusBar = createStatusBar(orca)
     let paused = false
-    /** The last full sync's warnings; a one-workspace sync adds to them instead of replacing them. */
-    let lastPollWarnings: string[] = []
+    /** What the status bar lists: the last poll's warnings, plus any board check or new workspace's since. */
+    let shownWarnings: string[] = []
+    /** The Linear teams as last read. */
+    let knownTeams: LinearTeam[] | null = null
 
     /** Syncs run one at a time, so two never move the same card or race on the memory. */
     let queue: Promise<unknown> = Promise.resolve()
@@ -47,16 +53,28 @@ export function createWorker(deps: Deps) {
       return next
     }
 
-    /** One sync: every Linked Workspace, or (`onlyPath`) the one workspace just created. */
-    async function sync(onlyPath?: string): Promise<SyncOutcome> {
+    /**
+     * One sync. A `poll` reads every Linked Workspace's ticket; a `board-check` reads only the tickets
+     * of dragged cards, and does nothing more when there are none; `created` reads the one new workspace's.
+     */
+    async function sync(mode: SyncMode): Promise<SyncOutcome> {
       const parsed = parseSettings(await orca.settings.get())
       poller.setIntervalMs(Math.max(1, parsed.pollMinutes) * MINUTE)
       const warnings = [...parsed.problems]
       let moved = 0
       try {
         const board = await cli.board()
-        const teams = await cli.linearTeams()
-        const scope = onlyPath === undefined ? board : board.filter((card) => card.path === onlyPath)
+        const before = await memoryStore.load()
+        const scope =
+          mode.kind === 'poll'
+            ? board
+            : mode.kind === 'created'
+              ? board.filter((card) => card.path === mode.path)
+              : board.filter((card) => isDrag(card, before))
+        if (mode.kind === 'board-check' && scope.length === 0) return { moved, warnings: [] }
+        // The board check reuses the teams of the last read, so a quiet board costs one `orca` call.
+        if (mode.kind !== 'board-check' || knownTeams === null) knownTeams = await cli.linearTeams()
+        const teams = knownTeams
         const tickets: Ticket[] = []
         for (const ref of ticketsToFetch({ teams, board: scope, settings: parsed.settings })) {
           try {
@@ -65,14 +83,13 @@ export function createWorker(deps: Deps) {
             warnings.push(`${ref.identifier}: couldn't read the ticket: ${messageOf(error)}`)
           }
         }
-        const before = await memoryStore.load()
         // The whole board goes in: cards whose ticket wasn't read keep their memory.
         const result = syncBoard({
           linear: { teams, tickets },
           board,
           memory: before,
           settings: parsed.settings,
-          created: onlyPath ?? null
+          created: mode.kind === 'created' ? mode.path : null
         })
         warnings.push(...result.warnings)
         const memory = result.memory
@@ -84,11 +101,14 @@ export function createWorker(deps: Deps) {
             if (write.kind === 'assign-me') await cli.assignToMe(write.ref)
             else await cli.setState(write.ref, write.state)
           } catch (error) {
-            // Not retried: only creating the workspace Starts its ticket, and the next poll applies Linear as it is.
+            // Not retried: the workspace is forgotten, so the next Linear poll applies Linear as it is
+            // and infers no drag. Only creating a workspace Starts its ticket; a card dragged back is.
             const what = write.kind === 'assign-me' ? 'assign it to you' : `set it to "${write.state}"`
-            warnings.push(`${write.ref.identifier}: couldn't Start the ticket in Linear (${what}): ${messageOf(error)}`)
+            warnings.push(
+              `${write.ref.identifier}: couldn't ${what} in Linear; the card follows Linear at the next poll: ${messageOf(error)}`
+            )
             failedPaths.add(write.path)
-            revertFailedMove(memory, before, write.path)
+            delete memory[write.path]
           }
         }
         for (const move of result.moves.filter((m) => !failedPaths.has(m.path))) {
@@ -106,9 +126,9 @@ export function createWorker(deps: Deps) {
         warnings.push(`Couldn't sync: ${messageOf(error)}`)
       }
       for (const warning of warnings) log(`warning: ${warning}`)
-      if (onlyPath === undefined) lastPollWarnings = warnings
-      const shown = onlyPath === undefined ? warnings : [...new Set([...lastPollWarnings, ...warnings])]
-      await statusBar.render(paused ? { kind: 'paused' } : { kind: 'synced', at: clock.now(), warnings: shown })
+      // A poll replaces what the status bar shows; a board check or a new workspace adds to it until then.
+      shownWarnings = mode.kind === 'poll' ? warnings : [...new Set([...shownWarnings, ...warnings])]
+      await statusBar.render(paused ? { kind: 'paused' } : { kind: 'synced', at: clock.now(), warnings: shownWarnings })
       return { moved, warnings }
     }
 
@@ -116,7 +136,15 @@ export function createWorker(deps: Deps) {
       clock,
       intervalMs: 2 * MINUTE,
       poll: async () => {
-        await serially(() => sync())
+        await serially(() => sync({ kind: 'poll' }))
+      }
+    })
+    const boardCheck = createPoller({
+      clock,
+      intervalMs: BOARD_CHECK_MS,
+      tickMs: BOARD_CHECK_MS,
+      poll: async () => {
+        await serially(() => sync({ kind: 'board-check' }))
       }
     })
 
@@ -127,12 +155,14 @@ export function createWorker(deps: Deps) {
     async function startIfConfigured(): Promise<void> {
       if (paused || poller.running || !isConfigured(await orca.settings.get())) return
       await render({ kind: 'starting' })
+      // The Linear poll first, so the board check finds the teams read and every card placed.
       poller.start()
+      boardCheck.start()
     }
 
     orca.events.on('workspace.created', async ({ path }) => {
       if (paused || !poller.running) return
-      await serially(() => sync(path))
+      await serially(() => sync({ kind: 'created', path }))
     })
     orca.events.on('workspace.removed', async ({ path }) => {
       await serially(() => memoryStore.forget(path))
@@ -141,12 +171,13 @@ export function createWorker(deps: Deps) {
     orca.commands.register(SYNC_NOW_COMMAND, async () => {
       if (paused) return 'Linear Board Sync is paused. Run "Linear Board Sync: Pause" again to resume.'
       if (!poller.running) return 'Linear Board Sync is not set up yet.'
-      return summary(await serially(() => sync()))
+      return summary(await serially(() => sync({ kind: 'poll' })))
     })
     orca.commands.register(PAUSE_COMMAND, async () => {
       if (!paused) {
         paused = true
         poller.stop()
+        boardCheck.stop()
         await render({ kind: 'paused' })
         return 'Linear Board Sync paused. Run "Linear Board Sync: Pause" again to resume.'
       }
@@ -164,6 +195,7 @@ export function createWorker(deps: Deps) {
     stopWorker = () => {
       settingsWatch.dispose()
       poller.stop()
+      boardCheck.stop()
     }
     await startIfConfigured()
   }

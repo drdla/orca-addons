@@ -21,6 +21,15 @@ export type SyncSettings = {
   /** Empty means all teams. */
   teams: TeamEntry[]
   overrides: StateOverride[]
+  /** Writable Columns: Board Column id → the Linear state name a drag into it sets. */
+  writable: Record<string, string>
+}
+
+/** The default Writable Columns. Not a setting yet: hard-coded until a later slice exposes it. */
+export const DEFAULT_WRITABLE_COLUMNS: Record<string, string> = {
+  todo: 'Todo',
+  'in-progress': 'In Progress',
+  blocked: 'Blocked'
 }
 
 export type ParsedSettings = {
@@ -38,7 +47,7 @@ export function parseSettings(stored: Record<string, unknown>): ParsedSettings {
     typeof stored.pollMinutes === 'number' && Number.isFinite(stored.pollMinutes) && stored.pollMinutes >= 1
       ? stored.pollMinutes
       : DEFAULT_SETTINGS.pollMinutes
-  return { settings: { teams, overrides }, pollMinutes, problems }
+  return { settings: { teams, overrides, writable: { ...DEFAULT_WRITABLE_COLUMNS } }, pollMinutes, problems }
 }
 
 function stringOr(value: unknown, fallback: string): string {

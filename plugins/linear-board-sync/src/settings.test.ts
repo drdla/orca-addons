@@ -10,7 +10,11 @@ test('the manifest declares every setting with the same default as the code', ()
   assert.deepEqual(declared, DEFAULT_SETTINGS)
 })
 
-test('the manifest defaults parse without problems and sync every team by type', () => {
+test('the manifest defaults parse without problems, sync every team by type, and write back Todo, In Progress and Blocked', () => {
   const parsed = parseSettings(DEFAULT_SETTINGS)
-  assert.deepEqual(parsed, { settings: { teams: [], overrides: [] }, pollMinutes: 2, problems: [] })
+  assert.deepEqual(parsed, {
+    settings: { teams: [], overrides: [], writable: { todo: 'Todo', 'in-progress': 'In Progress', blocked: 'Blocked' } },
+    pollMinutes: 2,
+    problems: []
+  })
 })

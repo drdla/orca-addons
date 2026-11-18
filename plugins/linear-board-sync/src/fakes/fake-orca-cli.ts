@@ -59,6 +59,13 @@ export class FakeOrcaCli implements OrcaCli {
     this.#failing.set(command, error)
   }
 
+  /** The user drags a card on the board: its column changes, with no CLI call. */
+  drag(name: string, column: string): void {
+    const card = this.#cards.find((c) => c.path === `/worktrees/${name}`)
+    if (!card) throw new Error(`no card ${name}`)
+    card.column = column
+  }
+
   columnOf(name: string): string | null {
     return this.#cards.find((c) => c.path === `/worktrees/${name}`)?.column ?? null
   }
