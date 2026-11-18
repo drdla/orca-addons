@@ -1,7 +1,7 @@
 // The sync core, a pure function: given the Linear tickets, the board, the memory and the
 // settings, it says which cards move, what to write to Linear, what to warn about, and what to
 // remember. The worker only gathers the inputs, applies the writes and moves, and persists the memory.
-import { normalState, type SyncSettings } from '../settings'
+import { DEFAULT_WRITABLE_COLUMNS, normalState, type SyncSettings } from '../settings'
 
 /** A workspace on Orca's board: a row of `orca worktree list`. */
 export type BoardCard = {
@@ -104,7 +104,11 @@ export function syncBoard(input: SyncInput): SyncResult {
       } else if (ticket.assignee === 'colleague') {
         undoneReason = `${ticket.identifier} is assigned to someone else; only Linear moves its card, so the drag to "${card.column}" was undone.`
       } else if (state === undefined) {
-        undoneReason = `${ticket.identifier}: "${card.column}" is not a Writable Column, so the drag was undone.`
+        // A default Writable Column the settings left out is the user's choice, not GitLab's or the PO's.
+        undoneReason =
+          card.column in DEFAULT_WRITABLE_COLUMNS
+            ? `${ticket.identifier}: "${card.column}" is not a Writable Column in the settings, so the drag was undone.`
+            : `${ticket.identifier}: "${card.column}" is not a Writable Column: GitLab or the PO own that state, so the drag was undone.`
       } else {
         if (normalState(state) === normalState(IN_PROGRESS) && isStart(ticket)) writes.push(...startWrites(target, ticket))
         else if (normalState(state) !== normalState(ticket.stateName)) writes.push({ ...target, kind: 'set-state', state })
@@ -164,11 +168,14 @@ export function forgetFailedWrite(memory: Memory, path: string): void {
 
 /**
  * A card move that failed: the memory keeps what it held before the sync for that workspace, as
- * if the move had not been planned, so the next sync plans it again (once).
+ * if the move had not been planned, but with the column the card is still in. So a failed move
+ * back from a drag is not taken for the same drag at every board check: the next Linear poll
+ * plans the move again (once).
  */
-export function revertFailedMove(memory: Memory, before: Memory, path: string): void {
-  delete memory[path]
-  keepKnown(memory, before, path)
+export function revertFailedMove(memory: Memory, before: Memory, move: CardMove): void {
+  delete memory[move.path]
+  const known = before[move.path]
+  if (known) memory[move.path] = move.from === null ? known : { ...known, column: move.from }
 }
 
 function keepKnown(memory: Memory, known: Memory, path: string): void {

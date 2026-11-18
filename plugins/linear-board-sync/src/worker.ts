@@ -45,6 +45,10 @@ export function createWorker(deps: Deps) {
     const memoryStore = createMemoryStore(orca.storage)
     const statusBar = createStatusBar(orca)
     let paused = false
+    /** Set by deactivate: nothing may start after it, even a startup already under way. */
+    let stopped = false
+    /** The startup under way, so callers arriving together start the timers (and draw "starting") once. */
+    let starting: Promise<void> | null = null
     /** What the status bar lists: the last poll's warnings, plus any board check or new workspace's since. */
     let shownWarnings: string[] = []
     /** The settings that could not be read, as of the last read; listed first in the status bar. */
@@ -143,7 +147,7 @@ export function createWorker(deps: Deps) {
           } catch (error) {
             // Skipped, not retried: the next sync tries again, once.
             warnings.push(`${move.identifier}: couldn't move the card to "${move.to}": ${messageOf(error)}`)
-            revertFailedMove(memory, before, move.path)
+            revertFailedMove(memory, before, move)
           }
         }
         await memoryStore.save(memory)
@@ -178,12 +182,22 @@ export function createWorker(deps: Deps) {
       await statusBar.render(status).catch((error: unknown) => log(`status bar: ${messageOf(error)}`))
     }
 
-    async function startIfConfigured(): Promise<void> {
-      if (paused || poller.running || !isConfigured(await orca.settings.get())) return
-      await render({ kind: 'starting' })
-      // The Linear poll first, so the board check finds the teams read and every card placed.
-      poller.start()
-      boardCheck.start()
+    function startIfConfigured(): Promise<void> {
+      starting ??= (async () => {
+        try {
+          const canStart = () => !stopped && !paused && !poller.running
+          if (!canStart() || !isConfigured(await orca.settings.get()) || !canStart()) return
+          await render({ kind: 'starting' })
+          // Deactivated or paused while drawing: leave no timers behind.
+          if (!canStart()) return
+          // The Linear poll first, so the board check finds the teams read and every card placed.
+          poller.start()
+          boardCheck.start()
+        } finally {
+          starting = null
+        }
+      })()
+      return starting
     }
 
     orca.events.on('workspace.created', async ({ path }) => {
@@ -229,6 +243,7 @@ export function createWorker(deps: Deps) {
       settingsChanged().catch((error: unknown) => log(`settings: ${messageOf(error)}`))
     )
     stopWorker = () => {
+      stopped = true
       settingsWatch.dispose()
       poller.stop()
       boardCheck.stop()

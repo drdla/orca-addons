@@ -12,10 +12,10 @@ test('the manifest declares every setting with the same default as the code', ()
   assert.deepEqual({ min: poll.minimum, max: poll.maximum }, POLL_MINUTES_RANGE)
 })
 
-test('the manifest defaults parse without problems, sync every team by type, and write back Todo, In Progress and Blocked', () => {
+test('the manifest defaults parse without problems, sync every team, map Blocked to blocked, and write back Todo, In Progress and Blocked', () => {
   const parsed = parseSettings(DEFAULT_SETTINGS)
   assert.deepEqual(parsed, {
-    settings: { teams: [], overrides: [], writableColumns: { todo: 'Todo', 'in-progress': 'In Progress', blocked: 'Blocked' } },
+    settings: { teams: [], overrides: [{ team: null, state: 'blocked', column: 'blocked' }], writableColumns: { todo: 'Todo', 'in-progress': 'In Progress', blocked: 'Blocked' } },
     pollMinutes: 2,
     problems: []
   })

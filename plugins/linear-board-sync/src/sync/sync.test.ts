@@ -103,11 +103,23 @@ for (const [title, stateMapping, theTicket, column] of OVERRIDE_CASES) {
   })
 }
 
-test('State Mapping overrides that are not a JSON object of column ids are reported and ignored', () => {
+test('State Mapping overrides that are not a JSON object of column ids are reported, and the default applies', () => {
   for (const stateMapping of ['{nope', '["Review"]', '{"Review": 3}', '{"Review": ""}']) {
     const parsed = parseSettings({ stateMapping })
     assert.equal(parsed.problems.length, 1, stateMapping)
-    assert.deepEqual(parsed.settings.overrides, [], stateMapping)
+    assert.match(parsed.problems[0]!, /^State Mapping overrides: .*using the default/, stateMapping)
+    assert.deepEqual(parsed.settings.overrides, [{ team: null, state: 'blocked', column: 'blocked' }], stateMapping)
+  }
+})
+
+test('State Mapping overrides set to {} or left empty map every state by type, Blocked included', () => {
+  for (const stateMapping of ['{}', ' ']) {
+    const result = sync({
+      board: [card({ path: '/w/a', column: 'todo', linkedIssue: 'OEO-1' })],
+      tickets: [ticket('OEO-1', 'Blocked', 'started')],
+      settings: { stateMapping }
+    })
+    assert.deepEqual(movesOf(result), ['/w/a → in-progress'], stateMapping)
   }
 })
 
@@ -349,9 +361,9 @@ for (const [title, from, to, theTicket, writes] of WRITE_BACK_CASES) {
 }
 
 const REVERT_CASES: [title: string, from: string, to: string, ticket: Ticket, message: RegExp][] = [
-  ['a drag into In Review', 'in-progress', 'in-review', ticket('OEO-1', 'In Progress', 'started'), /OEO-1.*"in-review" is not a Writable Column/],
-  ['a drag into PO Acceptance', 'in-review', 'po-acceptance', ticket('OEO-1', 'Review', 'started'), /OEO-1.*"po-acceptance" is not a Writable Column/],
-  ['a drag into Done', 'in-review', 'completed', ticket('OEO-1', 'Review', 'started'), /OEO-1.*"completed" is not a Writable Column/],
+  ['a drag into In Review', 'in-progress', 'in-review', ticket('OEO-1', 'In Progress', 'started'), /OEO-1.*"in-review" is not a Writable Column: GitLab or the PO own that state/],
+  ['a drag into PO Acceptance', 'in-review', 'po-acceptance', ticket('OEO-1', 'Review', 'started'), /OEO-1.*"po-acceptance" is not a Writable Column: GitLab or the PO own that state/],
+  ['a drag into Done', 'in-review', 'completed', ticket('OEO-1', 'Review', 'started'), /OEO-1.*"completed" is not a Writable Column: GitLab or the PO own that state/],
   [
     "a drag of a colleague's card, even into a Writable Column",
     'todo',
@@ -421,7 +433,7 @@ test('with Writable Columns set to {}, every drag is reverted, even into Todo or
   })
   assert.deepEqual(result.writes, [])
   assert.deepEqual(movesOf(result), ['/w/a → todo'])
-  assert.match(result.warnings[0]!, /OEO-1.*"in-progress" is not a Writable Column/)
+  assert.match(result.warnings[0]!, /OEO-1.*"in-progress" is not a Writable Column in the settings, so the drag was undone/)
 })
 
 test('Writable Columns from the settings: a drag into a column the map names sets its state', () => {
@@ -433,4 +445,12 @@ test('Writable Columns from the settings: a drag into a column the map names set
   })
   assert.deepEqual(writesOf(result), ['OEO-1 → PO Acceptance'])
   assert.deepEqual(result.moves, [])
+})
+
+test('by default a Blocked ticket maps to the blocked column', () => {
+  const result = sync({
+    board: [card({ path: '/w/a', column: 'in-progress', linkedIssue: 'OEO-1' })],
+    tickets: [ticket('OEO-1', 'Blocked', 'started')]
+  })
+  assert.deepEqual(movesOf(result), ['/w/a → blocked'])
 })

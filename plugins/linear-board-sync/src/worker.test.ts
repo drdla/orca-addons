@@ -11,7 +11,7 @@ const MINUTE = 60_000
 const CONFIGURED = {
   teams: '',
   pollMinutes: 2,
-  stateMapping: '{}',
+  stateMapping: '{"Blocked": "blocked"}',
   writableColumns: '{"todo": "Todo", "in-progress": "In Progress", "blocked": "Blocked"}'
 }
 
@@ -50,8 +50,10 @@ async function start(arrange: (cli: FakeOrcaCli) => void, settings: Record<strin
   await clock.advance(0)
   const statusBar = () => host.callsOf('statusBar.update').at(-1) as StatusBarUpdate | undefined
   const changeSetting = async (key: string, value: string | number) => {
+    // Orca may deliver the change after the worker was deactivated: take the listeners as they are now.
+    const listening = [...listeners]
     await orca!.settings.set(key, value)
-    for (const listener of [...listeners]) await listener({ key })
+    for (const listener of listening) await listener({ key })
     await clock.advance(0)
   }
   return { cli, clock, host, worker, statusBar, changeSetting }
@@ -491,4 +493,50 @@ test('an invalid poll interval is a warning and polls every 2 minutes', async ()
   cli.setTicket('OEO-1', 'Done', 'completed')
   await clock.advance(2 * MINUTE)
   assert.equal(cli.columnOf('linked'), 'completed')
+})
+
+test('a settings change that arrives after deactivate starts no timers', async () => {
+  const { cli, clock, worker, changeSetting } = await start((cli) => cli.addCard({ name: 'oeo-1-x' }), {})
+  const changed = changeSetting('pollMinutes', 2)
+  await worker.deactivate()
+  await changed
+  await clock.advance(10 * MINUTE)
+  assert.deepEqual(cli.calls, [])
+})
+
+test('settings changes arriving together while starting up leave the status bar showing the sync, not "starting"', async () => {
+  const { clock, statusBar, changeSetting } = await start(
+    (cli) => {
+      cli.addCard({ name: 'linked', column: 'todo', linkedIssue: 'OEO-1' })
+      cli.setTicket('OEO-1', 'Todo', 'unstarted')
+    },
+    {}
+  )
+  await Promise.all([changeSetting('pollMinutes', 2), changeSetting('teams', '')])
+  await clock.advance(SECOND)
+  assert.match(statusBar()?.tooltip ?? '', /in step with Linear/)
+})
+
+test('a drag-back that fails is a warning, tried again at the next Linear poll, not at every board check', async () => {
+  const { cli, clock, statusBar } = await startWithMyTicket('In Progress', 'started', 'in-progress')
+  cli.drag('mine', 'completed')
+  cli.fail('setColumn')
+
+  await clock.advance(15 * SECOND)
+  assert.match(statusBar()?.tooltip ?? '', /OEO-1.*couldn't move the card/)
+  await clock.advance(MINUTE)
+  assert.equal(cli.calls.filter((c) => c.startsWith('setColumn')).length, 1, 'no retry at each board check')
+
+  await clock.advance(MINUTE)
+  assert.equal(cli.calls.filter((c) => c.startsWith('setColumn')).length, 2, 'tried again at the next poll')
+})
+
+test('with the default settings, dragging my card to Blocked sets Blocked in Linear and the card stays in blocked', async () => {
+  const { cli, clock } = await startWithMyTicket('In Progress', 'started', 'in-progress')
+  cli.drag('mine', 'blocked')
+  await clock.advance(15 * SECOND)
+  await clock.advance(5 * MINUTE)
+  assert.deepEqual(cli.writes(), ['setState OEO-1 → Blocked'])
+  assert.equal(cli.columnOf('mine'), 'blocked')
+  assert.deepEqual(cli.moves(), [])
 })

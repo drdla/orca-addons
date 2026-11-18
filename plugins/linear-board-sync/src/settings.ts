@@ -8,10 +8,13 @@ export const DEFAULT_SETTINGS = {
   /** The Linear poll interval in minutes. */
   pollMinutes: 2,
   /** State Mapping overrides: JSON `{ "<state name>" | "<team key>/<state name>": "<column id>" }`. */
-  stateMapping: '{}',
+  stateMapping: '{"Blocked": "blocked"}',
   /** Writable Columns: JSON `{ "<column id>": "<Linear state name>" }`. */
   writableColumns: '{"todo": "Todo", "in-progress": "In Progress", "blocked": "Blocked"}'
 }
+
+/** The Writable Columns the default setting gives: Todo, In Progress and Blocked, the states a person decides (ADR 0001). */
+export const DEFAULT_WRITABLE_COLUMNS: Readonly<Record<string, string>> = JSON.parse(DEFAULT_SETTINGS.writableColumns)
 
 /** One entry of the Teams setting. `workspace` is the Linear workspace's URL key, lower case. */
 export type TeamEntry = { key: string; workspace: string | null }
@@ -82,14 +85,15 @@ const TEAM_KEY = /^[A-Za-z][A-Za-z0-9]*$/
 
 /**
  * `{"Review": "in-review", "OEO/Review": "in-review"}`. A key whose part before the first `/` is
- * shaped like a team key is scoped to that team. Anything but an object of non-empty strings is
- * reported and ignored as a whole, so a typo never maps half the states.
+ * shaped like a team key is scoped to that team. Empty text or `{}`: every state maps by type.
+ * Anything else that is not an object of non-empty strings is reported, and the default is used
+ * as a whole, so a typo never maps half the states.
  */
 function parseOverrides(text: string, problems: string[]): StateOverride[] {
   if (text.trim() === '') return []
   const fail = (why: string): StateOverride[] => {
-    problems.push(`State Mapping overrides: ${why}; using none, so states map by type.`)
-    return []
+    problems.push(`State Mapping overrides: ${why}; using the default (${DEFAULT_SETTINGS.stateMapping}).`)
+    return parseOverrides(DEFAULT_SETTINGS.stateMapping, [])
   }
   const value = readJsonObject(text, '{"Review": "in-review"}')
   if (typeof value === 'string') return fail(value)
@@ -118,7 +122,7 @@ function parseOverrides(text: string, problems: string[]): StateOverride[] {
 function parseWritableColumns(text: string, problems: string[]): Record<string, string> {
   if (text.trim() === '') return {}
   const fail = (why: string): Record<string, string> => {
-    const defaults = parseWritableColumns(DEFAULT_SETTINGS.writableColumns, [])
+    const defaults = { ...DEFAULT_WRITABLE_COLUMNS }
     problems.push(`Writable Columns: ${why}; using the default (${Object.values(defaults).join(', ')}).`)
     return defaults
   }

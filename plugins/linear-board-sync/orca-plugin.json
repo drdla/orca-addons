@@ -48,8 +48,8 @@
         "key": "stateMapping",
         "title": "State Mapping overrides",
         "type": "string",
-        "description": "JSON mapping Linear state names to Board Column ids, for example {\"Blocked\": \"blocked\", \"Review\": \"in-review\"}. Prefix a state with a team key to apply it to that team only: {\"OEO/Review\": \"in-review\"}. States not listed map by type: triage, backlog and unstarted to todo, started to in-progress, completed and canceled to completed.",
-        "default": "{}",
+        "description": "JSON mapping Linear state names to Board Column ids, for example {\"Blocked\": \"blocked\", \"Review\": \"in-review\"}. Prefix a state with a team key to apply it to that team only: {\"OEO/Review\": \"in-review\"}. States not listed map by type: triage, backlog and unstarted to todo, started to in-progress, completed and canceled to completed. The default sends Blocked to a blocked column; {} maps every state by type.",
+        "default": "{\"Blocked\": \"blocked\"}",
         "multiline": true
       },
       {
