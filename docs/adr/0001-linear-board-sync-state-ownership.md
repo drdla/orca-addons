@@ -22,4 +22,4 @@ Linear Board Sync (`plugins/linear-board-sync`) keeps each Linked Workspace's Bo
 
 - The board can be trusted to match Linear within one poll, and a drag can never claim a transition GitLab or the PO owns.
 - Which columns are writable, and which state each writes, is a setting, so other teams can draw the line differently.
-- The first slice ships Linear → Orca only; the Start rule and drag write-back follow in their own slices on top of this ownership.
+- The first slice ships Linear → Orca only; the Start rule and drag write-back follow in their own slices on top of this ownership. Until a later slice makes the Writable Columns a setting, they are fixed at the defaults.

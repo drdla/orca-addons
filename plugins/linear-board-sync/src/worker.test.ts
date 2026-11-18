@@ -268,8 +268,8 @@ test('a failed Linear write is a status-bar warning, its card is not moved, and 
   assert.deepEqual(cli.writes(), ['assignToMe OEO-7'], 'In Progress is not set once the assignment failed')
   assert.equal(cli.columnOf('oeo-7-new-thing'), 'todo')
   assert.equal(statusBar()?.tone, 'warning')
-  assert.match(statusBar()?.tooltip ?? '', /OEO-7.*couldn't Start/)
-  assert.ok(worker.logs.some((line) => /OEO-7.*couldn't Start/.test(line)))
+  assert.match(statusBar()?.tooltip ?? '', /OEO-7.*couldn't assign it to you in Linear/)
+  assert.ok(worker.logs.some((line) => /OEO-7.*couldn't assign it to you in Linear/.test(line)))
 
   await clock.advance(10 * MINUTE)
   assert.deepEqual(cli.writes(), ['assignToMe OEO-7'])
@@ -283,4 +283,118 @@ test('a poll never Starts a ticket; only creating its workspace does', async () 
   })
   await clock.advance(10 * MINUTE)
   assert.deepEqual(cli.writes(), [])
+})
+
+const SECOND = 1_000
+
+async function startWithMyTicket(stateName = 'Todo', stateType = 'unstarted', column = 'todo') {
+  const started = await start((cli) => {
+    cli.addCard({ name: 'mine', column, linkedIssue: 'OEO-1' })
+    cli.addCard({ name: 'other', column: 'todo', linkedIssue: 'OEO-2' })
+    cli.setTicket('OEO-1', stateName, stateType, 'me')
+    cli.setTicket('OEO-2', 'Todo', 'unstarted', 'me')
+  })
+  started.cli.calls.length = 0
+  return started
+}
+
+test('a drag into a Writable Column is written to Linear at the next board check, 15 s later, reading only that ticket', async () => {
+  const { cli, clock } = await startWithMyTicket()
+  cli.drag('mine', 'in-progress')
+
+  await clock.advance(14 * SECOND)
+  assert.deepEqual(cli.writes(), [])
+  await clock.advance(1 * SECOND)
+
+  assert.deepEqual(cli.writes(), ['setState OEO-1 → In Progress'])
+  assert.equal(cli.ticketOf('OEO-1')?.stateName, 'In Progress')
+  assert.equal(cli.columnOf('mine'), 'in-progress')
+  assert.deepEqual(cli.calls.filter((c) => c.startsWith('ticket')), ['ticket OEO-1'])
+})
+
+test('board checks without a drag read no ticket; the Linear poll stays on its own interval', async () => {
+  const { cli, clock } = await startWithMyTicket()
+  await clock.advance(2 * MINUTE - SECOND)
+  assert.ok(cli.calls.filter((c) => c === 'board').length >= 7, 'the board is checked every 15 s')
+  assert.deepEqual(cli.calls.filter((c) => c.startsWith('ticket')), [])
+  await clock.advance(SECOND)
+  assert.deepEqual(cli.calls.filter((c) => c.startsWith('ticket')), ['ticket OEO-1', 'ticket OEO-2'])
+})
+
+test('after a drag is written back, later checks and polls write and move nothing (no echo)', async () => {
+  const { cli, clock } = await startWithMyTicket()
+  cli.drag('mine', 'in-progress')
+  await clock.advance(15 * SECOND)
+  await clock.advance(5 * MINUTE)
+  assert.deepEqual(cli.writes(), ['setState OEO-1 → In Progress'])
+  assert.deepEqual(cli.moves(), [])
+})
+
+test('a drag into a column GitLab or the PO own is moved back, with a status-bar message', async () => {
+  const { cli, clock, statusBar } = await startWithMyTicket('In Progress', 'started', 'in-progress')
+  cli.drag('mine', 'completed')
+
+  await clock.advance(15 * SECOND)
+
+  assert.deepEqual(cli.writes(), [])
+  assert.equal(cli.columnOf('mine'), 'in-progress')
+  assert.match(statusBar()?.tooltip ?? '', /OEO-1.*GitLab or the PO/)
+})
+
+test("a drag of a colleague's card is moved back", async () => {
+  const { cli, clock, statusBar } = await start((cli) => {
+    cli.addCard({ name: 'theirs', column: 'todo', linkedIssue: 'OEO-1' })
+    cli.setTicket('OEO-1', 'Todo', 'unstarted', 'colleague')
+  })
+  cli.drag('theirs', 'in-progress')
+  await clock.advance(15 * SECOND)
+  assert.deepEqual(cli.writes(), [])
+  assert.equal(cli.columnOf('theirs'), 'todo')
+  assert.match(statusBar()?.tooltip ?? '', /OEO-1.*someone else/)
+})
+
+test('conflict: Linear changed and the card was dragged since the last check, so Linear wins', async () => {
+  const { cli, clock, statusBar } = await startWithMyTicket()
+  cli.setTicket('OEO-1', 'Done', 'completed')
+  cli.drag('mine', 'in-progress')
+  await clock.advance(15 * SECOND)
+  assert.deepEqual(cli.writes(), [])
+  assert.equal(cli.columnOf('mine'), 'completed')
+  assert.match(statusBar()?.tooltip ?? '', /OEO-1.*Linear wins/)
+})
+
+test('a failed drag write is a warning and is not retried every board check; the next Linear poll applies Linear', async () => {
+  const { cli, clock, statusBar } = await startWithMyTicket()
+  cli.fail('setState')
+  cli.drag('mine', 'in-progress')
+
+  await clock.advance(15 * SECOND)
+  assert.match(statusBar()?.tooltip ?? '', /OEO-1.*couldn't set it to "In Progress"/)
+  await clock.advance(MINUTE)
+  assert.equal(cli.writes().length, 1)
+
+  await clock.advance(MINUTE)
+  assert.equal(cli.writes().length, 1)
+  assert.equal(cli.columnOf('mine'), 'todo')
+})
+
+test('Pause stops the board check too; resuming discards drags made while paused and re-applies Linear', async () => {
+  const { cli, clock, worker } = await startWithMyTicket()
+  await worker.command(PAUSE_COMMAND)
+  cli.drag('mine', 'in-progress')
+  await clock.advance(5 * MINUTE)
+  assert.equal(cli.columnOf('mine'), 'in-progress')
+
+  await worker.command(PAUSE_COMMAND)
+  await clock.advance(MINUTE)
+
+  assert.deepEqual(cli.writes(), [])
+  assert.equal(cli.columnOf('mine'), 'todo')
+})
+
+test('Sync now also writes back a drag at once', async () => {
+  const { cli, worker } = await startWithMyTicket()
+  cli.drag('mine', 'in-progress')
+  await worker.command(SYNC_NOW_COMMAND)
+  assert.deepEqual(cli.writes(), ['setState OEO-1 → In Progress'])
 })

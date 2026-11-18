@@ -300,3 +300,114 @@ test('a poll never Starts: only the workspace just created does', () => {
   assert.deepEqual(writesOf(result), ['OEO-2 → In Progress'])
   assert.deepEqual(writesOf(sync({ board: [card({ path: '/w/old', column: 'todo', linkedIssue: 'OEO-1' })], tickets: [ticket('OEO-1', 'Todo', 'unstarted')] })), [])
 })
+
+const DRAG_MAPPING = JSON.stringify({ Blocked: 'blocked', Review: 'in-review', 'PO Acceptance': 'po-acceptance' })
+
+/** A card the plugin last put in `from` (Linear state `state`), now found in `to`. */
+function drag(input: { from: string; to: string; state: string; ticket: Ticket }) {
+  return sync({
+    board: [card({ path: '/w/a', column: input.to, linkedIssue: input.ticket.identifier })],
+    tickets: [input.ticket],
+    memory: { '/w/a': { column: input.from, linearState: input.state } },
+    settings: { stateMapping: DRAG_MAPPING }
+  })
+}
+
+const WRITE_BACK_CASES: [title: string, from: string, to: string, ticket: Ticket, writes: string[]][] = [
+  ['Todo → In Progress', 'todo', 'in-progress', ticket('OEO-1', 'Todo', 'unstarted'), ['OEO-1 → In Progress']],
+  ['In Progress → Blocked', 'in-progress', 'blocked', ticket('OEO-1', 'In Progress', 'started'), ['OEO-1 → Blocked']],
+  ['Blocked → In Progress', 'blocked', 'in-progress', ticket('OEO-1', 'Blocked', 'started'), ['OEO-1 → In Progress']],
+  ['Review → In Progress', 'in-review', 'in-progress', ticket('OEO-1', 'Review', 'started'), ['OEO-1 → In Progress']],
+  ['In Progress back to Todo', 'in-progress', 'todo', ticket('OEO-1', 'In Progress', 'started'), ['OEO-1 → Todo']],
+  [
+    'an unassigned ticket set to In Progress',
+    'in-review',
+    'in-progress',
+    ticket('OEO-1', 'Review', 'started', VESTIGAS, null),
+    ['OEO-1 → In Progress']
+  ],
+  [
+    'an unassigned Todo ticket dragged to In Progress is a Start: assigned to me first',
+    'todo',
+    'in-progress',
+    ticket('OEO-1', 'Todo', 'unstarted', VESTIGAS, null),
+    ['OEO-1 → assign me', 'OEO-1 → In Progress']
+  ],
+  ['an unassigned ticket set back to Todo', 'in-progress', 'todo', ticket('OEO-1', 'In Progress', 'started', VESTIGAS, null), ['OEO-1 → Todo']]
+]
+
+for (const [title, from, to, theTicket, writes] of WRITE_BACK_CASES) {
+  test(`a drag into a Writable Column sets the Linear state: ${title}`, () => {
+    const state = theTicket.stateName
+    const result = drag({ from, to, state, ticket: theTicket })
+    assert.deepEqual(writesOf(result), writes)
+    assert.deepEqual(result.moves, [], 'the card stays where it was dragged')
+    assert.deepEqual(result.warnings, [])
+    const written = writes.at(-1)!.split(' → ')[1]!
+    assert.deepEqual(result.memory, { '/w/a': { column: to, linearState: written } }, 'no echo at the next check')
+  })
+}
+
+const REVERT_CASES: [title: string, from: string, to: string, ticket: Ticket, message: RegExp][] = [
+  ['a drag into In Review', 'in-progress', 'in-review', ticket('OEO-1', 'In Progress', 'started'), /OEO-1.*in-review.*GitLab or the PO/],
+  ['a drag into PO Acceptance', 'in-review', 'po-acceptance', ticket('OEO-1', 'Review', 'started'), /OEO-1.*po-acceptance.*GitLab or the PO/],
+  ['a drag into Done', 'in-review', 'completed', ticket('OEO-1', 'Review', 'started'), /OEO-1.*completed.*GitLab or the PO/],
+  [
+    "a drag of a colleague's card, even into a Writable Column",
+    'todo',
+    'in-progress',
+    ticket('OEO-1', 'Todo', 'unstarted', VESTIGAS, 'colleague'),
+    /OEO-1.*assigned to someone else/
+  ],
+  [
+    "a drag of a colleague's card into a column GitLab or the PO own",
+    'in-progress',
+    'completed',
+    ticket('OEO-1', 'In Progress', 'started', VESTIGAS, 'colleague'),
+    /OEO-1.*assigned to someone else/
+  ]
+]
+
+for (const [title, from, to, theTicket, message] of REVERT_CASES) {
+  test(`a drag Linear does not take from the board is reverted with a message: ${title}`, () => {
+    const result = drag({ from, to, state: theTicket.stateName, ticket: theTicket })
+    assert.deepEqual(result.writes, [])
+    assert.deepEqual(movesOf(result), [`/w/a → ${from}`])
+    assert.equal(result.warnings.length, 1)
+    assert.match(result.warnings[0]!, message)
+    assert.deepEqual(result.memory, { '/w/a': { column: from, linearState: theTicket.stateName } })
+  })
+}
+
+test('conflict: Linear changed since last seen, so Linear is applied and the drag discarded, with a message', () => {
+  const result = drag({ from: 'in-progress', to: 'blocked', state: 'In Progress', ticket: ticket('OEO-1', 'Review', 'started') })
+  assert.deepEqual(result.writes, [])
+  assert.deepEqual(movesOf(result), ['/w/a → in-review'])
+  assert.equal(result.warnings.length, 1)
+  assert.match(result.warnings[0]!, /OEO-1.*Linear.*"Review".*drag/)
+  assert.deepEqual(result.memory, { '/w/a': { column: 'in-review', linearState: 'Review' } })
+})
+
+test('conflict where the drag already matches the new Linear state: nothing to write, move or say', () => {
+  const result = drag({ from: 'todo', to: 'in-review', state: 'Todo', ticket: ticket('OEO-1', 'Review', 'started') })
+  assert.deepEqual(result.writes, [])
+  assert.deepEqual(result.moves, [])
+  assert.deepEqual(result.warnings, [])
+})
+
+test('a Linked Workspace with no memory entry gets Linear applied, and no drag is inferred', () => {
+  const result = sync({
+    board: [card({ path: '/w/a', column: 'blocked', linkedIssue: 'OEO-1' })],
+    tickets: [ticket('OEO-1', 'Todo', 'unstarted')],
+    settings: { stateMapping: DRAG_MAPPING }
+  })
+  assert.deepEqual(result.writes, [])
+  assert.deepEqual(movesOf(result), ['/w/a → todo'])
+  assert.deepEqual(result.warnings, [])
+})
+
+test('state names compare ignoring case when spotting a conflict, so a renamed-case state is not a Linear change', () => {
+  const result = drag({ from: 'todo', to: 'in-progress', state: 'todo', ticket: ticket('OEO-1', 'Todo', 'unstarted') })
+  assert.deepEqual(writesOf(result), ['OEO-1 → In Progress'])
+  assert.deepEqual(result.warnings, [])
+})
