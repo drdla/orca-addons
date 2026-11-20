@@ -71,6 +71,33 @@
           "capabilities": ["storage:own", "settings:own", "workspace:read", "notifications:show"]
         }
       ]
+    },
+    {
+      "id": "drdla.worktree-kit-sync",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/drdla/orca-addons.git",
+        "ref": "main",
+        "path": "plugins/worktree-kit-sync"
+      },
+      "description": "Copies your gitignored local files (agent config, every .env file, anything you list as a glob) into every new worktree, before the agent starts.",
+      "categories": ["productivity"],
+      "releases": [
+        {
+          "version": "0.3.0",
+          "commit": "924a2a33772303797faecb3defbbf38dc2e7a894",
+          "contentHash": "f95942a1da21a31e0ece525fa4cd53abbeb8ee9e34fc3a9b17435ab98e10d923",
+          "execution": "trusted-worker",
+          "minimumOrca": "1.4.248",
+          "name": "Worktree Kit Sync",
+          "contributes": [
+            { "kind": "events", "name": "workspace.created" },
+            { "kind": "hooks", "name": "workspace.create.after" },
+            { "kind": "hooks", "name": "agent.launch.before" }
+          ],
+          "capabilities": ["workspace:read", "settings:own"]
+        }
+      ]
     }
   ]
 }
