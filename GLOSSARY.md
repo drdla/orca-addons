@@ -1,6 +1,6 @@
 # Orca Add-ons
 
-Plugins that extend the Orca desktop app. Code Review Requests surfaces GitLab merge request reviews that are waiting on the user; Linear Board Sync keeps Orca's workspace board in step with Linear.
+Plugins that extend the Orca desktop app. Code Review Requests surfaces GitLab merge request reviews that are waiting on the user; Linear Board Sync keeps Orca's workspace board in step with Linear; Worktree Kit Sync copies gitignored local files (agent config, `.env` files) into every new worktree.
 
 ## Language
 
