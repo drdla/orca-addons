@@ -86,18 +86,6 @@ export const mergeRequestNoteFromDocs = {
 }
 
 /**
- * The fields the Review Requests query added for the card badges (#10) after the capture was
- * taken, typed as in the GraphQL reference for `MergeRequest` on
- * https://docs.gitlab.com/api/graphql/reference/ (checked 2026-11-16): `userNotesCount` is an
- * `Int`, `headPipeline` a nullable `Pipeline` whose `status` is a `PipelineStatusEnum`. Merged
- * into each captured node for the shape check.
- */
-export const reviewRequestNodeBadgesFromDocs = {
-  userNotesCount: 4,
-  headPipeline: { status: 'SUCCESS' }
-}
-
-/**
  * A node of the optional approvals query (gitlab/approvals.ts), typed as in the same reference:
  * `approvalsRequired` and `approvalsLeft` are nullable `Int`s (absent from GitLab CE's schema).
  */

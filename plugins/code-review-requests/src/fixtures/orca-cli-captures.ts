@@ -1,6 +1,9 @@
 // GENERATED from real captures on 2026-11-16 (#20), then sanitized: names, emails, URLs,
 // paths, ids, SHAs and titles are placeholders; key sets, enums, booleans and counts are real.
 // Captured with Orca 1.4.259: `orca worktree list --json` and `orca worktree show --worktree <sel> --json`.
+// The list's last row was added from a read-only capture with Orca 1.4.263 on 2026-11-20 (#32):
+// the union of every live row's keys (cliProvenance, lineage, linkedItems, diffComments, …),
+// sanitized the same way.
 
 export const worktreeListEnvelope = {
   "id": "00000000-0000-4000-8000-000000000001",
@@ -215,6 +218,149 @@ export const worktreeListEnvelope = {
           "isMainWorktree": true
         },
         "linkedItems": []
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000101::/work/me/orca/workspaces/api/ACME-9-child",
+        "identity": {
+          "key": "wt2:local:00000000-0000-4000-8000-000000000102",
+          "executionHostId": "local",
+          "instanceId": "00000000-0000-4000-8000-000000000102"
+        },
+        "instanceId": "00000000-0000-4000-8000-000000000102",
+        "repoId": "00000000-0000-4000-8000-000000000101",
+        "projectId": "git:gitlab.example.com/acme/api",
+        "hostId": "local",
+        "projectHostSetupId": "00000000-0000-4000-8000-000000000101",
+        "path": "/work/me/orca/workspaces/api/ACME-9-child",
+        "head": "0000000000000000000000000000000000000031",
+        "branch": "refs/heads/feature/ACME-9-child",
+        "isBare": false,
+        "isMainWorktree": false,
+        "displayName": "ACME-9 Add retry",
+        "displayNameMode": "fixed",
+        "comment": "",
+        "linkedIssue": 9,
+        "linkedPR": null,
+        "linkedLinearIssue": "ACME-9",
+        "linkedLinearIssueWorkspaceId": "00000000-0000-4000-8000-000000000120",
+        "linkedLinearIssueOrganizationUrlKey": "acme",
+        "linkedGitLabMR": null,
+        "linkedGitLabIssue": null,
+        "linkedBitbucketPR": null,
+        "linkedAzureDevOpsPR": null,
+        "linkedGiteaPR": null,
+        "linkedWorkItem": {
+          "provider": "linear",
+          "type": "issue",
+          "number": 9,
+          "title": "Add retry",
+          "url": "https://linear.app/acme/issue/ACME-9/add-retry",
+          "linearIdentifier": "ACME-9"
+        },
+        "linkedTaskSourceContext": {
+          "kind": "task-source",
+          "provider": "linear",
+          "projectId": "git:gitlab.example.com/acme/api",
+          "hostId": "local",
+          "projectHostSetupId": "00000000-0000-4000-8000-000000000101",
+          "repoId": "00000000-0000-4000-8000-000000000101",
+          "providerIdentity": {
+            "provider": "linear",
+            "workspaceId": "00000000-0000-4000-8000-000000000120",
+            "workspaceName": "Acme",
+            "teamId": null,
+            "teamKey": null,
+            "owner": "acme",
+            "repo": "api"
+          },
+          "accountLabel": "Acme"
+        },
+        "isArchived": false,
+        "isUnread": false,
+        "isPinned": false,
+        "sortOrder": 1794831300000,
+        "lastActivityAt": 1794831360000,
+        "pendingFirstAgentMessageRename": false,
+        "firstAgentMessageRenameError": null,
+        "workspaceStatus": "in-progress",
+        "diffComments": [
+          {
+            "worktreeId": "00000000-0000-4000-8000-000000000101::/work/me/orca/workspaces/api/ACME-9-child",
+            "filePath": "src/sync.ts",
+            "source": "diff",
+            "lineNumber": 3,
+            "body": "Retry only on 5xx.",
+            "side": "modified",
+            "id": "00000000-0000-4000-8000-000000000121",
+            "createdAt": 1794831540000
+          }
+        ],
+        "parentWorktreeId": "00000000-0000-4000-8000-000000000103::/work/me/src/api",
+        "childWorktreeIds": [
+          "00000000-0000-4000-8000-000000000104::/work/me/orca/workspaces/api/ACME-9-grandchild"
+        ],
+        "lineage": {
+          "worktreeId": "00000000-0000-4000-8000-000000000101::/work/me/orca/workspaces/api/ACME-9-child",
+          "worktreeInstanceId": "00000000-0000-4000-8000-000000000102",
+          "parentWorktreeId": "00000000-0000-4000-8000-000000000103::/work/me/src/api",
+          "parentWorktreeInstanceId": "00000000-0000-4000-8000-000000000105",
+          "origin": "cli",
+          "capture": {
+            "source": "explicit-cli-flag",
+            "confidence": "explicit"
+          },
+          "createdAt": 1794831960000
+        },
+        "git": {
+          "path": "/work/me/orca/workspaces/api/ACME-9-child",
+          "head": "0000000000000000000000000000000000000031",
+          "branch": "refs/heads/feature/ACME-9-child",
+          "isBare": false,
+          "isMainWorktree": false
+        },
+        "linkedItems": [
+          {
+            "provider": "linear",
+            "type": "issue",
+            "number": 9,
+            "identifier": "ACME-9",
+            "title": "Add retry",
+            "url": "https://linear.app/acme/issue/ACME-9/add-retry",
+            "linearIdentifier": "ACME-9",
+            "linearWorkspaceId": "00000000-0000-4000-8000-000000000120",
+            "linearOrganizationUrlKey": "acme",
+            "taskSourceContext": {
+              "kind": "task-source",
+              "provider": "linear",
+              "projectId": "git:gitlab.example.com/acme/api",
+              "hostId": "local",
+              "projectHostSetupId": "00000000-0000-4000-8000-000000000101",
+              "repoId": "00000000-0000-4000-8000-000000000101",
+              "providerIdentity": {
+                "provider": "linear",
+                "workspaceId": "00000000-0000-4000-8000-000000000120",
+                "workspaceName": "Acme",
+                "teamId": null,
+                "teamKey": null,
+                "owner": "acme",
+                "repo": "api"
+              },
+              "accountLabel": "Acme"
+            }
+          }
+        ],
+        "creatorProvenance": {
+          "kind": "host"
+        },
+        "createdAt": 1794832380000,
+        "createdWithAgent": "claude",
+        "baseRef": "main",
+        "cliProvenance": {
+          "kind": "created-by-cli",
+          "createdAt": 1794832440000,
+          "callerTerminalHandle": "term_00000000-0000-4000-8000-000000000106",
+          "startupAgent": "claude"
+        }
       }
     ],
     "hostScope": {
@@ -223,7 +369,7 @@ export const worktreeListEnvelope = {
       ],
       "omittedHostIds": []
     },
-    "totalCount": 4,
+    "totalCount": 5,
     "truncated": false
   },
   "_meta": {

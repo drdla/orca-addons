@@ -9,8 +9,7 @@ import {
   mergeRequestNoteFromDocs,
   mergeRequestVersionFromDocs,
   approvalsNodeFromDocs,
-  personalAccessTokenFromDocs,
-  reviewRequestNodeBadgesFromDocs
+  personalAccessTokenFromDocs
 } from './gitlab-docs-shapes'
 import { mergeRequestBody, reviewRequestsBody } from './gitlab-captures'
 import { mergeRequestReviewersBody } from './gitlab-reviewers-capture'
@@ -36,18 +35,7 @@ test('the fake answers the Review Requests query in the shape GitLab does', asyn
   gitlab.addMergeRequest({ projectPath: 'acme/api', pipeline: 'FAILED', approvalsRequired: 1 })
   const response = await gitlab.graphql(REVIEW_REQUESTS_QUERY, { me: 'me' })
 
-  // The capture predates the badge fields (#10); their shape comes from the GraphQL docs.
-  const page = reviewRequestsBody.data.currentUser.reviewRequestedMergeRequests
-  const real = {
-    currentUser: {
-      ...reviewRequestsBody.data.currentUser,
-      reviewRequestedMergeRequests: {
-        ...page,
-        nodes: page.nodes.map((node) => ({ ...node, ...reviewRequestNodeBadgesFromDocs }))
-      }
-    }
-  }
-  assert.deepEqual(shapeMismatches(response, real, { exact: true }), [])
+  assert.deepEqual(shapeMismatches(response, reviewRequestsBody.data, { exact: true }), [])
 })
 
 test('the fake answers the optional approvals query in the documented shape', async () => {

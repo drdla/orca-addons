@@ -32,9 +32,10 @@ test("lists each worktree's agents with one `orca worktree ps --json`", async ()
   const rows = await cli.listAgents()
 
   assert.deepEqual(calls, [['worktree', 'ps', '--limit', '10000', '--json']])
-  assert.deepEqual(rows, [
-    { worktreeId: worktreePsEnvelope.result.worktrees[0]!.worktreeId, agents: worktreePsEnvelope.result.worktrees[0]!.agents }
-  ])
+  assert.deepEqual(
+    rows,
+    worktreePsEnvelope.result.worktrees.map((row) => ({ worktreeId: row.worktreeId, agents: row.agents }))
+  )
   assert.equal(rows[0]!.agents[0]!.state, 'working')
 })
 
