@@ -16,9 +16,9 @@
       "categories": ["productivity"],
       "releases": [
         {
-          "version": "0.1.0",
-          "commit": "e8ec03a54ae45452f1227454b83c5267e1b28377",
-          "contentHash": "0ff141aa6ba11544435f7329c7de5b4a4cdb1ce5401620773952ba0333a3d5d5",
+          "version": "0.1.1",
+          "commit": "1504c1202fbcf5ea528bc5db424cbff84e8f1de0",
+          "contentHash": "52ff0d818bbfdd0ea47430a92ca6f55beb9449970e06983a18a0d16838c128f0",
           "execution": "trusted-worker",
           "minimumOrca": "1.4.259",
           "name": "Code Review Requests",
@@ -38,7 +38,8 @@
             "workspace:write",
             "workspace:create",
             "agent:read",
-            "agent:launch"
+            "agent:launch",
+            "terminal:send"
           ]
         }
       ]

@@ -12,6 +12,20 @@ An Orca plugin that lists your GitLab **Review Requests** (open, non-draft merge
 - `src/seams/`: the outside world, behind interfaces: `GitLabTransport`, `OrcaCli`, `Clock`.
 - `src/fakes/`: in-memory doubles for each seam (`fakeDeps()`), including a stateful fake GitLab.
 - `src/smoke/`: the opt-in live smoke script (see below). The plugin never loads it.
+- `scripts/release.sh` and `src/release/`: the release script and the catalog merge it uses (see below). The plugin never loads them.
+
+## Install
+
+The plugin is published in this repo's own catalog, `orca-catalog.json` at the repo root. Add the catalog once, then install:
+
+```sh
+orca plugin catalog add drdla/orca-addons     # prints a fingerprint; re-run with --approve <fingerprint>
+orca plugin install drdla.code-review-requests # likewise asks for --approve <fingerprint>
+```
+
+Or in Orca: Settings → Plugins → ⋯ → Catalog sources…, add `https://github.com/drdla/orca-addons.git` (ref `main`), then install Code Review Requests from the plugin list. Orca shows what the plugin may do and asks you to approve it. Then open its Settings (the gear in the panel) and point it at your GitLab instance; it reads GitLab through `glab`, so run `glab auth login` first.
+
+Updates arrive by themselves (Settings → Plugins → Update plugins automatically, on by default) once a release has been listed for 12 hours, or right away with `orca plugin update drdla.code-review-requests`. An update that asks for a new capability, command, panel or event waits for your approval ("Update needs review").
 
 ## Develop
 
@@ -44,3 +58,22 @@ npm run smoke -- --post --mr <url> --approve                   # also approve th
 ```
 
 `--post` writes to that one MR only, so use a sandbox MR you own. It publishes one review with two Review Comments, a line comment on the first added line of the diff (or `--file`/`--line`) and a general comment, plus a summary. Every body is tagged `[crr-smoke-<id> …]`. Approving needs `--approve` as well. Before writing anything, it prints the plan and waits for you to type `post` (`--yes` skips the prompt). It refuses to run when you have your own pending drafts on the MR, because publishing would publish them too. Afterwards it reports the note URLs, whether the line comment landed as a diff note, whether the summary shows up, and that no drafts were left behind.
+
+## Release
+
+A release is a `releases` entry in `orca-catalog.json` that pins one commit of this folder and its content hash. Orca installs exactly those bytes, so a release needs no tag and no build.
+
+1. On a branch (not `main`), raise `version` in `orca-plugin.json` and commit it with the code. Never reuse a released version: installs of the old commit don't see a same-version release as newer.
+2. Delete `node_modules/` (Orca refuses to install a folder holding a symlink, and `npm install` creates them) and make sure the tree is clean.
+3. Run the release script from anywhere in the repo:
+
+   ```sh
+   plugins/code-review-requests/scripts/release.sh            # all checks, then commit the catalog
+   plugins/code-review-requests/scripts/release.sh --no-smoke # without glab or a GitLab login
+   plugins/code-review-requests/scripts/release.sh --push     # also push the branch
+   ```
+
+   It refuses a dirty tree, `node_modules/` or a symlink in this folder, then runs `orca plugin validate`, `tsc` (with TypeScript and the Node typings installed in a temporary folder, so nothing is left here), `orca plugin test`, `orca plugin check` and the read-only smoke. It writes `orca plugin release-entry`'s entry for the committed `HEAD` into `orca-catalog.json`, newest first, replacing a release of the same version and refusing one older than the newest listed (`src/release/catalog.ts`), validates the catalog and commits it. It never pushes `main`.
+4. Open a PR and **merge it with a merge commit**, not squash or rebase: the release pins the plugin commit, which a squash or rebase leaves off `main`, and Orca then can't download it.
+
+After the merge, installs update within about 12 hours, or at once with `orca plugin update drdla.code-review-requests`.

@@ -1,6 +1,8 @@
 // GENERATED from real captures on 2026-11-16 (#20), then sanitized: names, emails, URLs,
 // paths, ids, SHAs and titles are placeholders; key sets, enums, booleans and counts are real.
 // Captured with `glab api --hostname gitlab.com` (read-only) against GitLab 19.6.0-pre.
+// The Review Requests nodes' `userNotesCount` and `headPipeline` were added from a read-only
+// capture on 2026-11-20 against GitLab 19.7.0-pre (#32); their values are placeholders.
 
 /** The HTTP body of the Review Requests GraphQL query (REVIEW_REQUESTS_QUERY). */
 export const reviewRequestsBody = {
@@ -58,6 +60,10 @@ export const reviewRequestsBody = {
                   }
                 }
               ]
+            },
+            "userNotesCount": 3,
+            "headPipeline": {
+              "status": "SUCCESS"
             }
           },
           {
@@ -104,6 +110,10 @@ export const reviewRequestsBody = {
                   }
                 }
               ]
+            },
+            "userNotesCount": 0,
+            "headPipeline": {
+              "status": "FAILED"
             }
           },
           {
@@ -153,6 +163,10 @@ export const reviewRequestsBody = {
                   }
                 }
               ]
+            },
+            "userNotesCount": 12,
+            "headPipeline": {
+              "status": "SUCCESS"
             }
           },
           {
@@ -199,6 +213,10 @@ export const reviewRequestsBody = {
                   }
                 }
               ]
+            },
+            "userNotesCount": 5,
+            "headPipeline": {
+              "status": "SUCCESS"
             }
           },
           {
@@ -245,6 +263,10 @@ export const reviewRequestsBody = {
                   }
                 }
               ]
+            },
+            "userNotesCount": 1,
+            "headPipeline": {
+              "status": "FAILED"
             }
           },
           {
@@ -291,6 +313,10 @@ export const reviewRequestsBody = {
                   }
                 }
               ]
+            },
+            "userNotesCount": 8,
+            "headPipeline": {
+              "status": "SUCCESS"
             }
           },
           {
@@ -337,6 +363,10 @@ export const reviewRequestsBody = {
                   }
                 }
               ]
+            },
+            "userNotesCount": 2,
+            "headPipeline": {
+              "status": "SUCCESS"
             }
           }
         ]
