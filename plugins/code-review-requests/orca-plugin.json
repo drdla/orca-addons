@@ -2,11 +2,38 @@
   "manifestVersion": 2,
   "id": "code-review-requests",
   "name": "Code Review Requests",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Your GitLab Review Requests in Orca: a count in the status bar, a panel, and review workspaces.",
   "author": { "name": "Dominik Rodler" },
   "repository": "https://github.com/drdla/orca-addons",
   "license": "MIT",
+  "icon": "images/icon.png",
+  "cover": {
+    "path": "images/cover.png",
+    "alt": "The Review Requests panel listing merge requests waiting for review, next to the status bar count"
+  },
+  "screenshots": [
+    {
+      "path": "images/review-requests.png",
+      "alt": "The Review Requests panel: merge requests with their CI status, open comments, age and a Late badge",
+      "caption": "Every merge request waiting for your review"
+    },
+    {
+      "path": "images/status-bar.png",
+      "alt": "The status bar item showing 3 | 3! with the tooltip \"6 Review Requests, 3 overdue. Click to open.\"",
+      "caption": "The count in the status bar"
+    },
+    {
+      "path": "images/review-workspace.png",
+      "alt": "An Orca window with a review workspace, the merge request description, the review agent in a terminal and the Reviewing tab",
+      "caption": "Start Review opens a review workspace and runs the agent"
+    },
+    {
+      "path": "images/review-draft.png",
+      "alt": "The Review Draft: diff-view notes and agent findings with checkboxes, a summary, the Approve outcome and Post review",
+      "caption": "Collect comments and agent findings, post them as one review"
+    }
+  ],
   "engines": {
     "orca": ">=1.4.259"
   },
