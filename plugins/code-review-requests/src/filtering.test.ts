@@ -3,14 +3,14 @@
 // themselves are in filters.test.ts.
 import { assert, test } from 'orca/testing'
 import { fakeDeps, type Fakes } from './fakes'
-import { CONFIGURED, MINUTE, startWorker as startHarness } from './testing/worker-harness'
+import { CONFIGURED, lastStatusBar, MINUTE, startWorker as startHarness } from './testing/worker-harness'
 
 type Note = { title: string; body?: string }
 
 /** A configured worker whose settings changes reach it (the kit never fires onDidChange). */
 async function startWorker(fakes: Fakes, settings: Record<string, string | number>) {
   const { host, worker, changeSetting } = await startHarness(fakes, { ...CONFIGURED, ...settings })
-  const bell = () => host.callsOf('statusBar.update').at(-1) as { text?: string; visible?: boolean } | undefined
+  const bell = () => lastStatusBar(host)
   const notes = () => host.callsOf('notifications.show') as Note[]
   return { host, worker, changeSetting, bell, notes }
 }

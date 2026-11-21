@@ -33,6 +33,11 @@
         "icon": "bell",
         "tooltip": "Review Requests",
         "command": "code-review-requests.open"
+      },
+      {
+        "id": "review-requests-overdue",
+        "tooltip": "Overdue Review Requests",
+        "command": "code-review-requests.open"
       }
     ],
     "events": [{ "on": "workspace.removed" }],
