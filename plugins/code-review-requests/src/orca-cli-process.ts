@@ -84,6 +84,7 @@ function createArgs(input: CreateWorktreeInput): string[] {
   flag('--prompt', input.prompt)
   flag('--comment', input.comment)
   if (input.noParent) args.push('--no-parent')
+  flag('--setup', input.setup)
   if (input.activate) args.push('--activate')
   return args
 }

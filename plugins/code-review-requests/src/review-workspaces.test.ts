@@ -118,7 +118,7 @@ test('a broken orca CLI disables only the workspace features; the Review Request
   await worker.deactivate()
 })
 
-test('Start review fetches the MR head and creates a workspace linked to the MR, without an agent', async () => {
+test('Start review creates a workspace based on the target branch, at the MR head, linked to the MR, without an agent', async () => {
   const fakes = fakeDeps()
   addReviewRequest(fakes)
   fakes.cli.addRepo(REPO)
@@ -126,15 +126,24 @@ test('Start review fetches the MR head and creates a workspace linked to the MR,
 
   const answer = await worker.request('rr.startReview', { url: MR_URL, withAgent: false })
 
-  assert.deepEqual(fakes.git.fetches, [{ repoPath: '/src/api', iid: 7 }])
+  assert.deepEqual(fakes.git.fetches, [
+    { repoPath: '/src/api', branch: 'main' },
+    { repoPath: '/src/api', iid: 7 }
+  ])
   const create = fakes.cli.calls.find((c) => c.command === 'worktree create')
   assert.deepEqual(create?.args, {
     name: 'review-api-7',
     repo: `id:${REPO.repoId}`,
-    baseBranch: 'origin/merge-requests/7',
+    baseBranch: 'origin/main',
     gitlabMr: MR_URL,
-    noParent: true
+    noParent: true,
+    setup: 'skip'
   })
+  const detail = await fakes.cli.showWorktree(`path:/worktrees/review-api-7`)
+  assert.equal(detail.baseRef, 'origin/main')
+  assert.deepEqual(fakes.git.resets, [
+    { worktreePath: '/worktrees/review-api-7', ref: 'refs/remotes/origin/merge-requests/7' }
+  ])
   assert.equal(answer.reviewRequests[0]!.workspace?.name, 'review-api-7')
   assert.equal(host.callsOf('agent.launch').length, 0)
   assert.equal(host.callsOf('terminal.create').length, 0)
@@ -220,9 +229,14 @@ test('Start review fails with the reason when Orca has no repo, the fetch fails 
   )
 
   fakes.cli.addRepo(REPO)
-  fakes.git.failNext(new Error('git fetch of the MR failed: no such ref'))
+  fakes.git.failNextOf('fetchBranch', new Error('git fetch of the target branch main failed: no such ref'))
   await assert.rejects(worker.request('rr.startReview', { url: MR_URL, withAgent: false }), (error) =>
-    /no such ref/.test(String(error))
+    /git fetch of the target branch main failed: no such ref/.test(String(error))
+  )
+
+  fakes.git.failNextOf('fetchMergeRequestHead', new Error('git fetch of the MR failed: no such ref'))
+  await assert.rejects(worker.request('rr.startReview', { url: MR_URL, withAgent: false }), (error) =>
+    /git fetch of the MR failed: no such ref/.test(String(error))
   )
 
   const gone = 'https://gitlab.example.com/acme/api/-/merge_requests/99'
@@ -245,5 +259,115 @@ test('when the agent does not start, Start review says the workspace is ready an
   )
   const [card] = (await worker.request('rr.snapshot')).reviewRequests
   assert.equal(card!.workspace?.name, 'review-api-7')
+  await worker.deactivate()
+})
+
+test('when the reset to the MR head fails, Start review removes the new workspace and says why', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  const { host, worker } = await startWorker(fakes, { workspaces: ['/src/api', '/worktrees/review-api-7'] })
+  fakes.git.failNextOf('resetBranch', new Error('git reset failed: unknown revision.'))
+
+  await assert.rejects(worker.request('rr.startReview', { url: MR_URL, withAgent: true }), (error) =>
+    String(error).includes(
+      "Couldn't check out the merge request in the new Review Workspace review-api-7: git reset failed: unknown revision. The workspace was removed; start the review again."
+    )
+  )
+  assert.deepEqual(fakes.cli.calls.find((c) => c.command === 'worktree rm')?.args, {
+    selector: `id:${REPO.repoId}::/worktrees/review-api-7`,
+    force: true,
+    deleteBranch: true
+  })
+  const [card] = (await worker.request('rr.snapshot')).reviewRequests
+  assert.equal(card!.workspace, null)
+  assert.equal(host.callsOf('agent.launch').length, 0)
+  await worker.deactivate()
+})
+
+test('when the reset fails and the removal fails too, Start review says to remove the workspace by hand', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  const { worker } = await startWorker(fakes)
+  fakes.git.failNextOf('resetBranch', new Error('git reset failed: unknown revision'))
+  const create = fakes.cli.createWorktree.bind(fakes.cli)
+  fakes.cli.createWorktree = async (input) => {
+    const created = await create(input)
+    fakes.cli.failNext(new OrcaCliError('worktree_locked', 'worktree is locked'))
+    return created
+  }
+
+  await assert.rejects(worker.request('rr.startReview', { url: MR_URL, withAgent: false }), (error) =>
+    /unknown revision.*Removing it failed too \(worktree is locked\); remove it in Orca/.test(String(error))
+  )
+  await worker.deactivate()
+})
+
+test('a second Start review while the first is still running reuses it: one workspace, one agent', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  const { host, worker } = await startWorker(fakes, { workspaces: ['/src/api', '/worktrees/review-api-7'] })
+
+  await Promise.all([
+    worker.request('rr.startReview', { url: MR_URL, withAgent: true }),
+    worker.request('rr.startReview', { url: MR_URL, withAgent: true })
+  ])
+
+  assert.equal(fakes.cli.calls.filter((c) => c.command === 'worktree create').length, 1)
+  assert.equal(host.callsOf('agent.launch').length, 1)
+  await worker.deactivate()
+})
+
+test('Start review on a Review Workspace still at the target branch (reset never ran) resets it when clean', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  fakes.cli.addWorktree({ name: 'review-api-7', repoId: REPO.repoId, path: '/wt/review-api-7', references: [MR_URL] })
+  fakes.git.setHead('/wt/review-api-7', 'target-sha')
+  fakes.git.setRef('/wt/review-api-7', 'refs/remotes/origin/main', 'target-sha')
+  const { host, worker } = await startWorker(fakes, { workspaces: ['/wt/review-api-7'] })
+
+  await worker.request('rr.startReview', { url: MR_URL, withAgent: true })
+
+  assert.deepEqual(fakes.git.resets, [{ worktreePath: '/wt/review-api-7', ref: 'refs/remotes/origin/merge-requests/7' }])
+  assert.equal(fakes.cli.calls.filter((c) => c.command === 'worktree create').length, 0)
+  assert.equal(host.callsOf('agent.launch').length, 1)
+  await worker.deactivate()
+})
+
+test('Start review on a Review Workspace still at the target branch with changes fails and leaves it alone', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  fakes.cli.addWorktree({ name: 'review-api-7', repoId: REPO.repoId, path: '/wt/review-api-7', references: [MR_URL] })
+  fakes.git.setHead('/wt/review-api-7', 'target-sha')
+  fakes.git.setRef('/wt/review-api-7', 'refs/remotes/origin/main', 'target-sha')
+  fakes.git.setStatus('/wt/review-api-7', [' M src/a.ts'])
+  const { host, worker } = await startWorker(fakes, { workspaces: ['/wt/review-api-7'] })
+
+  await assert.rejects(worker.request('rr.startReview', { url: MR_URL, withAgent: true }), (error) =>
+    /review-api-7 is still at the target branch main and has uncommitted changes/.test(String(error))
+  )
+  assert.deepEqual(fakes.git.resets, [])
+  assert.equal(host.callsOf('agent.launch').length, 0)
+  await worker.deactivate()
+})
+
+test('Start review leaves a Review Workspace at the MR head alone', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  fakes.cli.addWorktree({ name: 'review-api-7', repoId: REPO.repoId, path: '/wt/review-api-7', references: [MR_URL] })
+  fakes.git.setHead('/wt/review-api-7', 'mr-sha')
+  fakes.git.setRef('/wt/review-api-7', 'refs/remotes/origin/main', 'target-sha')
+  const { host, worker } = await startWorker(fakes, { workspaces: ['/wt/review-api-7'] })
+
+  await worker.request('rr.startReview', { url: MR_URL, withAgent: true })
+
+  assert.deepEqual(fakes.git.resets, [])
+  assert.deepEqual(fakes.git.fetches, [])
+  assert.equal(host.callsOf('agent.launch').length, 1)
   await worker.deactivate()
 })

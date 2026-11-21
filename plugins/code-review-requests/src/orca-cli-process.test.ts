@@ -64,7 +64,7 @@ test('output that is not an envelope, or a CLI that cannot start, is `unavailabl
   })
 })
 
-test('creates a Review Workspace with the repo, base, MR link and no parent', async () => {
+test('creates a Review Workspace with the repo, base, MR link, no parent and no setup', async () => {
   const created = { ...worktreeShowEnvelope, result: { worktree: worktreeListEnvelope.result.worktrees[1] } }
   const { calls, cli } = runner(ok(created))
 
@@ -73,7 +73,8 @@ test('creates a Review Workspace with the repo, base, MR link and no parent', as
     repo: 'id:r1',
     baseBranch: 'origin/merge-requests/7',
     gitlabMr: 'https://gitlab.example.com/acme/api/-/merge_requests/7',
-    noParent: true
+    noParent: true,
+    setup: 'skip'
   })
 
   assert.deepEqual(calls, [
@@ -81,7 +82,7 @@ test('creates a Review Workspace with the repo, base, MR link and no parent', as
       'worktree', 'create', '--name', 'review-api-7', '--repo', 'id:r1',
       '--base-branch', 'origin/merge-requests/7',
       '--gitlab-mr', 'https://gitlab.example.com/acme/api/-/merge_requests/7',
-      '--no-parent', '--json'
+      '--no-parent', '--setup', 'skip', '--json'
     ]
   ])
   assert.equal(row.id, worktreeListEnvelope.result.worktrees[1]!.id)

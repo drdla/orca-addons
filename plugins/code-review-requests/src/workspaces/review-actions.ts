@@ -9,7 +9,7 @@ import type { ReviewRequestView } from '../protocol'
 import type { Worktree } from '../seams/orca-cli'
 import type { Settings } from '../settings'
 import { reviewCommandFor, reviewPromptFor } from './review-prompt'
-import { findRepo, findReviewWorkspace } from './review-workspaces'
+import { findRepo, findReviewWorkspace, normalizeMergeRequestUrl } from './review-workspaces'
 import type { WorkspaceContext } from './workspace-context'
 import type { WorkspaceState } from './workspace-tracker'
 import { messageOf } from '../errors'
@@ -69,30 +69,93 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     }
   }
 
+  /**
+   * Creates the Review Workspace (#54): based on the freshly fetched target branch, so Orca's
+   * `baseRef` is the target branch and Source Control's "Committed on Branch" lists the MR's
+   * changes, then reset to the MR head. A workspace whose reset failed is removed again.
+   *
+   * Orca's setup (repo setup hooks) is skipped: it would run while the worktree is still at the
+   * target branch and race the reset, and neither the orca CLI nor the host API can run it later.
+   * The trade-off: a Review Workspace gets no setup-hook work (dependency installs and the like).
+   */
+  async function createReviewWorkspace(rr: ReviewRequestView, repoPath: string, repoId: string): Promise<Worktree> {
+    if (!rr.targetBranch) throw new Error('This Review Request has no target branch yet. Refresh and try again.')
+    const baseBranch = await deps.git.fetchBranch(repoPath, rr.targetBranch)
+    const head = await deps.git.fetchMergeRequestHead(repoPath, rr.iid)
+    const worktree = await deps.cli().createWorktree({
+      name: reviewWorkspaceName(rr),
+      repo: `id:${repoId}`,
+      baseBranch,
+      gitlabMr: rr.url,
+      noParent: true,
+      setup: 'skip'
+    })
+    try {
+      await deps.git.resetBranch(worktree.path, head)
+    } catch (error) {
+      const reason = `Couldn't check out the merge request in the new Review Workspace ${worktree.displayName}: ${sentence(error)}`
+      try {
+        await deps.cli().removeWorktree(`id:${worktree.id}`, { force: true, deleteBranch: true })
+      } catch (removeError) {
+        throw new Error(
+          `${reason}. Removing it failed too (${sentence(removeError)}); remove it in Orca before you start the review again.`
+        )
+      } finally {
+        await deps.workspaces.refresh()
+      }
+      throw new Error(`${reason}. The workspace was removed; start the review again.`)
+    }
+    await deps.workspaces.refresh()
+    return worktree
+  }
+
+  /**
+   * An existing Review Workspace whose branch is still at the target branch (a create whose reset
+   * never ran) is moved to the MR head, but only when it has no uncommitted changes; an Agent
+   * Review there would see an empty diff. A workspace with commits of its own is left alone.
+   */
+  async function ensureAtMergeRequest(worktree: Worktree, rr: ReviewRequestView): Promise<void> {
+    if (!rr.targetBranch) return
+    const target = await deps.git.resolveRef(worktree.path, `refs/remotes/origin/${rr.targetBranch}`)
+    if (target === null || (await deps.git.headSha(worktree.path)) !== target) return
+    if ((await deps.git.statusPorcelain(worktree.path)).length > 0) {
+      throw new Error(
+        `The Review Workspace ${worktree.displayName} is still at the target branch ${rr.targetBranch} and has uncommitted changes, so it doesn't show the merge request. Remove it and start the review again.`
+      )
+    }
+    await deps.git.resetBranch(worktree.path, await deps.git.fetchMergeRequestHead(worktree.path, rr.iid))
+  }
+
+  async function startReview(rr: ReviewRequestView, withAgent: boolean): Promise<void> {
+    const index = listed(await deps.workspaces.refresh())
+    let worktree = findReviewWorkspace(index, rr)
+    if (worktree) {
+      await ensureAtMergeRequest(worktree, rr)
+    } else {
+      const repo = findRepo(index, rr)
+      if (!repo) throw new Error(`Add ${rr.projectPath} to Orca to review here.`)
+      worktree = await createReviewWorkspace(rr, repo.path, repo.repoId)
+    }
+    if (!withAgent) return
+    try {
+      await agentReview(worktree, rr)
+    } catch (error) {
+      throw new Error(`The Review Workspace is ready, but the Agent Review didn't start: ${messageOf(error)}`)
+    }
+  }
+
+  /** Start reviews still running, by MR URL: a second click joins the first (one workspace). */
+  const starting = new Map<string, Promise<void>>()
+
   return {
     async startReview(url, withAgent) {
       const rr = reviewRequestOf(url)
-      const index = listed(await deps.workspaces.refresh())
-      let worktree = findReviewWorkspace(index, rr)
-      if (!worktree) {
-        const repo = findRepo(index, rr)
-        if (!repo) throw new Error(`Add ${rr.projectPath} to Orca to review here.`)
-        const baseBranch = await deps.git.fetchMergeRequestHead(repo.path, rr.iid)
-        worktree = await deps.cli().createWorktree({
-          name: reviewWorkspaceName(rr),
-          repo: `id:${repo.repoId}`,
-          baseBranch,
-          gitlabMr: rr.url,
-          noParent: true
-        })
-        await deps.workspaces.refresh()
-      }
-      if (!withAgent) return
-      try {
-        await agentReview(worktree, rr)
-      } catch (error) {
-        throw new Error(`The Review Workspace is ready, but the Agent Review didn't start: ${messageOf(error)}`)
-      }
+      const key = normalizeMergeRequestUrl(rr.url) ?? rr.url
+      const running = starting.get(key)
+      if (running) return running
+      const started = startReview(rr, withAgent).finally(() => starting.delete(key))
+      starting.set(key, started)
+      return started
     },
     async openWorkspace(url) {
       const worktree = await existingWorkspace(reviewRequestOf(url))
@@ -103,6 +166,11 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
       await agentReview(await existingWorkspace(rr), rr)
     }
   }
+}
+
+/** An error's message without its trailing period, to go on inside a sentence. */
+function sentence(error: unknown): string {
+  return messageOf(error).trim().replace(/\.+$/, '')
 }
 
 /** The host's id (`workspace.list`) for a workspace the orca CLI lists, matched by path. */

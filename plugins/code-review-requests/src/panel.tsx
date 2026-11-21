@@ -133,7 +133,7 @@ function cardAction(url: string, failed: string, action: () => Promise<unknown>)
 }
 
 /**
- * Creating a workspace runs git fetch and Orca's setup. 120 s is the longest a panel request may
+ * Creating a workspace runs two git fetches, the create and a reset. 120 s is the longest a panel request may
  * wait; if it runs longer, the card says so and the worker's rr.changed push moves it when done.
  */
 const START_TIMEOUT_MS = 120_000
