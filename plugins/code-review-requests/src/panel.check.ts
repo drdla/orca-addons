@@ -342,6 +342,32 @@ export default defineCheck({
     },
     persisted: { plugin: { 'rr.tab': 'in' } }
   },
+  /** In review (#57): new commits on the merge request, so "Merge request updated" and Update workspace. */
+  inReviewMergeRequestUpdated: {
+    requests: {
+      'rr.snapshot': {
+        reviewRequests: [
+          {
+            ...card(12, 'Add login with SSO', 5),
+            workspace: WORKSPACE,
+            startBlocked: null,
+            agentReview: { state: 'done', commentsReady: 2 },
+            toPost: 2,
+            mergeRequestUpdated: true
+          },
+          {
+            ...card(14, 'Fix flaky upload test', 1),
+            workspace: { ...WORKSPACE, id: 'repo-api::/wt/review-api-14', path: '/wt/review-api-14' },
+            startBlocked: null,
+            mergeRequestUpdated: false
+          }
+        ],
+        refreshedAt: NOW
+      } satisfies ReviewRequestsSnapshot,
+      'rr.connection': connection()
+    },
+    persisted: { plugin: { 'rr.tab': 'in' } }
+  },
   /** Start review disabled, with the hint why (#27). */
   startBlocked: { requests: { 'rr.snapshot': startBlocked } },
   /** The person left the panel on Ended, with nothing there. */

@@ -43,6 +43,12 @@ export interface Git {
    * (untracked files included), empty when clean (#28; no Orca API exposes it).
    */
   statusPorcelain(path: string): Promise<string[]>
+  /**
+   * Is `ancestor` an ancestor of (or the same commit as) `descendant`, seen from `path`
+   * (`git merge-base --is-ancestor`)? Update workspace (#57) asks it so it never drops the
+   * reviewer's own commits.
+   */
+  isAncestor(path: string, ancestor: string, descendant: string): Promise<boolean>
   /** The commit checked out in the worktree at `worktreePath` (`git rev-parse HEAD`), for #29. */
   headSha(worktreePath: string): Promise<string>
   /**
@@ -51,4 +57,9 @@ export interface Git {
    * resolves to the shared one in the main repo's `.git`: git reads no per-worktree exclude file.
    */
   gitPath(worktreePath: string, name: string): Promise<string>
+}
+
+/** Where fetchMergeRequestHead puts MR `iid`'s head: a full ref no local branch name can shadow. */
+export function mergeRequestHeadRef(iid: number): string {
+  return `refs/remotes/origin/merge-requests/${iid}`
 }

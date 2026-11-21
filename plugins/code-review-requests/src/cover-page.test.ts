@@ -151,7 +151,7 @@ test("the page records the workspace's checked-out commit and the workspace's ow
 
   const page = fakes.files.peek(PAGE) ?? ''
   assert.ok(page.includes(`<!-- orca-review-cover-page head=${checkedOut} -->`), page)
-  assert.match(page, /The merge request has moved on since this workspace was checked out/)
+  assert.match(page, /^# Add login\n\n> \*\*Merge request updated\.\*\* New commits were pushed since this workspace was checked out/)
   assert.ok(page.includes('| Linear ticket | [OEO-9](https://linear.app/acme/issue/OEO-9/login) |'), page)
   await worker.deactivate()
 })
