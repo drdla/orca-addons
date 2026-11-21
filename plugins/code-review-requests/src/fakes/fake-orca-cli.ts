@@ -137,6 +137,8 @@ export class FakeOrcaCli implements OrcaCli {
       name: input.name,
       ...(repo ? { repoId: repo.repoId, projectId: repo.projectId } : {}),
       ...(input.branch ? { branch: input.branch } : {}),
+      // Orca stores `compareBaseRef ?? remoteTrackingBase?.ref ?? baseBranch`; the CLI sends no
+      // compareBaseRef, and for `origin/<branch>` remoteTrackingBase.ref is that same name (#54).
       ...(input.baseBranch ? { baseRef: input.baseBranch } : {}),
       ...(input.references ? { references: input.references } : {}),
       ...(input.gitlabMr ? { references: [input.gitlabMr] } : {})
