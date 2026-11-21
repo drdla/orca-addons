@@ -1,7 +1,8 @@
 // What the panel's workspace buttons do (#6, #27): Start review (create the Review Workspace
 // through the orca CLI, linked to the MR, optionally followed by an Agent Review), Open workspace
 // and Run Agent Review. Start review and Open workspace also build and open the Review Cover Page
-// (#55, src/cover-page). Every failure rejects with a message the panel shows on the card.
+// (#55, src/cover-page); an Agent Review reads that page, so it is built before the agent (#56).
+// Every failure rejects with a message the panel shows on the card.
 import { coverPageTargetOf, type CoverPages } from '../cover-page/cover-pages'
 import type { ReviewRequestView } from '../protocol'
 import type { Worktree } from '../seams/orca-cli'
@@ -139,15 +140,14 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
       if (!repo) throw new Error(`Add ${rr.projectPath} to Orca to review here.`)
       worktree = await createReviewWorkspace(rr, repo.path, repo.repoId)
     }
-    // The Review Cover Page (#55) builds while the agent starts, and opens last: the tab in front.
+    // The Review Cover Page (#55) is built first, because the Agent Review reads it (#56); a page
+    // that fails doesn't hold the agent back. The page opens last: the tab in front.
     const target = coverPageTarget(worktree, rr)
-    const [page, agent] = await Promise.allSettled([
-      deps.coverPages.ensure(target),
-      withAgent ? agentReview(worktree, rr) : Promise.resolve()
-    ])
+    const page = await settle(deps.coverPages.ensure(target))
+    const agent = withAgent ? await settle(agentReview(worktree, rr)) : null
     const problems: string[] = []
-    if (agent.status === 'rejected') problems.push(`the Agent Review didn't start: ${messageOf(agent.reason)}`)
-    const shown = page.status === 'rejected' ? page.reason : await deps.coverPages.reveal(target).then(() => null, (e: unknown) => e)
+    if (agent !== null) problems.push(`the Agent Review didn't start: ${messageOf(agent)}`)
+    const shown = page ?? (await settle(deps.coverPages.reveal(target)))
     if (shown !== null) problems.push(`the Review Cover Page didn't open: ${messageOf(shown)}`)
     if (problems.length > 0) throw new Error(`The Review Workspace is ready, but ${problems.join('; ')}`)
   }
@@ -181,9 +181,21 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     },
     async runAgentReview(url) {
       const rr = reviewRequestOf(url)
-      await agentReview(await existingWorkspace(rr), rr)
+      const worktree = await existingWorkspace(rr)
+      // The Agent Review reads the Review Cover Page (#56): a workspace without one gets it first.
+      // Best effort: without the page, the Review Prompt sends the agent to GitLab for the description.
+      await settle(deps.coverPages.ensure(coverPageTarget(worktree, rr)))
+      await agentReview(worktree, rr)
     }
   }
+}
+
+/** Waits for the work; its error, or null when it succeeded. */
+function settle(work: Promise<unknown>): Promise<unknown> {
+  return work.then(
+    () => null,
+    (error: unknown) => error ?? new Error('Unknown error')
+  )
 }
 
 /** An error's message without its trailing period, to go on inside a sentence. */
