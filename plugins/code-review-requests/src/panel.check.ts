@@ -230,6 +230,8 @@ export default defineCheck({
   /** No stub: the real, unconfigured worker answers. */
   fresh: {},
   empty: { requests: { 'rr.snapshot': { reviewRequests: [], refreshedAt: null } } },
+  /** The Manual view open (the ⓘ between Refresh and Settings). */
+  manual: { requests: { 'rr.snapshot': { reviewRequests: [], refreshedAt: null } }, persisted: { plugin: { 'rr.manualOpen': true } } },
   // Failure states (#24): Needs you warns above the tabs; the setup checklist per Needs-you reason
   // is in the Settings view; the transient line sits above the tabs.
   listBrokenConnection: { requests: { 'rr.snapshot': needsYou('logged-out'), 'rr.connection': connection({ user: null }) } },

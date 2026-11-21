@@ -8,7 +8,8 @@
 // (#27), Done the Ended Review Requests (#28). Later slices fill a tab by changing what
 // stagesOf() returns for it. #24: in Body(), a broken connection gets a warning above the tabs
 // that opens the Settings view (settings-view.tsx: the connection with the setup checklist, then
-// every setting), and the refresh problem sits above them on a failed poll.
+// every setting), and the refresh problem sits above them on a failed poll. The search above the
+// tabs narrows all three (search.ts); the ⓘ next to Refresh opens the Manual (manual-view.tsx).
 import {
   atom,
   Badge,
@@ -18,6 +19,7 @@ import {
   Heading,
   host,
   IconButton,
+  Input,
   Link,
   plugin,
   read,
@@ -31,17 +33,20 @@ import {
   Text,
   ui,
   update,
+  type IconName,
   type Tone,
   type OrcaNode,
   type PanelContext,
 } from 'orca'
 import { Button } from './button'
+import { isManualOpen, ManualScreen, openManual } from './manual-view'
 import { MergeRequestLink } from './merge-request-link'
 import type { CiStatus, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
 import { canPostReviews, connectionProblem, loadConnection } from './connection-section'
 import { messageOf } from './errors'
 import { MinuteTime, minuteTimeText, setupClock } from './minute-time'
 import { overdueSplit } from './overdue-split'
+import { matchesQuery, normalizeQuery, tabWithMatches } from './search'
 import { shortTitle } from './short-title'
 import { RefreshProblem } from './refresh-problem'
 import { headline, type NeedsYouView } from './setup-checklist'
@@ -66,6 +71,8 @@ const failure = atom<string | null>(null)
 const refreshing = atom(false)
 /** The selected tab, kept across reloads. */
 const selectedTab = atom<TabId>('rr.tab', 'todo', { persist: 'plugin' })
+/** What the search input holds: kept across polls and tab switches, not across reloads. */
+const searchQuery = atom('')
 /** Per-card action errors, by Review Request URL. */
 const cardErrors = atom<Record<string, string>>({})
 /** Review Request URLs with a workspace action under way (#27); their buttons wait. */
@@ -181,6 +188,7 @@ function runAgentReview(url: string): void {
 export default function Panel() {
   // #29: an open Review Draft takes the whole panel; its Back button returns here.
   if (isReviewDraftOpen()) return <ReviewDraftScreen />
+  if (isManualOpen()) return <ManualScreen />
   if (isSettingsOpen()) {
     const current = read(snapshot)
     return (
@@ -230,6 +238,7 @@ function Header() {
       </Row>
       <Row gap="sm">
         <RefreshButton refreshedAt={current?.refreshedAt ?? null} />
+        <IconButton icon="info" label="Manual" variant="ghost" size="sm" onPress={openManual} />
         <IconButton icon="settings" label="Settings" variant="ghost" size="sm" onPress={openSettings} />
       </Row>
     </Row>
@@ -378,32 +387,85 @@ function cardStage(id: TabId, title: string, cards: ReviewRequestCard[], empty: 
   return { id, title, count: cards.length, body }
 }
 
-function stagesOf(current: ReviewRequestsSnapshot): Stage[] {
+/**
+ * The tabs, each narrowed to the cards matching the search. While a search finds nothing on a tab,
+ * its empty state says so, worded like the tab's usual one.
+ */
+function stagesOf(current: ReviewRequestsSnapshot, query: string): Stage[] {
+  const normalized = normalizeQuery(query)
+  const searching = normalized !== ''
+  const matching = <T extends { url: string; title: string }>(cards: readonly T[]) =>
+    cards.filter((c) => matchesQuery(c, normalized))
+  const noMatch = (icon: IconName, what: string) => (
+    <EmptyState icon={icon} title={`No ${what} matching "${query.trim()}"`} />
+  )
   const inReview = (c: ReviewRequestCard) => c.workspace != null
-  const ended = current.ended ?? []
+  const cards = matching(current.reviewRequests)
+  const ended = matching(current.ended ?? [])
   return [
     cardStage(
       'todo',
       'Todo',
-      current.reviewRequests.filter((c) => !inReview(c)),
-      <EmptyState icon="check" title="Nothing to review" />
+      cards.filter((c) => !inReview(c)),
+      searching ? noMatch('check', 'open review requests') : <EmptyState icon="check" title="Nothing to review" />
     ),
     cardStage(
       'in',
       'Reviewing',
-      current.reviewRequests.filter(inReview),
-      <EmptyState icon="folder" title="No review in progress" />
+      cards.filter(inReview),
+      searching ? noMatch('folder', 'reviews in progress') : <EmptyState icon="folder" title="No review in progress" />
     ),
     {
       id: 'ended',
       title: 'Done',
       count: ended.length,
       body:
-        ended.length === 0 ? <EmptyState icon="check" title="No done reviews" /> : (
-          <EndedList cards={ended} disabled={current.workspacesUnavailable !== undefined} received={received} />
-        )
+        ended.length === 0 ?
+          searching ? noMatch('check', 'completed reviews')
+          : <EmptyState icon="check" title="No done reviews" />
+        : <EndedList cards={ended} disabled={current.workspacesUnavailable !== undefined} received={received} />
     }
   ]
+}
+
+/** Each tab's number of cards matching a search. */
+function matchCounts(current: ReviewRequestsSnapshot, query: string): Record<TabId, number> {
+  const counts = { todo: 0, in: 0, ended: 0 }
+  for (const stage of stagesOf(current, query)) counts[stage.id] = stage.count
+  return counts
+}
+
+/**
+ * Typing narrows the tabs. When the selected tab has no match but exactly one other tab does,
+ * that tab is selected, so a pasted link lands on its card wherever it is.
+ */
+function search(query: string): void {
+  set(searchQuery, query)
+  const current = read(snapshot)
+  if (current === null || normalizeQuery(query) === '') return
+  set(selectedTab, tabWithMatches(matchCounts(current, query), read(selectedTab)))
+}
+
+/** The search, full width above the tabs; × clears it. */
+function SearchInput() {
+  const query = read(searchQuery)
+  return (
+    <Box direction="row" align="center" gap="xs">
+      <Box grow>
+        <Input
+          type="search"
+          label="Search Review Requests"
+          labelHidden
+          placeholder="Search title or URL"
+          value={query}
+          onChange={search}
+        />
+      </Box>
+      {query !== '' && (
+        <IconButton icon="close" label="Clear search" variant="ghost" size="sm" onPress={() => search('')} />
+      )}
+    </Box>
+  )
 }
 
 /** A tab's name and its count, for example "Todo · 3"; just the name at 0. */
@@ -423,12 +485,13 @@ function StageTabs({ snapshot: current }: { snapshot: ReviewRequestsSnapshot }) 
 }
 
 function StageTabsOnly({ snapshot: current }: { snapshot: ReviewRequestsSnapshot }) {
-  const stages = stagesOf(current)
+  const stages = stagesOf(current, read(searchQuery))
 
   // `Table` taught us the catalog can list what this Orca doesn't draw (#10): check first.
   if (!ui.has('Tabs')) {
     return (
       <Stack gap="md">
+        <SearchInput />
         {stages.map((stage) => (
           <Stack key={stage.id} gap="sm">
             <Heading level={3}>{labelOf(stage)}</Heading>
@@ -439,13 +502,16 @@ function StageTabsOnly({ snapshot: current }: { snapshot: ReviewRequestsSnapshot
     )
   }
   return (
-    <Tabs label="Stage" value={read(selectedTab)} onChange={(value) => set(selectedTab, value as TabId)}>
-      {stages.map((stage) => (
-        <Tab key={stage.id} value={stage.id} label={labelOf(stage)}>
-          {stage.body}
-        </Tab>
-      ))}
-    </Tabs>
+    <Stack gap="sm">
+      <SearchInput />
+      <Tabs label="Stage" value={read(selectedTab)} onChange={(value) => set(selectedTab, value as TabId)}>
+        {stages.map((stage) => (
+          <Tab key={stage.id} value={stage.id} label={labelOf(stage)}>
+            {stage.body}
+          </Tab>
+        ))}
+      </Tabs>
+    </Stack>
   )
 }
 
