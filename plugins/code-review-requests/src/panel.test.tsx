@@ -89,7 +89,7 @@ test('an overdue card gets a Late badge; the tabs carry no icon', async () => {
   assert.equal(view.findAll({ type: 'Badge', text: 'Late' }).length, 1)
   assert.equal(view.findAll({ type: 'Box' }).filter((box) => box.props.radius === 'md' && box.props.border === 'danger').length, 0, 'the Late badge is enough: no red border')
   const ages = view.findAll({ type: 'Text', text: /^\d+[mhd]$/ }).map((age) => age.props.tone)
-  assert.deepEqual(ages.sort(), ['danger', undefined], 'only the overdue age is red')
+  assert.deepEqual(ages, [undefined, undefined], 'the Late badge is enough: no red age')
   assert.ok(view.find({ type: 'Tab', label: 'Todo · 1 | 1!' }))
   assert.equal(view.findAll({ type: 'Tab' }).some((tab) => tab.props.icon !== undefined), false)
   assert.deepEqual(view.errors, [])
