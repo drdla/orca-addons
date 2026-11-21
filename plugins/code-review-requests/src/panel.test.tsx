@@ -1,6 +1,7 @@
 import { assert, hostError, mockHost, mount, test } from 'orca/testing'
 import * as panel from './panel'
 import type { ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
+import { headingCounts } from './testing/panel-heading'
 
 const HOUR = 3_600_000
 const NOW = Date.UTC(2026, 10, 16, 9, 0)
@@ -90,23 +91,16 @@ test('an overdue card gets an Overdue badge and the To review tab a warning icon
   await view.unmount()
 })
 
-/** The heading's count badges as [count, tone]: the card badges ("Overdue", "New") hold words. */
-function headingCounts(view: Awaited<ReturnType<typeof mount>>): [string, unknown][] {
-  return view
-    .findAll({ type: 'Badge', text: /^\d+$/ })
-    .map((badge): [string, unknown] => [badge.text, badge.props.tone])
-}
-
 const overdue = (iid: number) => card(iid, { overdue: true })
 
-test('the heading splits the count into in-time and overdue, the overdue count red', async () => {
+test('the heading splits the count into a neutral in-time and a red overdue count', async () => {
   const host = mockHost({
     requests: { 'rr.snapshot': snapshot(overdue(52), overdue(51), overdue(50), card(2), card(1)) }
   })
   const view = await mount(panel, { host })
 
   assert.deepEqual(headingCounts(view), [
-    ['2', 'accent'],
+    ['2', 'neutral'],
     ['3', 'danger']
   ])
   assert.deepEqual(view.errors, [])
@@ -127,7 +121,7 @@ test('the heading shows only the in-time count when no Review Request is overdue
   const host = mockHost({ requests: { 'rr.snapshot': snapshot(card(3), card(2), card(1)) } })
   const view = await mount(panel, { host })
 
-  assert.deepEqual(headingCounts(view), [['3', 'accent']])
+  assert.deepEqual(headingCounts(view), [['3', 'neutral']])
   assert.deepEqual(view.refusals, [])
   await view.unmount()
 })

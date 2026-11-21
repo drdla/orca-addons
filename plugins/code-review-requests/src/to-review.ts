@@ -2,6 +2,7 @@
 // first, each marked overdue or not, and the bell's overdue look. Overdue depends on the time, so
 // it is derived when asked, never stored in the poll state.
 import { isOverdue } from './overdue'
+import { overdueSplit } from './overdue-split'
 import type { PollState } from './poll/poll-state'
 import type { ReviewRequestCard } from './protocol'
 import type { StatusBarRefiner } from './status-bar'
@@ -15,18 +16,6 @@ export function cardsOf(state: PollState, context: OverdueContext): ReviewReques
   return state.reviewRequests
     .map((view) => ({ ...view, overdue: isOverdue(view.requestedAt, now, hours) }))
     .sort((a, b) => a.requestedAt - b.requestedAt)
-}
-
-/**
- * How many Review Requests are not yet overdue and how many are Overdue Review Requests. The bell
- * and the panel heading (#53) both count with this, from cards marked by cardsOf(), so they agree.
- */
-export function overdueSplit(cards: readonly Pick<ReviewRequestCard, 'overdue'>[]): {
-  inTime: number
-  overdue: number
-} {
-  const overdue = cards.filter((card) => card.overdue).length
-  return { inTime: cards.length - overdue, overdue }
 }
 
 /**
