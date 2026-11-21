@@ -17,8 +17,8 @@
       "releases": [
         {
           "version": "0.6.3",
-          "commit": "49898ecb0a87311e2792898310b55c658278da44",
-          "contentHash": "2bf62327144e2104a531366f9db93383985c0d7a2ffaea700bf03e2c973d9284",
+          "commit": "508aa384cad20651b92e3b9659e9322d38b50013",
+          "contentHash": "766e3176bdb3f472571c69bcadd47bb752d2fb5dc92442cf35888c5a295a3d40",
           "execution": "trusted-worker",
           "minimumOrca": "1.4.259",
           "name": "Code Review Requests",
@@ -52,7 +52,7 @@
             "cover": {
               "path": "plugins/code-review-requests/images/cover-owl.png",
               "alt": "A samurai owl in ukiyo-e style holding up a scroll with the Review Requests panel, under the title Code Review Requests",
-              "sha256": "62eb6af36b989c005e7bfce4e59bd974bc14d0d217701a3902557e5124c6a8fb",
+              "sha256": "46b369c422efb1ab2cb2eee9da72f3d2f17b55166d9e824d0378532ec5bc0465",
               "width": 1600,
               "height": 1000
             },
