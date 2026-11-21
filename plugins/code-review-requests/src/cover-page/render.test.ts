@@ -1,7 +1,7 @@
 // The Review Cover Page (#55): what a merge request's GitLab REST answers render to. The fixtures
 // follow GitLab's documented shapes for GET …/merge_requests/:iid, …/diffs and …/approvals.
 import { assert, test } from 'orca/testing'
-import { renderCoverPage, type CoverPageSource, type RestApprovals, type RestDiff } from './render'
+import { renderCoverPage, withUpdatedCallout, type CoverPageSource, type RestApprovals, type RestDiff } from './render'
 
 const HEAD = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 
@@ -83,19 +83,30 @@ test('a merge request renders its title, metadata, description, changed files an
   )
 })
 
-test('the page records the checked-out commit, and says so when the merge request has moved on', () => {
+test('the page records the checked-out commit, and opens with a callout when the merge request has moved on', () => {
   const checkedOut = '1111111111111111111111111111111111111111'
   const page = renderCoverPage(source({ headSha: checkedOut }))
 
   assert.ok(page.includes(`A snapshot of acme/api!7 at commit \`11111111\``), page)
   assert.ok(page.includes(`<!-- orca-review-cover-page head=${checkedOut} -->`), page)
-  assert.ok(
-    page.includes(
-      `The merge request has moved on since this workspace was checked out (GitLab is at \`${HEAD.slice(0, 8)}\`): the changed-file list may be newer than the code.`
-    ),
-    page
-  )
-  assert.equal(renderCoverPage(source()).includes('moved on'), false)
+  assert.ok(page.startsWith(`# Add login\n\n${UPDATED_CALLOUT}\n\n[acme/api!7]`), page)
+  assert.equal(renderCoverPage(source()).includes('Merge request updated'), false)
+})
+
+const UPDATED_CALLOUT =
+  `> **Merge request updated.** New commits were pushed since this workspace was checked out: GitLab is at \`${HEAD.slice(0, 8)}\`, ` +
+  'the workspace and this page at `11111111`. Use "Update workspace" on its card in the Review Requests panel to review them.'
+
+test('an existing page gains the callout once the merge request moves on, and loses it when it is back in step', () => {
+  const checkedOut = '1111111111111111111111111111111111111111'
+  const page = renderCoverPage(source({ headSha: checkedOut, mr: { ...source().mr, sha: checkedOut } }))
+  assert.equal(page.includes('Merge request updated'), false)
+
+  const behind = withUpdatedCallout(page, HEAD)
+  assert.ok(behind.startsWith(`# Add login\n\n${UPDATED_CALLOUT}\n\n[acme/api!7]`), behind)
+  assert.equal(withUpdatedCallout(behind, HEAD), behind)
+  assert.equal(withUpdatedCallout(behind, checkedOut), page)
+  assert.equal(withUpdatedCallout('# A page from elsewhere\n', HEAD), '# A page from elsewhere\n')
 })
 
 test('an empty description says so instead of leaving the section blank', () => {

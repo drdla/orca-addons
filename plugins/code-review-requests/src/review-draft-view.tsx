@@ -3,6 +3,8 @@
 // notes and Agent Findings (`rr.draft`). Diff-view notes are read-only here (edit them in Orca);
 // Agent Findings get an editor. Every comment has a checkbox: checked ones are what #30 posts.
 // "Cover page" reopens the Review Workspace's Review Cover Page (#55) in Orca's main view.
+// After the workspace moved to newer commits (#58), comments on changed lines say "May be
+// outdated" and Agent Findings for an older commit "Stale"; both stay curatable.
 import {
   atom,
   Badge,
@@ -26,6 +28,7 @@ import {
 import type { ReviewCommentView, ReviewDraftView } from './protocol'
 import { openConfirm, PostSection, resetPosting, setupPosting } from './review-post-view'
 import { messageOf } from './errors'
+import { plural } from './plural'
 
 /** The Review Request whose draft is open (its MR URL), or null for the tabs. Kept across reloads. */
 const draftUrl = atom<string | null>('rr.draftUrl', null, { persist: 'plugin' })
@@ -191,6 +194,7 @@ export function ReviewDraftScreen() {
               </Stack>
             </Callout>
           )}
+          <MovedOn comments={current.comments} />
           <Section
             title="Diff-view notes"
             empty="No diff-view notes. Add them in Orca's diff view, then import again."
@@ -204,6 +208,32 @@ export function ReviewDraftScreen() {
         </Stack>
       )}
     </Stack>
+  )
+}
+
+/** After the Review Workspace moved to newer commits (#58): what that means for the draft. */
+function MovedOn({ comments }: { comments: ReviewCommentView[] }) {
+  const outdated = comments.filter((c) => c.outdated === true).length
+  const stale = comments.filter((c) => c.stale === true).length
+  if (outdated === 0 && stale === 0) return null
+  return (
+    <Callout tone="neutral" icon="info" title="The Review Workspace has moved on">
+      <Stack gap="xs">
+        {outdated > 0 && (
+          <Text size="sm">
+            {outdated === 1
+              ? `${plural(1, 'Review Comment')} may be outdated: its lines changed since it was written. Check it, then keep, edit or drop it.`
+              : `${plural(outdated, 'Review Comment')} may be outdated: their lines changed since they were written. Check them, then keep, edit or drop them.`}
+          </Text>
+        )}
+        {stale > 0 && (
+          <Text size="sm">
+            {`${plural(stale, 'Agent Finding')} ${stale === 1 ? 'is' : 'are'} from an older commit: ` +
+              'run Agent Review for fresh ones, then import again.'}
+          </Text>
+        )}
+      </Stack>
+    </Callout>
   )
 }
 
@@ -235,7 +265,11 @@ function CommentCard({ comment }: { comment: ReviewCommentView }) {
           disabled={comment.posted}
           onChange={(checked) => changeComment(comment.id, { checked })}
         />
-        {comment.posted && <Badge tone="success">Posted</Badge>}
+        <Row gap="xs">
+          {comment.outdated === true && <Badge tone="warning">May be outdated</Badge>}
+          {comment.stale === true && <Badge tone="neutral">Stale</Badge>}
+          {comment.posted && <Badge tone="success">Posted</Badge>}
+        </Row>
       </Row>
       {comment.editable ? (
         <Stack gap="xs">

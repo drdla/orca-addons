@@ -9,6 +9,7 @@
 // makes the note unposted again.
 import type { OrcaWorkerApi } from 'orca/worker'
 import type { Clock } from '../seams/clock'
+import type { Outdated } from './outdated'
 
 /** What posting recorded for a Review Comment. */
 export type PostedMark = {
@@ -55,6 +56,11 @@ export type ReviewDraft = {
    * and re-creates them (retry); Delete failed drafts removes them. Absent means none.
    */
   failedDrafts?: FailedDraft[]
+  /**
+   * Which Review Comments may be outdated, as the last import worked out against the Review
+   * Workspace's HEAD (#58). Absent when HEAD couldn't be read (or before #58).
+   */
+  outdated?: Outdated
 }
 
 /** A Review Comment whose GitLab draft didn't publish. */
@@ -64,6 +70,8 @@ export type FailedDraft = { commentId: string; draftNoteId: number; message: str
 export type DraftStorage = Pick<OrcaWorkerApi['storage'], 'get' | 'set' | 'delete' | 'keys'>
 
 const KEY_PREFIX = 'reviewDraft:'
+/** `draftWrittenAt:<MR url>`: the commit Update workspace moved away from, until the next import (#58). */
+const WRITTEN_AT_PREFIX = 'draftWrittenAt:'
 
 export function draftKey(url: string): string {
   return `${KEY_PREFIX}${url}`
@@ -130,9 +138,28 @@ export function createReviewDrafts(storage: DraftStorage, clock: Pick<Clock, 'no
         })
       }))
     },
+    /**
+     * Update workspace moved the Review Workspace away from commit `sha` (#58): what the next
+     * import adds was written against it. An earlier one not yet applied is kept, being older.
+     */
+    async noteWrittenAt(url: string, sha: string): Promise<void> {
+      if (((await storage.get(`${WRITTEN_AT_PREFIX}${url}`)) ?? null) === null) {
+        await storage.set(`${WRITTEN_AT_PREFIX}${url}`, sha)
+      }
+    },
+    /** The commit noteWrittenAt recorded and no import has applied yet, or null. */
+    async writtenAt(url: string): Promise<string | null> {
+      const sha = await storage.get(`${WRITTEN_AT_PREFIX}${url}`)
+      return typeof sha === 'string' ? sha : null
+    },
+    /** An import applied it. */
+    async clearWrittenAt(url: string): Promise<void> {
+      await storage.delete(`${WRITTEN_AT_PREFIX}${url}`)
+    },
     /** Forgets a Review Request's draft (for example once its workspace is removed). */
     async remove(url: string): Promise<void> {
       await storage.delete(draftKey(url))
+      await storage.delete(`${WRITTEN_AT_PREFIX}${url}`)
     },
     /** The MR URLs that have a Review Draft. */
     async urls(): Promise<string[]> {

@@ -1,15 +1,20 @@
 // What the panel's workspace buttons do (#6, #27): Start review (create the Review Workspace
 // through the orca CLI, linked to the MR, optionally followed by an Agent Review), Open workspace
 // and Run Agent Review. Start review and Open workspace also build and open the Review Cover Page
-// (#55, src/cover-page). Every failure rejects with a message the panel shows on the card.
+// (#55, src/cover-page); an Agent Review reads that page, so it is built before the agent (#56).
+// Update workspace (#57) moves a Review Workspace to the merge request's new head. Every failure
+// rejects with a message the panel shows on the card.
 import { coverPageTargetOf, type CoverPages } from '../cover-page/cover-pages'
 import type { ReviewRequestView } from '../protocol'
+import { mergeRequestHeadRef, targetBranchFullRef } from '../seams/git'
 import type { Worktree } from '../seams/orca-cli'
 import type { Settings } from '../settings'
 import { reviewCommandFor, reviewPromptFor } from './review-prompt'
 import { hostWorkspaceIdOf } from './host-workspace'
+import { REVIEW_FOLDER } from './review-folder'
 import { findRepo, findReviewWorkspace, normalizeMergeRequestUrl } from './review-workspaces'
 import type { WorkspaceContext } from './workspace-context'
+import type { WorkspaceHeads } from './workspace-heads'
 import type { WorkspaceState } from './workspace-tracker'
 import { messageOf } from '../errors'
 
@@ -19,7 +24,22 @@ export type ReviewActionsDeps = WorkspaceContext & {
   reviewRequest: (url: string) => ReviewRequestView | undefined
   /** The Review Cover Page (#55), built and opened after the workspace exists. */
   coverPages: CoverPages
+  /** Which Review Workspaces are behind their merge request (#57); Update workspace records its HEAD. */
+  heads: WorkspaceHeads
+  /**
+   * Update workspace moved the workspace's HEAD (#58): called as soon as it did, before the steps
+   * that may still fail (finishing the reset, the Review Cover Page). Must not reject.
+   */
+  onMoved?: (update: WorkspaceUpdate) => Promise<void>
 }
+
+/**
+ * What Update workspace did (#57): the Review Workspace moved from `from` to `to`. For #58 it only
+ * hands over `from`: which Review Comments may be outdated is worked out by comparing each one's
+ * `sha` with the workspace's current HEAD at every Review Draft import, so it survives a worker
+ * restart and an update made outside the plugin.
+ */
+export type WorkspaceUpdate = { url: string; worktreePath: string; from: string; to: string }
 
 export type ReviewActions = {
   /** Creates (or reuses) the Review Workspace, then starts an Agent Review if `withAgent`. */
@@ -28,6 +48,11 @@ export type ReviewActions = {
   runAgentReview(url: string): Promise<void>
   /** Opens the Review Cover Page, building it first if the workspace has none (#55). */
   openCoverPage(url: string): Promise<void>
+  /**
+   * Moves a clean Review Workspace to the merge request's current head and rebuilds its Review
+   * Cover Page (#57). Rejects, changing nothing, when it has uncommitted changes.
+   */
+  updateWorkspace(url: string): Promise<WorkspaceUpdate>
 }
 
 /** The workspace name Start review gives, for example `review-api-7`. */
@@ -60,7 +85,19 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
   const hostWorkspaceId = (worktree: Worktree) =>
     hostWorkspaceIdOf(deps.host, { name: worktree.displayName, path: worktree.path })
 
-  async function agentReview(worktree: Worktree, rr: ReviewRequestView): Promise<void> {
+  /**
+   * Starts an Agent Review. It diffs against `{baseRef}`, the target branch, so without one it
+   * refuses (the diff would be empty). `fetchBase` first refreshes that branch, for a workspace
+   * made earlier (#56): a failed fetch is fine while the ref is there, a missing ref is not.
+   */
+  async function agentReview(worktree: Worktree, rr: ReviewRequestView, fetchBase: boolean): Promise<void> {
+    const targetBranch = rr.targetBranch
+    if (!targetBranch) throw new Error('This Review Request has no target branch yet. Refresh and try again.')
+    if (fetchBase) {
+      await deps.git.fetchBranch(worktree.path, targetBranch).catch(async (error: unknown) => {
+        if ((await deps.git.resolveRef(worktree.path, targetBranchFullRef(targetBranch))) === null) throw error
+      })
+    }
     const workspaceId = await hostWorkspaceId(worktree)
     const settings = await deps.settings()
     const prompt = reviewPromptFor(settings.reviewPrompt, rr)
@@ -119,7 +156,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
    */
   async function ensureAtMergeRequest(worktree: Worktree, rr: ReviewRequestView): Promise<void> {
     if (!rr.targetBranch) return
-    const target = await deps.git.resolveRef(worktree.path, `refs/remotes/origin/${rr.targetBranch}`)
+    const target = await deps.git.resolveRef(worktree.path, targetBranchFullRef(rr.targetBranch))
     if (target === null || (await deps.git.headSha(worktree.path)) !== target) return
     if ((await deps.git.statusPorcelain(worktree.path)).length > 0) {
       throw new Error(
@@ -132,6 +169,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
   async function startReview(rr: ReviewRequestView, withAgent: boolean): Promise<void> {
     const index = listed(await deps.workspaces.refresh())
     let worktree = findReviewWorkspace(index, rr)
+    const existed = worktree !== null
     if (worktree) {
       await ensureAtMergeRequest(worktree, rr)
     } else {
@@ -139,21 +177,130 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
       if (!repo) throw new Error(`Add ${rr.projectPath} to Orca to review here.`)
       worktree = await createReviewWorkspace(rr, repo.path, repo.repoId)
     }
-    // The Review Cover Page (#55) builds while the agent starts, and opens last: the tab in front.
+    // The Review Cover Page (#55) is built first, because the Agent Review reads it (#56); a page
+    // that fails doesn't hold the agent back. The page opens last: the tab in front.
     const target = coverPageTarget(worktree, rr)
-    const [page, agent] = await Promise.allSettled([
-      deps.coverPages.ensure(target),
-      withAgent ? agentReview(worktree, rr) : Promise.resolve()
-    ])
+    const page = await settle(deps.coverPages.ensure(target))
+    const agent = withAgent ? await settle(agentReview(worktree, rr, existed)) : null
     const problems: string[] = []
-    if (agent.status === 'rejected') problems.push(`the Agent Review didn't start: ${messageOf(agent.reason)}`)
-    const shown = page.status === 'rejected' ? page.reason : await deps.coverPages.reveal(target).then(() => null, (e: unknown) => e)
+    if (agent !== null) problems.push(`the Agent Review didn't start: ${messageOf(agent)}`)
+    const shown = page ?? (await settle(deps.coverPages.reveal(target)))
     if (shown !== null) problems.push(`the Review Cover Page didn't open: ${messageOf(shown)}`)
     if (problems.length > 0) throw new Error(`The Review Workspace is ready, but ${problems.join('; ')}`)
   }
 
-  /** Start reviews still running, by MR URL: a second click joins the first (one workspace). */
-  const starting = new Map<string, Promise<void>>()
+  /** Refuses, changing nothing, while the workspace has uncommitted changes a reset would lose. */
+  async function refuseUncommitted(worktree: Worktree): Promise<void> {
+    const changes = (await deps.git.statusPorcelain(worktree.path)).filter((entry) => !isOwnUntracked(entry))
+    if (changes.length === 0) return
+    const count = changes.length === 1 ? '1 uncommitted change' : `${changes.length} uncommitted changes`
+    throw new Error(
+      `The Review Workspace ${worktree.displayName} has ${count}: commit or stash them first. Nothing was changed.`
+    )
+  }
+
+  /** Refuses unless `head` is (in) `mergeRequestHead`: the reviewer has no commits of their own. */
+  async function refuseLocalCommits(worktree: Worktree, head: string, mergeRequestHead: string | null): Promise<void> {
+    if (mergeRequestHead !== null && (await deps.git.isAncestor(worktree.path, head, mergeRequestHead))) return
+    throw new Error(
+      `The Review Workspace ${worktree.displayName} has local commits that aren't in the merge request; ` +
+        'nothing was changed.'
+    )
+  }
+
+  /**
+   * Update workspace (#57): fetch the target branch and the MR head, and hard-reset the workspace's
+   * branch to the head. Orca's `baseRef` (the remote-tracking target branch) is not changed, only
+   * fetched fresh, so "Committed on Branch" shows the updated merge request. It refuses, changing
+   * nothing, while a reset would lose uncommitted changes (checked again right before the reset)
+   * or commits of the reviewer's own.
+   */
+  async function updateWorkspace(rr: ReviewRequestView): Promise<WorkspaceUpdate> {
+    const targetBranch = rr.targetBranch
+    if (!targetBranch) throw new Error('This Review Request has no target branch yet. Refresh and try again.')
+    const worktree = await existingWorkspace(rr)
+    const name = worktree.displayName
+    await refuseUncommitted(worktree)
+    const from = await deps.git.headSha(worktree.path)
+    // Own commits: HEAD is not in the MR head fetched last time. Comparing with the new head would
+    // refuse every force-push (a rebased merge request), so the check runs before fetching it.
+    const fetchedBefore = await deps.git.resolveRef(worktree.path, mergeRequestHeadRef(rr.iid))
+    if (fetchedBefore !== null) await refuseLocalCommits(worktree, from, fetchedBefore)
+    // The base moves too: after a rebase onto a newer target, a stale remote-tracking target
+    // branch would put the target's commits into "Committed on Branch" and the Agent Review's diff.
+    try {
+      await deps.git.fetchBranch(worktree.path, targetBranch)
+    } catch (error) {
+      throw new Error(
+        `Couldn't fetch the target branch ${targetBranch}: ${sentence(error)}. The workspace wasn't changed.`
+      )
+    }
+    let head: string
+    try {
+      head = await deps.git.fetchMergeRequestHead(worktree.path, rr.iid)
+    } catch (error) {
+      throw new Error(
+        `Update workspace fetched the target branch ${targetBranch}, but fetching the merge request failed: ` +
+          `${sentence(error)}. The workspace wasn't changed.`
+      )
+    }
+    // Never fetched before: nothing to tell own commits by but the new head itself.
+    if (fetchedBefore === null) await refuseLocalCommits(worktree, from, await deps.git.resolveRef(worktree.path, head))
+    // Edits made while fetching would be lost too.
+    await refuseUncommitted(worktree)
+    let failure: unknown = null
+    try {
+      await deps.git.resetBranch(worktree.path, head)
+    } catch (error) {
+      failure = error
+    }
+    // Wherever the branch ended up, the card follows it, even when a later step of the reset failed.
+    const to = await deps.git.headSha(worktree.path).catch(() => null)
+    if (to !== null) deps.heads.record(worktree.path, to)
+    if (to !== null && to !== from) await deps.onMoved?.({ url: rr.url, worktreePath: worktree.path, from, to })
+    if (failure !== null) {
+      if (to !== null && to !== from) {
+        throw new Error(
+          `The Review Workspace ${name} moved to the new head, but finishing the reset failed: ${sentence(failure)}.`
+        )
+      }
+      throw new Error(
+        `Resetting the Review Workspace ${name} failed: ${sentence(failure)}. The workspace wasn't changed.`
+      )
+    }
+    const target = coverPageTarget(worktree, rr)
+    try {
+      await deps.coverPages.rebuild(target)
+    } catch (error) {
+      throw new Error(`The workspace is updated, but its Review Cover Page wasn't rebuilt: ${messageOf(error)}`)
+    }
+    // The rebuilt page in front: what changed.
+    try {
+      await deps.coverPages.reveal(target)
+    } catch (error) {
+      throw new Error(`The workspace is updated, but its Review Cover Page didn't open: ${messageOf(error)}`)
+    }
+    return { url: rr.url, worktreePath: worktree.path, from, to: to ?? from }
+  }
+
+  /**
+   * Workspace changes still running, by MR URL: Start review and Update workspace (#57). A second
+   * click on the same action joins the first; the other action is refused until it is done.
+   */
+  const running = new Map<string, { action: WorkspaceChange; done: Promise<unknown> }>()
+
+  function exclusive<T>(rr: ReviewRequestView, action: WorkspaceChange, change: () => Promise<T>): Promise<T> {
+    const key = normalizeMergeRequestUrl(rr.url) ?? rr.url
+    const current = running.get(key)
+    if (current?.action === action) return current.done as Promise<T>
+    if (current) {
+      const message = `${current.action} is still running for this merge request. Try again when it's done.`
+      return Promise.reject(new Error(message))
+    }
+    const done = change().finally(() => running.delete(key))
+    running.set(key, { action, done })
+    return done
+  }
 
   const coverPageTarget = (worktree: Worktree, rr: ReviewRequestView) =>
     coverPageTargetOf(rr, { ...worktree, name: worktree.displayName })
@@ -161,12 +308,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
   return {
     async startReview(url, withAgent) {
       const rr = reviewRequestOf(url)
-      const key = normalizeMergeRequestUrl(rr.url) ?? rr.url
-      const running = starting.get(key)
-      if (running) return running
-      const started = startReview(rr, withAgent).finally(() => starting.delete(key))
-      starting.set(key, started)
-      return started
+      return exclusive(rr, 'Start review', () => startReview(rr, withAgent))
     },
     async openWorkspace(url) {
       const rr = reviewRequestOf(url)
@@ -181,9 +323,36 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     },
     async runAgentReview(url) {
       const rr = reviewRequestOf(url)
-      await agentReview(await existingWorkspace(rr), rr)
+      const worktree = await existingWorkspace(rr)
+      // The Agent Review reads the Review Cover Page (#56): a workspace without one gets it first.
+      // Best effort: without the page, the Review Prompt sends the agent to GitLab for the description.
+      await settle(deps.coverPages.ensure(coverPageTarget(worktree, rr)))
+      await agentReview(worktree, rr, true)
+    },
+    async updateWorkspace(url) {
+      const rr = reviewRequestOf(url)
+      return exclusive(rr, 'Update workspace', () => updateWorkspace(rr))
     }
   }
+}
+
+/** Waits for the work; its error, or null when it succeeded. */
+function settle(work: Promise<unknown>): Promise<unknown> {
+  return work.then(
+    () => null,
+    (error: unknown) => error ?? new Error('Unknown error')
+  )
+}
+
+/** The workspace changes that never run at once for one merge request. */
+type WorkspaceChange = 'Start review' | 'Update workspace'
+
+/**
+ * An untracked entry of `git status --porcelain -z` in the plugin's own folder (when the exclude
+ * file doesn't hide it yet): a reset leaves it alone. Every tracked change counts, renames too.
+ */
+function isOwnUntracked(entry: string): boolean {
+  return entry.startsWith('?? ') && entry.slice(3).startsWith(`${REVIEW_FOLDER}/`)
 }
 
 /** An error's message without its trailing period, to go on inside a sentence. */

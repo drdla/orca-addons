@@ -22,6 +22,7 @@ import {
 import { canPostReviews } from './connection-section'
 import type { PostPreview, PostResult, ReviewDraftView, ReviewOutcome } from './protocol'
 import { messageOf } from './errors'
+import { plural } from './plural'
 
 export type PostStep =
   | { kind: 'idle' }
@@ -49,10 +50,6 @@ const OUTCOMES: { value: ReviewOutcome; label: string }[] = [
 ]
 
 export const API_SCOPE_HINT = 'Posting a review needs a token with the api scope.'
-
-function count(n: number): string {
-  return n === 1 ? '1 Review Comment' : `${n} Review Comments`
-}
 
 /** Back to the Post button (opening or leaving a Review Draft). */
 export function resetPosting(): void {
@@ -170,7 +167,7 @@ function Confirm(props: { preview: PostPreview; posting: boolean; onDraft: (draf
     <Box border radius="md" padding="sm" direction="column" gap="sm">
       <Heading level={3}>Post review</Heading>
       <Text size="sm">
-        {preview.comments === 0 ? 'No Review Comments post: only the summary and outcome.' : `${count(preview.comments)} post as one review.`}
+        {preview.comments === 0 ? 'No Review Comments post: only the summary and outcome.' : `${plural(preview.comments, 'Review Comment')} post as one review.`}
       </Text>
       {preview.warnings.length > 0 && (
         <Callout tone="warning" icon="warning" title="Before you post">
@@ -232,7 +229,7 @@ function Outcome(props: { result: Omit<PostResult, 'draft'>; url: string; onDraf
       {result.failed.length === 0 ? (
         <Callout tone="success" icon="check" title="Review posted">
           <Stack gap="xs">
-            <Text size="sm">{`${count(result.posted)} posted to GitLab.`}</Text>
+            <Text size="sm">{`${plural(result.posted, 'Review Comment')} posted to GitLab.`}</Text>
             {result.posted > 0 && (
               <Text muted size="xs">
                 Clear the posted notes in Orca's diff view: the plugin can't delete them.
@@ -241,9 +238,9 @@ function Outcome(props: { result: Omit<PostResult, 'draft'>; url: string; onDraf
           </Stack>
         </Callout>
       ) : (
-        <Callout tone="warning" icon="warning" title={`${count(result.failed.length)} couldn't be posted`}>
+        <Callout tone="warning" icon="warning" title={`${plural(result.failed.length, 'Review Comment')} couldn't be posted`}>
           <Stack gap="xs">
-            {result.posted > 0 && <Text size="sm">{`${count(result.posted)} posted.`}</Text>}
+            {result.posted > 0 && <Text size="sm">{`${plural(result.posted, 'Review Comment')} posted.`}</Text>}
             {result.failed.map((f) => (
               <Text key={f.commentId} size="sm">
                 {`${f.location}: ${f.message}`}

@@ -35,6 +35,7 @@ import { DEFAULT_SETTINGS, readSettings, type Settings } from './settings'
 import { createStatusBar } from './status-bar'
 import { overdueRefiner, type OverdueContext } from './to-review'
 import type { WorkspaceContext } from './workspaces/workspace-context'
+import { createWorkspaceHeads } from './workspaces/workspace-heads'
 import { registerWorkspaceRequests } from './workspaces/workspace-requests'
 import {
   createWorkspaceTracker,
@@ -86,6 +87,8 @@ export function createWorker(deps: Deps) {
 
     // Review Workspaces (#27): one `orca worktree list` per poll; a failure only disables them.
     const workspaces = createWorkspaceTracker(deps.orcaCli, log)
+    // "Merge request updated" (#57): their HEADs, read after a good poll only where it can change.
+    const heads = createWorkspaceHeads(deps.git, log)
     const context: WorkspaceContext = {
       cli: deps.orcaCli,
       git: deps.git,
@@ -195,6 +198,8 @@ export function createWorker(deps: Deps) {
     // entries whose workspace is gone and auto-removes the clean ones past the deadline.
     state.onSucceeded((_previous, next) => ended.onListed([...next.reviewRequests, ...next.hidden]))
     state.onSucceeded((_previous, next) => seen.onGoodPoll(next.host!, next.reviewRequests))
+    // "Merge request updated" (#57): compare each Review Workspace's HEAD with the polled head.
+    state.onSucceeded((_previous, next) => heads.check(next.reviewRequests, workspaces.current()))
     state.onChange(async () => {
       await ended.tick()
     })
@@ -272,7 +277,8 @@ export function createWorker(deps: Deps) {
           ...(workspaceState.kind === 'unavailable' ? { workspacesUnavailable: workspaceState.reason } : {})
         },
         workspaceState,
-        (url) => draftCounts.get(url) ?? { unposted: 0, toPost: 0 }
+        (url) => draftCounts.get(url) ?? { unposted: 0, toPost: 0 },
+        heads.isBehind
       )
     }
 
@@ -289,6 +295,19 @@ export function createWorker(deps: Deps) {
       await statusBar.render(current)
       return { seen: true as const }
     })
+    // The Review Draft (#29): import and curation, also for an Ended Review Request whose
+    // workspace is still there; posting it (#30). The cards show its counts (#10), so open panels
+    // hear of each change.
+    const draftCards = (): ReviewRequestCard[] => [
+      ...viewNow().reviewRequests,
+      ...ended.entries().map((entry) => ({ ...entry, overdue: false }))
+    ]
+    const draftRequests = registerDraftRequests(orca, {
+      deps,
+      cards: draftCards,
+      workspaceState: () => workspaces.current(),
+      onChanged: postChanged
+    })
     // Review Workspace actions (#27) and removal (#28).
     const removedWatch = registerWorkspaceRequests(orca, {
       context,
@@ -298,20 +317,10 @@ export function createWorker(deps: Deps) {
       snapshot,
       postChanged,
       files: deps.files,
-      gitLab: gitLabAccess
-    })
-    // The Review Draft (#29): import and curation, also for an Ended Review Request whose
-    // workspace is still there; posting it (#30). The cards show its counts (#10), so open panels
-    // hear of each change.
-    const draftCards = (): ReviewRequestCard[] => [
-      ...viewNow().reviewRequests,
-      ...ended.entries().map((entry) => ({ ...entry, overdue: false }))
-    ]
-    registerDraftRequests(orca, {
-      deps,
-      cards: draftCards,
-      workspaceState: () => workspaces.current(),
-      onChanged: postChanged
+      gitLab: gitLabAccess,
+      heads,
+      // #58: what was written before the update keeps the commit it was written on.
+      onMoved: (update) => draftRequests.workspaceMoved(update.url, update.from)
     })
     registerPostRequests(orca, {
       drafts,

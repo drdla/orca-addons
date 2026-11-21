@@ -112,7 +112,7 @@ test('a failed poll keeps the last list and the bell', async () => {
 
 test('the panel snapshot lists the Review Requests from the last poll', async () => {
   const fakes = fakeDeps()
-  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 7, title: 'Add login', author: 'ada' })
+  const mr = fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 7, title: 'Add login', author: 'ada' })
   const { worker } = await startWorker(fakes)
 
   assert.deepEqual(await worker.request('rr.snapshot'), {
@@ -126,6 +126,7 @@ test('the panel snapshot lists the Review Requests from the last poll', async ()
         requestedAt: fakes.clock.now(),
         sourceBranch: 'feature-1',
         targetBranch: 'main',
+        mergeRequestHead: mr.diffRefs.headSha,
         ci: null,
         approvals: null,
         comments: 0,
@@ -134,7 +135,8 @@ test('the panel snapshot lists the Review Requests from the last poll', async ()
         workspace: null,
         startBlocked: 'Add acme/api to Orca to review here.',
         agentReview: null,
-        toPost: 0
+        toPost: 0,
+        mergeRequestUpdated: false
       }
     ],
     refreshedAt: fakes.clock.now()

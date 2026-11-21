@@ -12,9 +12,10 @@
 //
 // A bare array of findings is accepted too. Bad entries are skipped, each with a warning (#15).
 import { messageOf } from '../errors'
+import { REVIEW_FOLDER } from '../workspaces/review-folder'
 
 /** The file the Agent Review writes, relative to its Review Workspace. */
-export const FINDINGS_FILE = '.orca-review/findings.json'
+export const FINDINGS_FILE = `${REVIEW_FOLDER}/findings.json`
 
 /** One Agent Finding as read from the file. `filePath` null means a general comment. */
 export type AgentFinding = {

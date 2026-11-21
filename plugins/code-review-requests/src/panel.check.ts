@@ -342,6 +342,32 @@ export default defineCheck({
     },
     persisted: { plugin: { 'rr.tab': 'in' } }
   },
+  /** In review (#57): new commits on the merge request, so "Merge request updated" and Update workspace. */
+  inReviewMergeRequestUpdated: {
+    requests: {
+      'rr.snapshot': {
+        reviewRequests: [
+          {
+            ...card(12, 'Add login with SSO', 5),
+            workspace: WORKSPACE,
+            startBlocked: null,
+            agentReview: { state: 'done', commentsReady: 2 },
+            toPost: 2,
+            mergeRequestUpdated: true
+          },
+          {
+            ...card(14, 'Fix flaky upload test', 1),
+            workspace: { ...WORKSPACE, id: 'repo-api::/wt/review-api-14', path: '/wt/review-api-14' },
+            startBlocked: null,
+            mergeRequestUpdated: false
+          }
+        ],
+        refreshedAt: NOW
+      } satisfies ReviewRequestsSnapshot,
+      'rr.connection': connection()
+    },
+    persisted: { plugin: { 'rr.tab': 'in' } }
+  },
   /** Start review disabled, with the hint why (#27). */
   startBlocked: { requests: { 'rr.snapshot': startBlocked } },
   /** The person left the panel on Ended, with nothing there. */
@@ -373,6 +399,26 @@ export default defineCheck({
         comments: [],
         warnings: ['This Review Request has no Review Workspace, so there is nothing to import.'],
         importedAt: null
+      }
+    },
+    persisted: draftOpen
+  },
+  /**
+   * After Update workspace moved the workspace to the merge request's new head (#58): the note
+   * range's lines changed (may be outdated), the posted note is left alone, and the Agent Findings
+   * are stale, one of them on changed lines too.
+   */
+  reviewDraftMovedOn: {
+    requests: {
+      'rr.snapshot': inReview,
+      'rr.draft': {
+        ...reviewDraft,
+        comments: reviewDraft.comments.map((c) => ({
+          ...c,
+          ...(c.id === 'note:n1' || c.id === 'finding:0f3a9c21' ? { outdated: true } : {}),
+          ...(c.origin === 'agent-finding' ? { stale: true } : {})
+        })),
+        warnings: []
       }
     },
     persisted: draftOpen
