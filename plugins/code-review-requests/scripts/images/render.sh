@@ -1,6 +1,6 @@
 #!/bin/bash
 # Renders the catalog images (images/*.png) from mock.html with headless Chrome.
-# The data in mock.html is made up; keep it that way. Needs Google Chrome and Orca (for the Geist font).
+# The data in mock.html is made up; keep it that way. Needs Google Chrome, Orca (for the Geist font), network (Google Fonts) and Python with Pillow.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 out="$here/../../images"
@@ -15,6 +15,8 @@ shot() { # frame, css size, output name
 }
 shot icon 256,256 icon
 shot cover 800,500 cover
+# The illustrated cover is ~1.7 MB as a truecolor PNG; Orca's limit is 1 MiB. A 256-color palette keeps it ~0.7 MB.
+python3 -c 'import sys; from PIL import Image; p=sys.argv[1]; Image.open(p).convert("RGB").quantize(256, dither=Image.Dither.FLOYDSTEINBERG).save(p, optimize=True)' "$out/cover.png"
 shot todo 1280,800 review-requests
 shot statusbar 1280,800 status-bar
 shot workspace 1280,800 review-workspace
