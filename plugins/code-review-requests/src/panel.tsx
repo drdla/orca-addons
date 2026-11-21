@@ -45,7 +45,7 @@ import type { CiStatus, ReviewRequestCard, ReviewRequestsSnapshot } from './prot
 import { canPostReviews, connectionProblem, loadConnection } from './connection-section'
 import { messageOf } from './errors'
 import { MinuteTime, minuteTimeText, setupClock } from './minute-time'
-import { overdueSplit } from './overdue-split'
+import { countText, overdueSplit } from './overdue-split'
 import { matchesQuery, normalizeQuery, tabWithMatches } from './search'
 import { shortTitle } from './short-title'
 import { RefreshProblem } from './refresh-problem'
@@ -73,6 +73,8 @@ const refreshing = atom(false)
 const selectedTab = atom<TabId>('rr.tab', 'todo', { persist: 'plugin' })
 /** What the search input holds: kept across polls and tab switches, not across reloads. */
 const searchQuery = atom('')
+/** The Review Request whose review was started last in this panel: first on Reviewing until a reload. */
+const justStarted = atom<string | null>(null)
 /** Per-card action errors, by Review Request URL. */
 const cardErrors = atom<Record<string, string>>({})
 /** Review Request URLs with a workspace action under way (#27); their buttons wait. */
@@ -149,7 +151,14 @@ const START_TIMEOUT_MS = 120_000
 
 function startReview(url: string, withAgent: boolean): void {
   cardAction(url, "Couldn't create the Review Workspace", () =>
-    plugin.request('rr.startReview', { url, withAgent }, { timeoutMs: START_TIMEOUT_MS }).then(received)
+    plugin
+      .request('rr.startReview', { url, withAgent }, { timeoutMs: START_TIMEOUT_MS })
+      .then((answer) => {
+        received(answer)
+        // Show the new Reviewing card: that tab, with the card on top.
+        set(justStarted, url)
+        set(selectedTab, 'in')
+      })
   )
 }
 
@@ -397,7 +406,8 @@ function Body() {
   )
 }
 
-type Stage = { id: TabId; title: string; count: number; body: OrcaNode }
+/** A tab: `count` is how many cards it has; `countLabel` writes it like the status bar ("2 | 3!"). */
+type Stage = { id: TabId; title: string; count: number; countLabel: string; body: OrcaNode }
 
 function cardStage(id: TabId, title: string, cards: ReviewRequestCard[], empty: OrcaNode): Stage {
   const body =
@@ -408,7 +418,7 @@ function cardStage(id: TabId, title: string, cards: ReviewRequestCard[], empty: 
         ))}
       </Stack>
     )
-  return { id, title, count: cards.length, body }
+  return { id, title, count: cards.length, countLabel: countText(overdueSplit(cards)), body }
 }
 
 /**
@@ -436,13 +446,14 @@ function stagesOf(current: ReviewRequestsSnapshot, query: string): Stage[] {
     cardStage(
       'in',
       'Reviewing',
-      cards.filter(inReview),
+      startedFirst(cards.filter(inReview), read(justStarted)),
       searching ? noMatch('folder', 'reviews in progress') : <EmptyState icon="folder" title="No reviews in progress" />
     ),
     {
       id: 'ended',
       title: 'Done',
       count: ended.length,
+      countLabel: String(ended.length),
       body:
         ended.length === 0 ?
           searching ? noMatch('check', 'completed reviews')
@@ -450,6 +461,12 @@ function stagesOf(current: ReviewRequestsSnapshot, query: string): Stage[] {
         : <EndedList cards={ended} disabled={current.workspacesUnavailable !== undefined} received={received} />
     }
   ]
+}
+
+/** The cards with the one whose review was just started first; the others keep their order. */
+function startedFirst(cards: ReviewRequestCard[], url: string | null): ReviewRequestCard[] {
+  const started = cards.find((c) => c.url === url)
+  return started === undefined ? cards : [started, ...cards.filter((c) => c !== started)]
 }
 
 /** Each tab's number of cards matching a search. */
@@ -484,9 +501,9 @@ function SearchInput() {
   )
 }
 
-/** A tab's name and its count, for example "Todo · 3"; just the name at 0. */
+/** A tab's name and its count, for example "Todo · 3" or "Todo · 2 | 3!"; just the name at 0. */
 function labelOf(stage: Stage): string {
-  return stage.count === 0 ? stage.title : `${stage.title} · ${stage.count}`
+  return stage.count === 0 ? stage.title : `${stage.title} · ${stage.countLabel}`
 }
 
 function StageTabs({ snapshot: current }: { snapshot: ReviewRequestsSnapshot }) {

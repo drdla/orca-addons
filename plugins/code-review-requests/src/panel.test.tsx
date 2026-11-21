@@ -90,7 +90,7 @@ test('an overdue card gets a Late badge; the tabs carry no icon', async () => {
   assert.equal(view.findAll({ type: 'Box' }).filter((box) => box.props.radius === 'md' && box.props.border === 'danger').length, 0, 'the Late badge is enough: no red border')
   const ages = view.findAll({ type: 'Text', text: /^\d+[mhd]$/ }).map((age) => age.props.tone)
   assert.deepEqual(ages.sort(), ['danger', undefined], 'only the overdue age is red')
-  assert.ok(view.find({ type: 'Tab', label: 'Todo · 2' }))
+  assert.ok(view.find({ type: 'Tab', label: 'Todo · 1 | 1!' }))
   assert.equal(view.findAll({ type: 'Tab' }).some((tab) => tab.props.icon !== undefined), false)
   assert.deepEqual(view.errors, [])
   assert.deepEqual(view.warnings, [])
@@ -259,6 +259,51 @@ test('without a Review Prompt, Start review asks for a workspace without an agen
   assert.deepEqual(asked, [{ url: card(1).url, withAgent: false }])
   assert.ok(view.find({ type: 'Tab', label: 'Reviewing · 1' }))
   assert.ok(view.find({ type: 'Tab', label: 'Todo' }))
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('Todo and Reviewing count like the status bar: in time | overdue!, just "N!" when all are late; Done counts plainly', async () => {
+  const host = mockHost({
+    requests: {
+      'rr.snapshot': {
+        ...snapshot(
+          card(1, { overdue: true }),
+          card(2),
+          card(3),
+          card(4, { overdue: true, workspace: WORKSPACE })
+        ),
+        ended: [
+          { ...card(5), reason: 'merged', endedAt: NOW, workspace: { ...WORKSPACE, id: 'repo::/wt/5' }, autoRemoveSkipped: null }
+        ]
+      }
+    }
+  })
+  const view = await mount(panel, { host })
+
+  assert.deepEqual(
+    view.findAll({ type: 'Tab' }).map((tab) => tab.props.label),
+    ['Todo · 2 | 1!', 'Reviewing · 1!', 'Done · 1']
+  )
+  await view.unmount()
+})
+
+test('after Start review, the Reviewing tab opens with the new card on top', async () => {
+  const other = { ...WORKSPACE, id: 'repo::/wt/review-api-2', path: '/wt/review-api-2' }
+  const host = mockHost({
+    requests: {
+      'rr.snapshot': snapshot(card(2, { workspace: other }), card(1, { workspace: null })),
+      // The worker keeps its order (longest waiting first): the started card comes second.
+      'rr.startReview': () => snapshot(card(2, { workspace: other }), card(1, { workspace: WORKSPACE }))
+    }
+  })
+  const view = await mount(panel, { host, persisted: { plugin: { 'rr.tab': 'todo' } } })
+
+  await view.press(view.find({ type: 'Button', text: 'Start Review' })!)
+
+  assert.equal(view.valueOf(view.find({ type: 'Tabs' })!), 'in')
+  const titles = view.findAll({ text: /^Merge request \d$/ }).map((t) => t.text)
+  assert.deepEqual(titles, ['Merge request 1', 'Merge request 2'])
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })
