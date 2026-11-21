@@ -749,8 +749,8 @@ function Card({ card }: { card: ReviewRequestCard }) {
       </Row>
       <Approvals card={card} />
       <WorkspaceNavigation card={card} />
-      {/* The age, short and muted like Orca's workspace list ("40m", "2h"), red once overdue, stays
-          right on one line, centred on the buttons' row: the buttons wrap before it does. */}
+      {/* The age, short and muted like Orca's workspace list ("40m", "2h"), stays right on one
+          line (muted even when overdue: the Late badge says that), centred on the buttons' row: the buttons wrap before it does. */}
       <Box direction="row" justify="between" align="center" gap="xs">
         <Box grow>
           <Row gap="sm" align="center" wrap>
@@ -760,15 +760,9 @@ function Card({ card }: { card: ReviewRequestCard }) {
           </Row>
         </Box>
         <Box shrink={false}>
-          {card.overdue ? (
-            <Text tone="danger" size="xs">
-              <MinuteTime at={card.requestedAt} age />
-            </Text>
-          ) : (
-            <Text muted size="xs">
-              <MinuteTime at={card.requestedAt} age />
-            </Text>
-          )}
+          <Text muted size="xs">
+            <MinuteTime at={card.requestedAt} age />
+          </Text>
         </Box>
       </Box>
       {blocked !== null && (
