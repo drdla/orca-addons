@@ -1,0 +1,388 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: Geist; src: url(Geist.woff2) format('woff2'); font-weight: 100 900; }
+:root {
+  --win: #161616; --panel: #191919; --card: #1d1d1d; --line: #2d2d2d; --line2: #383838;
+  --text: #ececec; --muted: #a3a3a3; --faint: #777;
+  --late: #a8493f; --red: #f0706a; --accent: #f0706a;
+  --mono: "SF Mono", SFMono-Regular, ui-monospace, Menlo, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #0d0e11; color: var(--text); font-family: Geist, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+.frame { display: none; position: relative; overflow: hidden; }
+.frame.on { display: block; }
+.canvas {
+  background:
+    radial-gradient(900px 600px at 88% -10%, rgba(240,112,106,.22), transparent 60%),
+    radial-gradient(800px 600px at -10% 110%, rgba(110,130,255,.13), transparent 60%),
+    linear-gradient(180deg, #121317, #0b0c0f);
+}
+.canvas::after { /* fine grid */
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+  background-size: 40px 40px; mask-image: radial-gradient(ellipse at 50% 40%, #000 20%, transparent 75%);
+}
+.canvas > * { position: relative; z-index: 1; }
+svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+/* ---------- marketing type ---------- */
+.eyebrow { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+.h1 { font-size: 46px; line-height: 1.08; font-weight: 650; letter-spacing: -.025em; }
+.sub { font-size: 19px; line-height: 1.5; color: #a9abb3; }
+.points { list-style: none; display: grid; gap: 14px; font-size: 17px; color: #d4d5da; }
+.points li { display: flex; gap: 12px; align-items: center; }
+.points .dot { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: rgba(240,112,106,.14); color: var(--accent); font-size: 15px; }
+
+/* ---------- Orca panel ---------- */
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.03) inset; overflow: hidden; }
+.panel-in { padding: 18px 16px 16px; display: flex; flex-direction: column; gap: 14px; }
+.activity { display: flex; gap: 22px; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--line); color: #8a8a8a; font-size: 18px; }
+.activity .sel { color: #fff; position: relative; }
+.activity .sel::after { content: ""; position: absolute; left: -4px; right: -4px; bottom: -13px; height: 2px; background: #fff; border-radius: 2px; }
+.activity .sp { flex: 1; }
+.ph { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 650; }
+.count-pill { border: 1.5px solid #d9534c; border-radius: 999px; padding: 1px 10px; font-size: 15px; font-weight: 500; color: #ddd; }
+.count-pill b { font-weight: 700; color: #fff; }
+.search { border: 1px solid var(--line2); border-radius: 10px; padding: 10px 14px; color: #8b8b8b; font-size: 15px; background: #1c1c1c; }
+.tabs { display: flex; gap: 26px; font-size: 15.5px; color: #a9a9a9; border-bottom: 1px solid transparent; padding: 0 4px; }
+.tabs span { padding-bottom: 9px; }
+.tabs .on { color: #fff; border-bottom: 2px solid #fff; font-weight: 500; }
+.cards { display: flex; flex-direction: column; gap: 10px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 13px 14px 12px; display: flex; flex-direction: column; gap: 10px; }
+.card .top { display: flex; gap: 12px; align-items: flex-start; }
+.iid { border: 1px solid var(--line2); border-radius: 9px; padding: 3px 10px; font-size: 14px; color: #ddd; font-variant-numeric: tabular-nums; flex: none; }
+.card .t { flex: 1; min-width: 0; }
+.card .title { font-size: 15px; font-weight: 600; line-height: 1.38; }
+.card .by { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
+.badge-late { background: var(--late); color: #fff; font-size: 13px; font-weight: 500; border-radius: 999px; padding: 3px 11px; flex: none; }
+.card .bot { display: flex; align-items: center; gap: 12px; font-size: 14px; color: #c2c2c2; }
+.btn { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line2); border-radius: 9px; padding: 5px 12px; font-size: 14px; color: #eee; background: #202020; white-space: nowrap; }
+.btn .i { font-size: 14px; }
+.btn.primary { background: #ececec; color: #111; border-color: #ececec; font-weight: 500; }
+.age { margin-left: auto; font-size: 13.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.age.over { color: var(--red); }
+.icons { display: flex; gap: 14px; color: #cfcfcf; font-size: 15px; }
+.foot { display: flex; align-items: center; gap: 8px; color: #bbb; font-size: 14px; padding: 4px 4px 0; }
+.foot .sp { flex: 1; }
+.foot .i { font-size: 16px; }
+
+/* ---------- status bar ---------- */
+.statusbar { display: flex; align-items: center; gap: 18px; padding: 0 16px; height: 34px; background: #121212; border-top: 1px solid #262626; font-size: 13px; color: #a5a5a5; }
+.statusbar .item { display: inline-flex; align-items: center; gap: 6px; }
+.statusbar .hot { background: #2a2a2a; color: #f2f2f2; padding: 3px 9px; border-radius: 6px; }
+.tip { background: #f4f4f5; color: #111; border-radius: 12px; padding: 10px 16px; font-size: 15px; font-weight: 500; position: relative; box-shadow: 0 12px 30px rgba(0,0,0,.4); white-space: nowrap; }
+.tip::after { left: var(--arrow, 50%); content: ""; position: absolute; bottom: -7px; width: 14px; height: 14px; background: #f4f4f5; transform: translateX(-50%) rotate(45deg); border-radius: 2px; }
+
+/* ---------- window ---------- */
+.win { background: var(--win); border: 1px solid #2f2f2f; border-radius: 14px; box-shadow: 0 40px 120px rgba(0,0,0,.6); overflow: hidden; display: grid; }
+.lights { display: flex; gap: 8px; }
+.lights span { width: 12px; height: 12px; border-radius: 50%; }
+.side { background: #1a1a1a; border-right: 1px solid #262626; padding: 14px 10px; font-size: 13px; color: #c9c9c9; display: flex; flex-direction: column; gap: 4px; }
+.side .row { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 8px; white-space: nowrap; overflow: hidden; }
+.side .row .meta { margin-left: auto; color: #6f6f6f; font-size: 12px; }
+.side .row.sel { background: #2a2a2a; color: #fff; border: 1px solid #3a3a3a; }
+.side .sub2 { color: #8c8c8c; font-size: 12px; padding: 0 8px 4px 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.side .lbl { color: #7c7c7c; font-size: 12px; padding: 12px 8px 4px; }
+.editor { padding: 26px 34px; font-size: 14px; line-height: 1.6; color: #d8d8d8; overflow: hidden; }
+.editor h1 { font-size: 26px; font-weight: 650; margin-bottom: 16px; letter-spacing: -.01em; color: #fff; }
+.editor h2 { font-size: 18px; font-weight: 600; margin: 18px 0 6px; color: #fff; }
+.editor code { font-family: var(--mono); font-size: 12.5px; background: #262626; border: 1px solid #333; border-radius: 5px; padding: 1px 5px; }
+.editor ul { padding-left: 20px; }
+.tabbar { display: flex; align-items: center; gap: 2px; height: 40px; border-bottom: 1px solid #262626; padding: 0 10px; font-size: 13px; color: #9a9a9a; }
+.tabbar .tab { padding: 6px 12px; border-radius: 7px; display: inline-flex; gap: 7px; align-items: center; }
+.tabbar .tab.on { background: #242424; color: #eee; }
+.term { font-family: var(--mono); font-size: 12.5px; line-height: 1.7; color: #cfcfcf; padding: 14px 18px; background: #111; border-top: 1px solid #262626; }
+.term .g { color: #7fd18b; } .term .d { color: #7a7a7a; } .term .a { color: #e9a36a; }
+
+/* ---------- review draft ---------- */
+.rd h2 { font-size: 18px; font-weight: 650; }
+.rd h3 { font-size: 15px; font-weight: 600; }
+.box { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; background: var(--card); }
+.chk { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: 12.5px; color: #dcdcdc; }
+.chk .cb { width: 17px; height: 17px; border-radius: 5px; border: 1.5px solid #5a5a5a; display: grid; place-items: center; font-size: 12px; flex: none; }
+.chk .cb.on { background: #ececec; border-color: #ececec; color: #111; }
+.body { font-size: 14px; line-height: 1.5; color: #d6d6d6; }
+.ta { border: 1px solid var(--line2); border-radius: 9px; padding: 9px 11px; font-size: 14px; line-height: 1.5; color: #e2e2e2; background: #181818; }
+.field-l { font-size: 13px; color: #bcbcbc; margin-bottom: 5px; }
+.sel-box { border: 1px solid var(--line2); border-radius: 9px; padding: 8px 11px; font-size: 14px; display: flex; justify-content: space-between; background: #181818; }
+.muted { color: var(--muted); }
+.agent-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: #c9b3ff; background: rgba(160,130,255,.12); border-radius: 999px; padding: 2px 9px; font-family: Geist, sans-serif; }
+
+/* ---------- icon ---------- */
+#icon { width: 256px; height: 256px; background: transparent; }
+.appicon { position: absolute; inset: 0; border-radius: 56px; overflow: hidden;
+  background: radial-gradient(160px 160px at 75% 10%, rgba(255,140,120,.55), transparent 70%), linear-gradient(150deg, #2a2b31 0%, #141518 70%);
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.08); }
+</style>
+</head>
+<body>
+
+<!-- ======================= ICON ======================= -->
+<section class="frame" id="icon">
+  <div class="appicon">
+    <svg viewBox="0 0 256 256" width="256" height="256" style="position:absolute;inset:0">
+      <defs>
+        <linearGradient id="ck" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffb0a3"/><stop offset="1" stop-color="#f0605a"/></linearGradient>
+      </defs>
+      <!-- merge request glyph -->
+      <g fill="none" stroke="#e9e9ec" stroke-width="13" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="76" cy="70" r="20"/>
+        <line x1="76" y1="90" x2="76" y2="166"/>
+        <circle cx="76" cy="186" r="20"/>
+        <path d="M120 70h28a22 22 0 0 1 22 22v18"/>
+        <path d="M132 56l-14 14 14 14"/>
+      </g>
+      <!-- check badge -->
+      <circle cx="176" cy="178" r="50" fill="url(#ck)"/>
+      <circle cx="176" cy="178" r="50" fill="none" stroke="#141518" stroke-width="10"/>
+      <path d="M154 179l15 15 29-31" fill="none" stroke="#1a0f0e" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+</section>
+
+<!-- ======================= COVER (800x500 css @2x) ======================= -->
+<section class="frame canvas" id="cover" style="width:800px;height:500px">
+  <div style="position:absolute;left:52px;top:0;bottom:60px;width:350px;display:flex;flex-direction:column;justify-content:center;gap:16px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="position:relative;width:44px;height:44px"><div class="appicon" style="border-radius:11px;transform:scale(.171875);transform-origin:0 0;width:256px;height:256px;inset:auto">
+        <svg viewBox="0 0 256 256" width="256" height="256"><use href="#iconglyph"/></svg></div></div>
+      <div class="eyebrow">Orca plugin · GitLab</div>
+    </div>
+    <div class="h1" style="font-size:42px">Code Review<br>Requests</div>
+    <div class="sub" style="font-size:16.5px">The merge requests waiting for your review, inside Orca. One click checks one out and lets an agent review it first.</div>
+  </div>
+  <div style="position:absolute;right:40px;top:40px;width:430px;zoom:.8">
+    <div class="panel"><div class="panel-in" id="cover-panel"></div></div>
+  </div>
+  <div style="position:absolute;left:52px;bottom:30px;display:flex;flex-direction:column;align-items:flex-start;gap:12px;zoom:.92">
+    <div class="tip" style="font-size:13.5px;padding:8px 13px">6 Review Requests, 3 overdue</div>
+    <div class="statusbar" style="border:1px solid #2a2a2a;border-radius:10px;height:36px">
+      <span class="item hot">CHECK 3 | 3!</span><span class="item">REFRESH Linear</span><span class="item">CUP Agent</span>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 1: TODO PANEL ======================= -->
+<section class="frame canvas" id="todo" style="width:1280px;height:800px">
+  <div style="position:absolute;left:90px;top:0;bottom:0;width:470px;display:flex;flex-direction:column;justify-content:center;gap:22px">
+    <div class="eyebrow">Review Requests</div>
+    <div class="h1">Every merge request waiting for you</div>
+    <div class="sub">Open, non-draft merge requests where you are a reviewer and haven't approved yet, newest at the bottom, overdue ones marked.</div>
+    <ul class="points" style="margin-top:8px">
+      <li><span class="dot">CLOCK</span>Overdue counted in working hours</li>
+      <li><span class="dot">ALERT</span>CI status and open comments at a glance</li>
+      <li><span class="dot">FILTER</span>Filter by group, project or author</li>
+    </ul>
+  </div>
+  <div style="position:absolute;right:80px;top:50px;width:540px">
+    <div class="panel" style="height:820px">
+      <div class="activity">FILES GRID BRANCH LIST FLAG <span class="sel">CHECK</span><span class="sp"></span>SIDEBAR</div>
+      <div class="panel-in" id="todo-panel"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 2: STATUS BAR ======================= -->
+<section class="frame canvas" id="statusbar" style="width:1280px;height:800px">
+  <div style="position:absolute;left:0;right:0;top:92px;text-align:center;display:flex;flex-direction:column;gap:18px;align-items:center">
+    <div class="eyebrow">Status bar</div>
+    <div class="h1">Your review queue, always in view</div>
+    <div class="sub" style="max-width:700px">How many Review Requests wait for you, and how many are overdue. Click it to open the panel.</div>
+  </div>
+  <div style="position:absolute;left:50%;top:430px;transform:translateX(-50%) scale(1.9);transform-origin:top center;display:flex;flex-direction:column;align-items:flex-start;gap:18px">
+    <div class="tip" style="align-self:flex-start">6 Review Requests, 3 overdue. Click to open.</div>
+    <div class="statusbar" style="border:1px solid #2a2a2a;border-radius:10px;height:36px;box-shadow:0 20px 50px rgba(0,0,0,.5)">
+      <span class="item">GRID</span><span class="item hot">CHECK 3 | 3!</span><span class="item">REFRESH Linear</span><span class="item">CUP Agent <span style="color:#666">●</span></span><span class="item">MEM 8.34 GB</span>
+    </div>
+  </div>
+  <div style="position:absolute;right:70px;top:640px;width:360px" class="notif">
+  </div>
+</section>
+
+<!-- ======================= 3: WORKSPACE ======================= -->
+<section class="frame canvas" id="workspace" style="width:1280px;height:800px">
+  <div style="position:absolute;left:80px;top:56px;display:flex;flex-direction:column;gap:12px;width:760px">
+    <div class="eyebrow">Start Review</div>
+    <div class="h1" style="font-size:40px">One click to a review workspace</div>
+    <div class="sub" style="font-size:17px">The merge request's branch in its own Orca workspace, its description at hand, and an agent reviewing it first.</div>
+  </div>
+  <div class="win" style="position:absolute;left:60px;right:60px;top:226px;height:592px;grid-template-columns:250px 1fr 340px;grid-template-rows:40px 1fr">
+    <div style="grid-column:1;display:flex;align-items:center;gap:14px;padding:0 14px;border-bottom:1px solid #262626;background:#1a1a1a;border-right:1px solid #262626">
+      <div class="lights"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span></div>
+      <b style="font-size:13px">Orca</b>
+    </div>
+    <div class="tabbar" style="grid-column:2">
+      <span class="tab">TERM review-shop-412</span><span class="tab on">FILE merge-request.md</span>
+    </div>
+    <div class="activity" style="grid-column:3;font-size:15px;padding:10px 16px;gap:18px;border-left:1px solid #262626">FILES GRID BRANCH LIST FLAG <span class="sel">CHECK</span></div>
+    <div class="side">
+      <div class="lbl">Projects</div>
+      <div class="row" style="font-weight:600">CODE shop</div>
+      <div class="row sel"><span style="color:#f0706a">PR</span>REVIEW fix(billing): keep the VA…<span class="meta">now</span></div>
+      <div class="sub2"><span style="color:#7fd18b">●</span> Agent Review · claude</div>
+      <div class="row"><span style="color:#7fd18b">PR</span>Checkout redesign<span class="meta">3h</span></div>
+      <div class="row"><span style="color:#7fd18b">PR</span>Search ranking tweaks<span class="meta">1d</span></div>
+      <div class="row">BRANCH main<span class="meta">2d</span></div>
+      <div class="lbl">&nbsp;</div>
+      <div class="row" style="font-weight:600">CODE docs-site</div>
+      <div class="row">BRANCH Release notes 4.2<span class="meta">4d</span></div>
+    </div>
+    <div style="display:grid;grid-template-rows:1fr auto;overflow:hidden">
+      <div class="editor">
+        <h1>fix(billing): keep the VAT ID when a customer switches plans</h1>
+        <h2>What</h2>
+        <p>Switching plans rebuilt the billing profile from the plan defaults, so <code>vatId</code> came back <code>null</code> and the next invoice went out without it.</p>
+        <h2>Fix</h2>
+        <p>Carry the existing <code>vatId</code> over in <code>changePlan()</code>. Added a test that switches a customer with a VAT ID from monthly to yearly.</p>
+        <h2>Changed files (3)</h2>
+      </div>
+      <div class="term">
+        <div><span class="d">$</span> claude <span class="d">"Review the GitLab merge request …"</span></div>
+        <div><span class="a">●</span> Reading .orca-review/merge-request.md</div>
+        <div><span class="a">●</span> git diff origin/main...HEAD <span class="d">(3 files, +48 −6)</span></div>
+        <div><span class="g">✓</span> Wrote 3 findings to .orca-review/findings.json</div>
+      </div>
+    </div>
+    <div style="border-left:1px solid #262626;background:var(--panel)"><div class="panel-in" id="ws-panel" style="padding:16px 14px"></div></div>
+  </div>
+</section>
+
+<!-- ======================= 4: REVIEW DRAFT ======================= -->
+<section class="frame canvas" id="draft" style="width:1280px;height:800px">
+  <div style="position:absolute;left:90px;top:0;bottom:0;width:470px;display:flex;flex-direction:column;justify-content:center;gap:22px">
+    <div class="eyebrow">Review Draft</div>
+    <div class="h1">Post one review, not twenty comments</div>
+    <div class="sub">Your notes from Orca's diff view and the agent's findings collect in one draft. Keep, edit or drop each one, then post them to GitLab together, with an approval if you want.</div>
+  </div>
+  <div style="position:absolute;right:80px;top:50px;width:540px">
+    <div class="panel rd" style="height:820px"><div class="panel-in" style="gap:13px">
+      <div style="display:flex;align-items:center;gap:12px"><span class="btn" style="border:none;background:none;padding:0;color:#ddd">LEFT Back</span><h2>Review Draft</h2></div>
+      <div><div style="font-weight:600;font-size:15px">fix(billing): keep the VAT ID when a customer switches plans</div><div class="muted" style="font-size:13px;margin-top:3px">3 of 4 checked</div></div>
+      <div class="box">
+        <h3>Post review</h3>
+        <div class="body">3 Review Comments post as one review.</div>
+        <div><div class="field-l">Summary</div><div class="ta">Nice catch. Two small things below, otherwise good to go.</div></div>
+        <div><div class="field-l">Outcome</div><div class="sel-box"><span>Approve</span><span class="muted">DOWN</span></div></div>
+        <div style="display:flex;gap:10px"><span class="btn primary">UPLOAD Post review</span><span class="btn" style="border-color:transparent;background:none">Cancel</span></div>
+      </div>
+      <h3>Diff-view notes</h3>
+      <div class="box">
+        <div class="chk"><span class="cb on">CHECK</span>src/billing/change-plan.ts:57</div>
+        <div class="body">Could this reuse <code style="font-family:var(--mono);font-size:12.5px;background:#262626;border-radius:4px;padding:0 4px">pickBillingFields()</code> instead of copying the fields by hand?</div>
+      </div>
+      <h3 style="display:flex;align-items:center;gap:8px">Agent Findings <span class="agent-tag">BOT claude</span></h3>
+      <div class="box">
+        <div class="chk"><span class="cb on">CHECK</span>src/billing/change-plan.test.ts:31–44</div>
+        <div class="ta">The test covers monthly → yearly only. Add the reverse switch, which goes through the downgrade path.</div>
+      </div>
+      <div class="box" style="opacity:.75">
+        <div class="chk"><span class="cb"></span>src/billing/profile.ts:12</div>
+        <div class="ta">Consider making <span style="font-family:var(--mono);font-size:12.5px">vatId</span> required on the BillingProfile type.</div>
+      </div>
+    </div></div>
+  </div>
+</section>
+
+<svg width="0" height="0" style="position:absolute"><defs>
+  <g id="iconglyph">
+    <g fill="none" stroke="#e9e9ec" stroke-width="13" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="76" cy="70" r="20"/><line x1="76" y1="90" x2="76" y2="166"/><circle cx="76" cy="186" r="20"/>
+      <path d="M120 70h28a22 22 0 0 1 22 22v18"/><path d="M132 56l-14 14 14 14"/>
+    </g>
+    <circle cx="176" cy="178" r="50" fill="#f0706a"/><circle cx="176" cy="178" r="50" fill="none" stroke="#141518" stroke-width="10"/>
+    <path d="M154 179l15 15 29-31" fill="none" stroke="#1a0f0e" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</defs></svg>
+
+<script>
+const P = {
+  CHECK: '<path d="M20 6 9 17l-5-5"/>',
+  PLAY: '<polygon points="6 3 20 12 6 21 6 3"/>',
+  REFRESH: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+  INFO: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  SETTINGS: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+  FOLDER: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  BRANCH: '<line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>',
+  FILE: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>',
+  PENCIL: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
+  BOT: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+  PR: '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/>',
+  FILES: '<path d="M20 7h-3a2 2 0 0 1-2-2V2"/><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"/><path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"/>',
+  GRID: '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
+  LIST: '<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+  FLAG: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
+  SIDEBAR: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>',
+  CUP: '<path d="M10 2v2"/><path d="M14 2v2"/><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"/><path d="M6 2v2"/>',
+  MEM: '<path d="M6 19v-3"/><path d="M10 19v-3"/><path d="M14 19v-3"/><path d="M18 19v-3"/><path d="M8 11V9"/><path d="M16 11V9"/><path d="M12 11V9"/><path d="M2 15h20"/><path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.1a2 2 0 0 0 0 3.837V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5.1a2 2 0 0 0 0-3.837Z"/>',
+  CODE: '<path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/>',
+  TERM: '<path d="m4 17 6-6-6-6"/><path d="M12 19h8"/>',
+  UPLOAD: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
+  LEFT: '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+  DOWN: '<path d="m6 9 6 6 6-6"/>',
+  CLOCK: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  ALERT: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
+  FILTER: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+};
+const ic = (k) => `<svg class="i" viewBox="0 0 24 24">${P[k]}</svg>`;
+
+const MRS = [
+  { iid: 412, title: 'fix(billing): keep the VAT ID when a customer switches plans', by: 'm.lindqvist', late: true, meta: 'CI failed · 1 open comment', age: '6d' },
+  { iid: 418, title: 'feat(search): fuzzy matching for product names', by: 'priya.n', late: true, meta: '', age: '3d' },
+  { iid: 425, title: 'SHOP-881: Show delivery dates in the cart', by: 'tkowalski', late: true, meta: '2 open comments', age: '2d' },
+  { iid: 431, title: 'Paginate the orders export instead of loading it in one go', by: 'a.moreau', late: false, meta: '', age: '1d' },
+  { iid: 437, title: 'chore: move image resizing to the worker pool', by: 'sam.okafor', late: false, meta: '4 open comments', age: '4h' },
+];
+
+const card = (m, opts = {}) => `
+  <div class="card">
+    <div class="top">
+      <span class="iid">${m.iid}</span>
+      <div class="t"><div class="title">${m.title}</div><div class="by">by ${m.by}</div></div>
+      ${m.late ? '<span class="badge-late">Late</span>' : ''}
+    </div>
+    ${opts.reviewing ? `
+      <div class="bot"><span class="icons">${ic('FOLDER')}${ic('BRANCH')}${ic('FILE')}</span><span>${m.meta}</span></div>
+      <div class="bot"><span class="btn">${ic('PENCIL')} Review Draft</span><span style="color:#cfcfcf">${ic('BOT')}</span><span class="age ${m.late ? 'over' : ''}">${m.age}</span></div>`
+    : `<div class="bot"><span class="btn">${ic('PLAY')} Start Review</span><span>${m.meta}</span><span class="age ${m.late ? 'over' : ''}">${m.age}</span></div>`}
+  </div>`;
+
+const header = (tabs) => `
+  <div class="ph">Review Requests <span class="count-pill">3 | <b>3</b></span></div>
+  <div class="search">Search title or URL</div>
+  <div class="tabs">${tabs}</div>`;
+
+const foot = (t) => `<div class="foot">${ic('REFRESH')} ${t}<span class="sp"></span>${ic('INFO')}<span style="width:10px"></span>${ic('SETTINGS')}</div>`;
+
+document.getElementById('todo-panel').innerHTML =
+  header('<span class="on">Todo · 3 | 3!</span><span>Reviewing</span><span>Done</span>') +
+  `<div class="cards">${MRS.map((m) => card(m)).join('')}</div>` + foot('just now');
+
+document.getElementById('cover-panel').innerHTML =
+  header('<span class="on">Todo · 3 | 3!</span><span>Reviewing</span><span>Done</span>') +
+  `<div class="cards">${MRS.slice(0, 3).map((m) => card(m)).join('')}</div>`;
+
+document.getElementById('ws-panel').innerHTML =
+  header('<span>Todo · 2 | 2!</span><span class="on">Reviewing · 1!</span><span>Done</span>') +
+  `<div class="cards">${card(MRS[0], { reviewing: true })}</div>`;
+
+// Replace ALLCAPS icon tokens in static markup with SVGs.
+for (const el of document.querySelectorAll('.activity, .statusbar, .points .dot, .tabbar, .side, .btn, .sel-box, .chk .cb, .agent-tag')) {
+  el.innerHTML = el.innerHTML.replace(/\b([A-Z]{2,8})\b/g, (w) => (P[w] ? ic(w) : w));
+}
+
+const id = location.hash.slice(1) || 'todo';
+document.getElementById(id).classList.add('on');
+// Point each tooltip's arrow at the highlighted status bar item below it (layout px, so transforms don't matter).
+for (const tip of document.querySelectorAll('#' + id + ' .tip')) {
+  const hot = tip.parentElement.querySelector('.hot');
+  const center = hot.offsetLeft + hot.offsetWidth / 2; // hot and tip share the frame-level offsetParent
+  const shift = Math.max(0, center - 60);
+  tip.style.marginLeft = shift + 'px';
+  tip.style.setProperty('--arrow', (center - tip.offsetLeft) + 'px');
+}
+</script>
+</body>
+</html>

@@ -16,6 +16,79 @@
       "categories": ["productivity"],
       "releases": [
         {
+          "version": "0.6.2",
+          "commit": "0379695d8d397141dc102b4259f70ac66ae9ea5b",
+          "contentHash": "b8b831ecac45d920f6b0e2ffd366457cd2265eee03e95cc383b1e4049aafadab",
+          "execution": "trusted-worker",
+          "minimumOrca": "1.4.259",
+          "name": "Code Review Requests",
+          "contributes": [
+            { "kind": "panels", "name": "Review Requests" },
+            { "kind": "commands", "name": "Review Requests: Open panel" },
+            { "kind": "commands", "name": "Review Requests: Refresh" },
+            { "kind": "events", "name": "workspace.removed" },
+            { "kind": "statusBarItems", "name": "review-requests" }
+          ],
+          "capabilities": [
+            "storage:own",
+            "settings:own",
+            "secrets:own",
+            "notifications:show",
+            "workspace:read",
+            "workspace:write",
+            "workspace:create",
+            "agent:read",
+            "agent:launch",
+            "terminal:send"
+          ],
+          "images": {
+            "icon": {
+              "path": "plugins/code-review-requests/images/icon.png",
+              "alt": "Code Review Requests",
+              "sha256": "28771f8b1f23f9efad0913805fbb30f7599d44046db2c0de228545128441078b",
+              "width": 512,
+              "height": 512
+            },
+            "cover": {
+              "path": "plugins/code-review-requests/images/cover.png",
+              "alt": "The Review Requests panel listing merge requests waiting for review, next to the status bar count",
+              "sha256": "6921dab146ec67444e6e85efe8626ce786c553cfcc5a4e836b874d1bcc8fe33c",
+              "width": 1600,
+              "height": 1000
+            },
+            "screenshots": [
+              {
+                "path": "plugins/code-review-requests/images/review-requests.png",
+                "alt": "The Review Requests panel: merge requests with their CI status, open comments, age and a Late badge",
+                "sha256": "4a55981d366bc87b0cddb0be9100f2fb51d1ef147a9c1bb4d5631414edfa01e8",
+                "width": 2560,
+                "height": 1600
+              },
+              {
+                "path": "plugins/code-review-requests/images/status-bar.png",
+                "alt": "The status bar item showing 3 | 3! with the tooltip \"6 Review Requests, 3 overdue. Click to open.\"",
+                "sha256": "02455c38b8801ce9d08bd2b48e6450c7d1edb3d32243b7eada9d46b633da76fc",
+                "width": 2560,
+                "height": 1600
+              },
+              {
+                "path": "plugins/code-review-requests/images/review-workspace.png",
+                "alt": "An Orca window with a review workspace, the merge request description, the review agent in a terminal and the Reviewing tab",
+                "sha256": "e75d91250947ff88fba6fa9b429d43abfb51bbea561daa7b49a48c8f216e850c",
+                "width": 2560,
+                "height": 1600
+              },
+              {
+                "path": "plugins/code-review-requests/images/review-draft.png",
+                "alt": "The Review Draft: diff-view notes and agent findings with checkboxes, a summary, the Approve outcome and Post review",
+                "sha256": "81900ebd8d1b31658decfb9a4ed839113c1810ad98b35150fc60a22ed9d584a1",
+                "width": 2560,
+                "height": 1600
+              }
+            ]
+          }
+        },
+        {
           "version": "0.6.1",
           "commit": "bf9f7a604c065a2319ddded8dc1f64850afe5128",
           "contentHash": "4a79b329e729d404dca702dbcffa995a0a7fef29e346fa48a8f8f79236d6007f",
