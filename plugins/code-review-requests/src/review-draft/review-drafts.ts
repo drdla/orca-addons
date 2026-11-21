@@ -9,6 +9,7 @@
 // makes the note unposted again.
 import type { OrcaWorkerApi } from 'orca/worker'
 import type { Clock } from '../seams/clock'
+import type { Staleness } from './outdated'
 
 /** What posting recorded for a Review Comment. */
 export type PostedMark = {
@@ -55,6 +56,11 @@ export type ReviewDraft = {
    * and re-creates them (retry); Delete failed drafts removes them. Absent means none.
    */
   failedDrafts?: FailedDraft[]
+  /**
+   * Which Review Comments may be outdated, as the last import computed it against the Review
+   * Workspace's HEAD (#58). Absent when HEAD couldn't be read (or before #58).
+   */
+  staleness?: Staleness
 }
 
 /** A Review Comment whose GitLab draft didn't publish. */

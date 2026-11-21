@@ -2,7 +2,10 @@
 //   1. Read the MR (current `diff_refs`), its diff versions, my pending drafts and GitLab's version.
 //   2. Create one draft per checked, unposted Review Comment: a line comment against the MR version
 //      whose head is the comment's commit, or, when no version matches (or it has no line), a
-//      general comment that starts with `path:line`.
+//      general comment that starts with `path:line`. A comment that may be outdated (#58) posts
+//      the same way: its line exists in the version it was written on (also when a later version
+//      changed or deleted it), so GitLab shows it there, marked outdated, with the code it meant.
+//      Moving it to the latest version would put it on whatever line now has that number.
 //   3. Publish them as one review: `bulk_publish` with the summary and reviewer state on GitLab
 //      19.2+, a `/submit_review <state>` note on 17.4–19.1. Approve also calls `POST /approve` with
 //      the current head SHA.
@@ -63,7 +66,9 @@ export function createReviewPoster(options: {
       /** My pending drafts that aren't ones this plugin left behind. */
       leftovers: pending.filter((d) => !ours.has(d.id)),
       /** Drafts the last post left that are still pending (they are replaced). */
-      stale: failed.filter((f) => pending.some((d) => d.id === f.draftNoteId))
+      stale: failed.filter((f) => pending.some((d) => d.id === f.draftNoteId)),
+      /** Review Comments the last import found may be outdated (#58). */
+      outdated: draft?.staleness?.outdated ?? []
     }
   }
 
@@ -71,12 +76,12 @@ export function createReviewPoster(options: {
     async preview(target: PostTarget): Promise<PostPreview> {
       const { transport, token } = await options.connection()
       try {
-        const { plan, leftovers, stale } = await read(target, transport)
+        const { plan, leftovers, stale, outdated } = await read(target, transport)
         return {
           url: target.url,
           comments: plan.length,
           leftoverDrafts: leftovers.map((d) => ({ id: d.id, body: d.note })),
-          warnings: warningsOf(plan, stale.length)
+          warnings: warningsOf(plan, stale.length, outdated)
         }
       } catch (error) {
         throw postingError(error, token)
@@ -246,12 +251,22 @@ export function locationOf(comment: Pick<ReviewComment, 'filePath' | 'line' | 's
   return `${comment.filePath}:${lines}`
 }
 
-function warningsOf(plan: Planned[], stale: number): string[] {
+function warningsOf(plan: Planned[], stale: number, outdatedIds: string[]): string[] {
   const warnings: string[] = []
   const older = plan.filter((p) => p.older).length
   const unplaced = plan.filter((p) => p.unplaced).length
+  const outdated = plan.filter((p) => outdatedIds.includes(p.comment.id)).length
   if (older > 0) {
-    warnings.push(`The MR has new commits since ${count(older)} were written: GitLab may show them as outdated.`)
+    warnings.push(
+      `The MR has new commits since ${count(older)} ${older === 1 ? 'was' : 'were'} written: ` +
+        `GitLab may show ${older === 1 ? 'it' : 'them'} as outdated.`
+    )
+  }
+  if (outdated > 0) {
+    warnings.push(
+      `${count(outdated)} may be outdated: ${outdated === 1 ? 'its' : 'their'} lines changed since. ` +
+        `${outdated === 1 ? 'It posts' : 'They post'} on the version ${outdated === 1 ? 'it was' : 'they were'} written on.`
+    )
   }
   if (unplaced > 0) {
     warnings.push(

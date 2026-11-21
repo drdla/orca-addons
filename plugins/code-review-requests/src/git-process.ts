@@ -2,7 +2,7 @@
 // Nothing here runs on load: `orca plugin check` imports the real worker.
 import { execFile } from 'node:child_process'
 import { gitEnv } from './git-env'
-import { mergeRequestHeadRef, targetBranchFullRef, targetBranchRef, type Git } from './seams/git'
+import { mergeRequestHeadRef, targetBranchFullRef, targetBranchRef, type FileChange, type Git } from './seams/git'
 
 const TIMEOUT_MS = 120_000
 
@@ -69,6 +69,49 @@ export function parsePorcelainZ(stdout: string): string[] {
   return entries
 }
 
+/**
+ * The arguments that diff commit `from` with `to` (#58): as a NUL-separated `--name-status` list
+ * (`files`; paths unquoted) or as zero-context hunks (`hunks`). Both use the same options, so git
+ * lists the files in the same order and parseFileChanges can pair them up.
+ */
+export function diffArgs(path: string, from: string, to: string, as: 'files' | 'hunks'): string[] {
+  const format = as === 'files' ? ['--name-status', '-z'] : ['-U0']
+  return ['-C', path, 'diff', '--no-color', '--no-ext-diff', '--no-textconv', '-M', ...format, from, to, '--']
+}
+
+/**
+ * Pairs the `--name-status -z` list with the `-U0` patch, file by file in order: paths from the
+ * list (the patch quotes odd ones), touched lines from the patch's `@@ -start,count` headers.
+ */
+export function parseFileChanges(nameStatusZ: string, patch: string): FileChange[] {
+  const fields = nameStatusZ.split('\0')
+  const sections = patch.split(/^diff --git /m).slice(1)
+  const changes: FileChange[] = []
+  for (let i = 0; i < fields.length; i++) {
+    const status = fields[i]!
+    if (status === '') continue
+    const twoPaths = status[0] === 'R' || status[0] === 'C'
+    const first = fields[++i] ?? ''
+    const second = twoPaths ? (fields[++i] ?? '') : first
+    changes.push({
+      oldPath: status[0] === 'A' ? null : first,
+      newPath: status[0] === 'D' ? null : second,
+      hunks: hunksOf(sections[changes.length] ?? '')
+    })
+  }
+  return changes
+}
+
+function hunksOf(section: string): FileChange['hunks'] {
+  const hunks: { start: number; count: number }[] = []
+  for (const line of section.split('\n')) {
+    if (line.startsWith('Binary files ')) return 'all'
+    const match = /^@@ -(\d+)(?:,(\d+))? \+/.exec(line)
+    if (match) hunks.push({ start: Number(match[1]), count: match[2] === undefined ? 1 : Number(match[2]) })
+  }
+  return hunks
+}
+
 /** Runs `git <args>` and answers its stdout; rejects with `<what> failed: <stderr>`. */
 async function run(args: string[], what: string): Promise<string> {
   const gitEnvironment = await env()
@@ -119,6 +162,13 @@ export const systemGit: Git = {
   },
   async headSha(worktreePath) {
     return (await run(['-C', worktreePath, 'rev-parse', 'HEAD'], 'git rev-parse HEAD')).trim()
+  },
+  async fileChanges(path, from, to) {
+    const [files, patch] = await Promise.all([
+      run(diffArgs(path, from, to, 'files'), 'git diff --name-status'),
+      run(diffArgs(path, from, to, 'hunks'), 'git diff')
+    ])
+    return parseFileChanges(files, patch)
   },
   async gitPath(worktreePath, name) {
     const stdout = await run(

@@ -113,6 +113,47 @@ test('posting creates line drafts against the matching MR version and publishes 
   await worker.deactivate()
 })
 
+test('a comment that may be outdated posts on the MR version it was written on, and the confirm step says so (#58)', async () => {
+  const arranged = arrange([note('n1', { lineNumber: 10, body: 'Reuse the helper?' })])
+  const { fakes, mr } = arranged
+  const written = { ...mr.diffRefs }
+  const { worker } = await start(arranged)
+  // The MR moved on, and Update workspace followed it; line 10 changed.
+  fakes.gitlab.push('acme/api', 7)
+  fakes.git.setHead(WT_PATH, mr.diffRefs.headSha)
+  fakes.git.setFileChanges(written.headSha, mr.diffRefs.headSha, [
+    { oldPath: 'src/login.ts', newPath: 'src/login.ts', hunks: [{ start: 10, count: 1 }] }
+  ])
+  const draft = await worker.request('rr.draft', { url: MR_URL })
+  assert.equal(draft.comments[0]!.outdated, true)
+
+  const preview = await worker.request('rr.postPreview', { url: MR_URL })
+  assert.deepEqual(preview.warnings, [
+    'The MR has new commits since 1 Review Comment was written: GitLab may show it as outdated.',
+    '1 Review Comment may be outdated: its lines changed since. It posts on the version it was written on.'
+  ])
+
+  const result = await worker.request('rr.postReview', { url: MR_URL, summary: '', outcome: 'comment' })
+  assert.equal(result.posted, 1)
+  const created = fakes.gitlab.requests.filter((r) => r.operation.endsWith('/draft_notes') && r.body !== undefined)
+  // Its line exists there, so GitLab can show it in place (as outdated) rather than lose where it was.
+  assert.deepEqual(created.map((r) => r.body), [
+    {
+      note: 'Reuse the helper?',
+      position: {
+        position_type: 'text',
+        base_sha: written.baseSha,
+        start_sha: written.startSha,
+        head_sha: written.headSha,
+        old_path: 'src/login.ts',
+        new_path: 'src/login.ts',
+        new_line: 10
+      }
+    }
+  ])
+  await worker.deactivate()
+})
+
 test('GitLab 17.4 to 19.1 submits with a /submit_review note carrying the summary', async () => {
   const arranged = arrange([note('n1')], { version: '19.1.3' })
   const { fakes } = arranged

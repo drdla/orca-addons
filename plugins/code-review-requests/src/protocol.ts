@@ -159,6 +159,13 @@ export type ReviewCommentView = {
   posted: boolean
   /** Why the last post couldn't publish it (its draft is left on GitLab), if it failed (#30). */
   failure?: string
+  /**
+   * May be outdated (#58): the Review Workspace has moved on from `sha`, and its lines (or its
+   * file) changed since. Set only when true; it can still be edited, posted or dropped.
+   */
+  outdated?: boolean
+  /** An Agent Finding reported for an older commit than the Review Workspace's (#58). Set only when true. */
+  stale?: boolean
 }
 
 /** How the review is submitted (#14, #30): its reviewer state. */

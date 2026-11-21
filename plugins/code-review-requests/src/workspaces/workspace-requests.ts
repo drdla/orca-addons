@@ -11,7 +11,7 @@ import type { Files } from '../seams/files'
 import type { GitLabAccess } from '../seams/gitlab'
 import type { Settings } from '../settings'
 import { hostWorkspaceIdOf } from './host-workspace'
-import { createReviewActions } from './review-actions'
+import { createReviewActions, type WorkspaceUpdate } from './review-actions'
 import type { WorkspaceContext } from './workspace-context'
 import type { WorkspaceHeads } from './workspace-heads'
 
@@ -31,6 +31,8 @@ export function registerWorkspaceRequests(
     gitLab: () => Promise<GitLabAccess>
     /** Which Review Workspaces are behind their merge request (#57). */
     heads: WorkspaceHeads
+    /** After Update workspace moved a Review Workspace (#58); it never rejects. */
+    onUpdated?: (update: WorkspaceUpdate) => Promise<void>
   }
 ): Disposable {
   const { context, ended } = options
@@ -78,10 +80,13 @@ export function registerWorkspaceRequests(
     }
     return { opened: true as const }
   })
-  // "Update workspace" (#57). The WorkspaceUpdate it returns (old and new head) is #58's hook.
+  // "Update workspace" (#57). Which Review Comments may be outdated is worked out against the
+  // workspace's HEAD whenever the Review Draft is imported (#58); the update only hands over the
+  // head it left, so what was written before it keeps that commit.
   orca.panels.handle('rr.updateWorkspace', async ({ url }) =>
     changing(async () => {
-      await reviewActions.updateWorkspace(url)
+      const update = await reviewActions.updateWorkspace(url)
+      await options.onUpdated?.(update)
     })
   )
   orca.panels.handle('rr.runAgentReview', async ({ url }) => {

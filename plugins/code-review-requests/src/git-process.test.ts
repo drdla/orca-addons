@@ -1,6 +1,14 @@
 // The git argument lists the real Git seam runs (#54).
 import { assert, test } from 'orca/testing'
-import { fetchBranchArgs, isAncestorArgs, parsePorcelainZ, resetBranchArgs, unsetUpstreamArgs } from './git-process'
+import {
+  diffArgs,
+  fetchBranchArgs,
+  isAncestorArgs,
+  parseFileChanges,
+  parsePorcelainZ,
+  resetBranchArgs,
+  unsetUpstreamArgs
+} from './git-process'
 
 test('fetches a target branch with slashes fresh into its remote-tracking ref', () => {
   assert.deepEqual(fetchBranchArgs('/src/api', 'release/1.2'), [
@@ -28,4 +36,73 @@ test('asks git whether one commit is an ancestor of another', () => {
   assert.deepEqual(isAncestorArgs('/wt/review-api-7', 'aaa', 'bbb'), [
     '-C', '/wt/review-api-7', 'merge-base', '--is-ancestor', 'aaa', 'bbb'
   ])
+})
+
+test('diffs two commits with renames, once as a file list and once as zero-context hunks (#58)', () => {
+  assert.deepEqual(diffArgs('/wt/review-api-7', 'aaa', 'bbb', 'files'), [
+    '-C', '/wt/review-api-7', 'diff', '--no-color', '--no-ext-diff', '--no-textconv', '-M', '--name-status', '-z',
+    'aaa', 'bbb', '--'
+  ])
+  assert.deepEqual(diffArgs('/wt/review-api-7', 'aaa', 'bbb', 'hunks'), [
+    '-C', '/wt/review-api-7', 'diff', '--no-color', '--no-ext-diff', '--no-textconv', '-M', '-U0', 'aaa', 'bbb', '--'
+  ])
+})
+
+test('reads which lines of the older commit each changed file had touched (#58)', () => {
+  const files = [
+    'M', 'src/a b.ts', 'R087', 'src/old.ts', 'src/new.ts', 'R100', 'x.ts', 'y.ts', 'D', 'gone.ts', 'A', 'added.ts',
+    'M', 'logo.png', ''
+  ].join('\0')
+  const patch = [
+    'diff --git a/src/a b.ts b/src/a b.ts',
+    'index 1..2 100644',
+    '--- a/src/a b.ts',
+    '+++ b/src/a b.ts',
+    '@@ -3 +3 @@ function x() {',
+    '-old',
+    '+new',
+    '@@ -10,0 +11,2 @@',
+    '+added',
+    '+@@ -99 +99 @@ not a hunk header: an added line',
+    '@@ -20,4 +21 @@',
+    '-a',
+    'diff --git a/src/old.ts b/src/new.ts',
+    'similarity index 87%',
+    'rename from src/old.ts',
+    'rename to src/new.ts',
+    '--- a/src/old.ts',
+    '+++ b/src/new.ts',
+    '@@ -7,2 +7,2 @@',
+    'diff --git a/x.ts b/y.ts',
+    'similarity index 100%',
+    'rename from x.ts',
+    'rename to y.ts',
+    'diff --git a/gone.ts b/gone.ts',
+    'deleted file mode 100644',
+    '--- a/gone.ts',
+    '+++ /dev/null',
+    '@@ -1,3 +0,0 @@',
+    'diff --git a/added.ts b/added.ts',
+    'new file mode 100644',
+    '--- /dev/null',
+    '+++ b/added.ts',
+    '@@ -0,0 +1 @@',
+    'diff --git a/logo.png b/logo.png',
+    'Binary files a/logo.png and b/logo.png differ',
+    ''
+  ].join('\n')
+
+  assert.deepEqual(parseFileChanges(files, patch), [
+    {
+      oldPath: 'src/a b.ts',
+      newPath: 'src/a b.ts',
+      hunks: [{ start: 3, count: 1 }, { start: 10, count: 0 }, { start: 20, count: 4 }]
+    },
+    { oldPath: 'src/old.ts', newPath: 'src/new.ts', hunks: [{ start: 7, count: 2 }] },
+    { oldPath: 'x.ts', newPath: 'y.ts', hunks: [] },
+    { oldPath: 'gone.ts', newPath: null, hunks: [{ start: 1, count: 3 }] },
+    { oldPath: null, newPath: 'added.ts', hunks: [{ start: 0, count: 0 }] },
+    { oldPath: 'logo.png', newPath: 'logo.png', hunks: 'all' }
+  ])
+  assert.deepEqual(parseFileChanges('', ''), [])
 })

@@ -403,6 +403,26 @@ export default defineCheck({
     },
     persisted: draftOpen
   },
+  /**
+   * After Update workspace moved the workspace to the merge request's new head (#58): the note
+   * range's lines changed (may be outdated), the posted note is left alone, and the Agent Findings
+   * are stale, one of them on changed lines too.
+   */
+  reviewDraftMovedOn: {
+    requests: {
+      'rr.snapshot': inReview,
+      'rr.draft': {
+        ...reviewDraft,
+        comments: reviewDraft.comments.map((c) => ({
+          ...c,
+          ...(c.id === 'note:n1' || c.id === 'finding:0f3a9c21' ? { outdated: true } : {}),
+          ...(c.origin === 'agent-finding' ? { stale: true } : {})
+        })),
+        warnings: []
+      }
+    },
+    persisted: draftOpen
+  },
   /** The worker couldn't answer the Review Draft. */
   reviewDraftFailed: {
     requests: {

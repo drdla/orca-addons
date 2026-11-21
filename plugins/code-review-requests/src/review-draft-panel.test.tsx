@@ -133,6 +133,32 @@ test('a refused change shows on the comment', async () => {
   await view.unmount()
 })
 
+test('comments that may be outdated and stale Agent Findings are marked, and stay curatable (#58)', async () => {
+  const { view } = await openDraft({
+    'rr.draft': draft([
+      comment('note:n1', { outdated: true, sha: 'sha-old' }),
+      comment('note:n2', { line: 40 }),
+      comment('finding:a', { line: 12, stale: true, sha: 'sha-old' }),
+      comment('finding:b', { line: 30, stale: true, outdated: true, sha: 'sha-old' })
+    ]),
+    'rr.updateDraftComment': draft([comment('note:n1', { outdated: true, checked: false })])
+  })
+
+  assert.equal(view.findAll({ type: 'Badge', text: 'May be outdated' }).length, 2)
+  assert.equal(view.findAll({ type: 'Badge', text: 'Stale' }).length, 2)
+  const callout = view.find({ type: 'Callout', label: 'The Review Workspace has moved on' })
+  assert.ok(callout)
+  assert.ok(view.find({ text: /2 Review Comments may be outdated: their lines changed since they were written/ }))
+  assert.ok(view.find({ text: /2 Agent Findings are from an older commit: Run Agent Review for fresh ones, then import again/ }))
+  // Still editable and checkable.
+  assert.equal(view.findAll({ type: 'Textarea' }).length, 2)
+  assert.notEqual(view.find({ type: 'Checkbox', label: 'src/login.ts:10' })!.disabled, true)
+  await view.toggle(view.find({ type: 'Checkbox', label: 'src/login.ts:10' })!)
+  assert.equal(view.valueOf(view.find({ type: 'Checkbox', label: 'src/login.ts:10' })!), false)
+  assert.ok(view.find({ type: 'Badge', text: 'May be outdated' }), 'the flag stays after the change')
+  await view.unmount()
+})
+
 test('posted comments are marked and locked; warnings and empty sections are explained', async () => {
   const { view } = await openDraft({
     'rr.draft': draft([comment('note:n1', { posted: true })], {

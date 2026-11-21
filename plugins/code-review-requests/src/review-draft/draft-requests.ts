@@ -17,7 +17,7 @@ export function registerDraftRequests(
     /** After a Review Draft changed. */
     onChanged?: () => Promise<void>
   }
-): ReviewDrafts {
+): { drafts: ReviewDrafts; importWrittenAt(url: string, from: string): Promise<void> } {
   const { deps } = options
   const drafts = createReviewDrafts(orca.storage, deps.clock)
   const draftImport = createDraftImport({ drafts, cli: deps.orcaCli, git: deps.git, files: deps.files, clock: deps.clock })
@@ -45,5 +45,15 @@ export function registerDraftRequests(
   orca.panels.handle('rr.updateDraftComment', async ({ url, ...change }) =>
     thenChanged(draftImport.change(targetOf(url), change))
   )
-  return drafts
+  return {
+    drafts,
+    /**
+     * After Update workspace moved the Review Workspace from commit `from` (#58): imports the
+     * diff-view notes and findings written before, recording `from` as their commit, so the
+     * Review Draft can tell which of them may be outdated.
+     */
+    async importWrittenAt(url: string, from: string): Promise<void> {
+      await draftImport.open(targetOf(url), { writtenAt: from })
+    }
+  }
 }

@@ -55,6 +55,48 @@ test('after a push to the merge request, the next poll marks its card "Merge req
   await worker.deactivate()
 })
 
+test('Update workspace keeps diff-view notes at the head they were written on, so the Review Draft can flag them (#58)', async () => {
+  const fakes = fakeDeps()
+  const mr = reviewingAtHead(fakes)
+  const oldHead = mr.diffRefs.headSha
+  const note = {
+    id: 'n1',
+    worktreeId: `${REPO.repoId}::${WORKTREE}`,
+    filePath: 'src/login.ts',
+    lineNumber: 10,
+    body: 'Why not reuse the helper?',
+    createdAt: 1_000,
+    side: 'modified' as const,
+    scope: 'branch' as const
+  }
+  // Written in Orca's diff view; the Review Draft was never opened.
+  fakes.cli.setDiffComments(note.worktreeId, [note])
+  const { worker } = await startWorker(fakes)
+  fakes.gitlab.push('acme/api', 7)
+  await fakes.clock.advance(5 * MINUTE)
+  const newHead = mr.diffRefs.headSha
+  fakes.git.setRemoteMergeRequestHead(7, newHead)
+  fakes.git.setFileChanges(oldHead, newHead, [
+    { oldPath: 'src/login.ts', newPath: 'src/login.ts', hunks: [{ start: 10, count: 2 }] }
+  ])
+
+  await worker.request('rr.updateWorkspace', { url: MR_URL })
+  const draft = await worker.request('rr.draft', { url: MR_URL })
+  assert.deepEqual(
+    draft.comments.map((c) => [c.id, c.sha, c.outdated]),
+    [['note:n1', oldHead, true]]
+  )
+
+  // Reworded in Orca after the update: still on the line it was written on, at the old head.
+  fakes.cli.setDiffComments(note.worktreeId, [{ ...note, body: 'Reuse the helper.', updatedAt: 9_000 }])
+  const reworded = await worker.request('rr.draft', { url: MR_URL })
+  assert.deepEqual(
+    reworded.comments.map((c) => [c.body, c.sha, c.outdated]),
+    [['Reuse the helper.', oldHead, true]]
+  )
+  await worker.deactivate()
+})
+
 test("the poll reads a workspace's HEAD only for Review Workspaces, and only when the merge request's head moved", async () => {
   const fakes = fakeDeps()
   reviewingAtHead(fakes)
@@ -99,9 +141,12 @@ test('Update workspace on a clean workspace moves it to the new head, rebuilds t
   assert.equal(snapshot.reviewRequests.find((c) => c.url === MR_URL)?.mergeRequestUpdated, false)
   // The rebuilt page comes to the front, so the reviewer sees what changed.
   assert.equal(host.callsOf('editor.open').length, 2)
-  // The base is untouched: no workspace is created or re-based, only the branch moves.
+  // The base is untouched: no workspace is created or re-based, only the branch moves. (Reading
+  // the diff-view notes into the Review Draft, #58, changes nothing.)
   assert.deepEqual(
-    fakes.cli.calls.map((c) => c.command).filter((c) => c !== 'worktree list' && c !== 'worktree ps'),
+    fakes.cli.calls
+      .map((c) => c.command)
+      .filter((c) => c !== 'worktree list' && c !== 'worktree ps' && c !== 'worktree show'),
     []
   )
   await fakes.clock.advance(5 * MINUTE)
