@@ -29,7 +29,7 @@ import type { ReviewRequestCard, ReviewRequestsSnapshot, ReviewRequestView } fro
 import { registerDraftRequests } from './review-draft/draft-requests'
 import { registerPostRequests } from './review-draft/post-requests'
 import { createReviewDrafts, isPosted, isUnposted } from './review-draft/review-drafts'
-import { GitLabError, type GitLabConnection } from './seams/gitlab'
+import { GitLabError, type GitLabAccess, type GitLabConnection } from './seams/gitlab'
 import { createSeenTracker, seenRefiner } from './seen'
 import { DEFAULT_SETTINGS, readSettings, type Settings } from './settings'
 import { createStatusBar } from './status-bar'
@@ -68,6 +68,11 @@ export function createWorker(deps: Deps) {
     const settings = () => readSettings(orca.settings)
     /** The connection the settings and secrets describe now. */
     const currentConnection = async (): Promise<GitLabConnection> => connectionFor(await settings(), orca.secrets)
+    /** A transport for the current connection, for posting (#30) and Review Cover Pages (#55). */
+    const gitLabAccess = async (): Promise<GitLabAccess> => {
+      const connection = await currentConnection()
+      return { transport: deps.gitLab(connection), token: connection.token }
+    }
 
     const state = createPollState(log)
     let overdueHours = DEFAULT_SETTINGS.overdueHours
@@ -291,7 +296,9 @@ export function createWorker(deps: Deps) {
       settings,
       reviewRequest: (url) => state.current().reviewRequests.find((rr) => rr.url === url),
       snapshot,
-      postChanged
+      postChanged,
+      files: deps.files,
+      gitLab: gitLabAccess
     })
     // The Review Draft (#29): import and curation, also for an Ended Review Request whose
     // workspace is still there; posting it (#30). The cards show its counts (#10), so open panels
@@ -309,10 +316,7 @@ export function createWorker(deps: Deps) {
     registerPostRequests(orca, {
       drafts,
       cards: draftCards,
-      connection: async () => {
-        const connection = await currentConnection()
-        return { transport: deps.gitLab(connection), token: connection.token }
-      },
+      connection: gitLabAccess,
       onChanged: postChanged
     })
     // Token mode, the Connection section and the setup checklist (#8, #25).

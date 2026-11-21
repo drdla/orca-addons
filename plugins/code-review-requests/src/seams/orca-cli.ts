@@ -10,6 +10,8 @@ export type LinkedItem = {
   url: string
   number?: number
   title?: string
+  /** A Linear issue's identifier, for example `OEO-9` (Linear links only). */
+  identifier?: string
 }
 
 /** A row of `orca worktree list --json` (only the fields the plugin reads). */

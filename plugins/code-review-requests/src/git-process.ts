@@ -88,5 +88,12 @@ export const systemGit: Git = {
   },
   async headSha(worktreePath) {
     return (await run(['-C', worktreePath, 'rev-parse', 'HEAD'], 'git rev-parse HEAD')).trim()
+  },
+  async gitPath(worktreePath, name) {
+    const stdout = await run(
+      ['-C', worktreePath, 'rev-parse', '--path-format=absolute', '--git-path', name],
+      'git rev-parse --git-path'
+    )
+    return stdout.trim()
   }
 }

@@ -2,6 +2,7 @@
 // the tabs; Back returns. Opening (and Import again) asks the worker to import the diff-view
 // notes and Agent Findings (`rr.draft`). Diff-view notes are read-only here (edit them in Orca);
 // Agent Findings get an editor. Every comment has a checkbox: checked ones are what #30 posts.
+// "Cover page" reopens the Review Workspace's Review Cover Page (#55) in Orca's main view.
 import {
   atom,
   Badge,
@@ -32,6 +33,8 @@ const draftUrl = atom<string | null>('rr.draftUrl', null, { persist: 'plugin' })
 const draft = atom<ReviewDraftView | null>(null)
 const draftFailure = atom<string | null>(null)
 const importing = atom(false)
+/** Why the Review Cover Page (#55) didn't open, or null. */
+const coverPageFailure = atom<string | null>(null)
 /** Unsaved Agent Finding text, by comment id. */
 const edits = atom<Record<string, string>>({})
 /** Per-comment errors, by comment id. */
@@ -66,6 +69,7 @@ export function openReviewDraftToPost(url: string): void {
 
 function closeReviewDraft(): void {
   resetPosting()
+  set(coverPageFailure, null)
   set(draftUrl, null)
   set(draft, null)
   set(draftFailure, null)
@@ -83,6 +87,16 @@ function importDraft(): void {
     })
     .catch((error: unknown) => set(draftFailure, messageOf(error)))
     .finally(() => set(importing, false))
+}
+
+/** Opens the Review Cover Page in Orca's main view; the worker builds it first if missing. */
+function openCoverPage(): void {
+  const url = read(draftUrl)
+  if (url === null) return
+  set(coverPageFailure, null)
+  plugin
+    .request('rr.openCoverPage', { url }, { timeoutMs: 60_000 })
+    .catch((error: unknown) => set(coverPageFailure, messageOf(error)))
 }
 
 function setCommentError(id: string, message: string | null): void {
@@ -140,10 +154,18 @@ export function ReviewDraftScreen() {
           <Heading level={2}>Review Draft</Heading>
         </Row>
         <Row gap="sm">
+          <Button size="xs" variant="ghost" onPress={openCoverPage}>
+            Cover page
+          </Button>
           {busy && <Spinner label="Importing" labelHidden />}
           <IconButton icon="refresh" label="Import again" variant="ghost" size="sm" disabled={busy} onPress={importDraft} />
         </Row>
       </Row>
+      {read(coverPageFailure) !== null && (
+        <Text tone="danger" size="sm">
+          {`Can't open the Review Cover Page: ${read(coverPageFailure)}`}
+        </Text>
+      )}
       {failure !== null && (
         <Callout tone="warning" icon="warning" title="Can't load the Review Draft">
           {failure}

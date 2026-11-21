@@ -245,6 +245,11 @@ declare module 'orca' {
     'rr.startReview': { input: { url: string; withAgent: boolean }; output: ReviewRequestsSnapshot }
     /** Shows a Review Request's (or an Ended Review Request's) Review Workspace in Orca. */
     'rr.openWorkspace': { input: { url: string }; output: { opened: true } }
+    /**
+     * Opens the Review Cover Page of a Review Request's (or an Ended Review Request's) Review
+     * Workspace in Orca's main view, building it first if the workspace has none (#55).
+     */
+    'rr.openCoverPage': { input: { url: string }; output: { opened: true } }
     /** Starts an Agent Review in a Review Request's existing Review Workspace. */
     'rr.runAgentReview': { input: { url: string }; output: { started: true } }
     /** What removing an Ended Review Request's Review Workspace would lose (#28). */
