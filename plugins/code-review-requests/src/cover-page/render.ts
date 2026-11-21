@@ -59,10 +59,10 @@ export type CoverPageSource = {
 export function renderCoverPage(source: CoverPageSource): string {
   const { mr, diffs } = source
   const reference = mr.references?.full ?? `${source.projectPath}!${mr.iid}`
-  const moved = mr.sha !== source.headSha
   return [
     `# ${text(mr.title)}`,
     '',
+    ...(mr.sha !== source.headSha ? [updatedCallout(mr.sha, source.headSha), ''] : []),
     `[${text(reference)}](${mr.web_url}) by ${text(mr.author.name)} (@${text(mr.author.username)})`,
     '',
     '| | |',
@@ -89,16 +89,39 @@ export function renderCoverPage(source: CoverPageSource): string {
     '---',
     '',
     `A snapshot of ${text(reference)} at commit ${code(source.headSha.slice(0, 8))}: it doesn't change when the merge request does.`,
-    ...(moved
-      ? [
-          '',
-          `The merge request has moved on since this workspace was checked out (GitLab is at ${code(mr.sha.slice(0, 8))}): the changed-file list may be newer than the code.`
-        ]
-      : []),
     '',
     `<!-- orca-review-cover-page head=${source.headSha} -->`,
     ''
   ].join('\n')
+}
+
+// --- Merge request updated (#57) ---------------------------------------------------------------
+
+const CALLOUT_START = '> **Merge request updated.**'
+const HEAD_MARKER = /^<!-- orca-review-cover-page head=([0-9a-f]+) -->$/m
+
+/** The callout at the top of a page whose workspace is behind the merge request's head. */
+function updatedCallout(gitLabHead: string, pageHead: string): string {
+  return (
+    `${CALLOUT_START} New commits were pushed since this workspace was checked out: GitLab is at ${code(gitLabHead.slice(0, 8))}, ` +
+    `the workspace and this page at ${code(pageHead.slice(0, 8))}. Use "Update workspace" on its card in the Review Requests panel to review them.`
+  )
+}
+
+/**
+ * A built page with the "Merge request updated" callout as of `gitLabHead`, the merge request's
+ * head the last poll saw: added below the title while the page's recorded head differs, removed
+ * once they match. Without the plugin's head marker the page is left as it is.
+ */
+export function withUpdatedCallout(page: string, gitLabHead: string): string {
+  const pageHead = HEAD_MARKER.exec(page)?.[1]
+  if (pageHead === undefined) return page
+  const lines = page.split('\n')
+  const at = lines.findIndex((line) => line.startsWith(CALLOUT_START))
+  // The callout and the blank line after it.
+  if (at !== -1) lines.splice(at, 2)
+  if (gitLabHead !== pageHead) lines.splice(2, 0, updatedCallout(gitLabHead, pageHead), '')
+  return lines.join('\n')
 }
 
 function descriptionOf(source: CoverPageSource): string {

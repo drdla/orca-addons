@@ -1,7 +1,7 @@
 // Building, writing and opening a Review Workspace's Review Cover Page (#55). The page is a
 // snapshot of the checked-out commit: it is built once (on Start review, or by Open workspace or
 // the Review Draft's "Cover page" when it is missing) from GitLab REST, never by the poll, and not
-// rebuilt on open.
+// rebuilt on open. Update workspace (#57) rebuilds it for the new head.
 //
 // It lives at `.orca-review/merge-request.md` in the worktree, beside the Agent Review's
 // findings.json. `.orca-review/` goes into the exclude file git reads for the worktree (for a
@@ -16,6 +16,7 @@ import type { LinkedItem } from '../seams/orca-cli'
 import { hostWorkspaceIdOf } from '../workspaces/host-workspace'
 import {
   renderCoverPage,
+  withUpdatedCallout,
   type CoverPageSource,
   type LinearLink,
   type RestApprovals,
@@ -36,11 +37,13 @@ export type CoverPageTarget = {
   iid: number
   workspace: { name: string; path: string }
   linear: LinearLink | null
+  /** The merge request's head as the last poll saw it, or null: for the callout on reopen (#57). */
+  mergeRequestHead: string | null
 }
 
 /** The target for a merge request's Review Workspace; Orca's linked items give its Linear link. */
 export function coverPageTargetOf(
-  mr: { projectPath: string; iid: number },
+  mr: { projectPath: string; iid: number; headSha?: string | null },
   workspace: { name: string; path: string; linkedItems?: LinkedItem[] }
 ): CoverPageTarget {
   const item = workspace.linkedItems?.find((i) => i.provider === 'linear' && i.identifier !== undefined)
@@ -48,16 +51,22 @@ export function coverPageTargetOf(
     projectPath: mr.projectPath,
     iid: mr.iid,
     workspace: { name: workspace.name, path: workspace.path },
-    linear: item === undefined ? null : { identifier: item.identifier!, url: item.url }
+    linear: item === undefined ? null : { identifier: item.identifier!, url: item.url },
+    mergeRequestHead: mr.headSha ?? null
   }
 }
 
 export type CoverPages = {
   /** Builds the page unless the workspace has one; true when it built it now. */
   ensure(target: CoverPageTarget): Promise<boolean>
+  /** Builds the page afresh, replacing the one there (after Update workspace, #57). */
+  rebuild(target: CoverPageTarget): Promise<void>
   /** Shows the page in an editor tab in Orca's main view. */
   reveal(target: CoverPageTarget): Promise<void>
-  /** Builds the page if missing, then shows it. */
+  /**
+   * Builds the page if missing, then shows it. An existing page gets the "Merge request updated"
+   * callout while the workspace is behind the merge request's head (#57), and loses it after.
+   */
   open(target: CoverPageTarget): Promise<void>
   /** After Open workspace: builds and shows the page only when the workspace has none. */
   openIfMissing(target: CoverPageTarget): Promise<void>
@@ -73,6 +82,11 @@ export function createCoverPages(deps: {
 
   async function ensure(target: CoverPageTarget): Promise<boolean> {
     if ((await deps.files.readText(pagePath(target))) !== null) return false
+    await build(target)
+    return true
+  }
+
+  async function build(target: CoverPageTarget): Promise<void> {
     const { transport, token } = await deps.gitLab()
     const [headSha, gitLab] = await Promise.all([
       deps.git.headSha(target.workspace.path),
@@ -83,7 +97,15 @@ export function createCoverPages(deps: {
     await excludeReviewFolder(target.workspace.path)
     const source: CoverPageSource = { projectPath: target.projectPath, headSha, linear: target.linear, ...gitLab }
     await deps.files.writeText(pagePath(target), renderCoverPage(source))
-    return true
+  }
+
+  /** The callout on an existing page, from the polled head: no GitLab read, no rebuild. */
+  async function markUpdated(target: CoverPageTarget): Promise<void> {
+    if (target.mergeRequestHead === null) return
+    const page = await deps.files.readText(pagePath(target))
+    if (page === null) return
+    const marked = withUpdatedCallout(page, target.mergeRequestHead)
+    if (marked !== page) await deps.files.writeText(pagePath(target), marked)
   }
 
   async function excludeReviewFolder(worktreePath: string): Promise<void> {
@@ -101,9 +123,10 @@ export function createCoverPages(deps: {
 
   return {
     ensure,
+    rebuild: build,
     reveal,
     async open(target) {
-      await ensure(target)
+      if (!(await ensure(target))) await markUpdated(target)
       await reveal(target)
     },
     async openIfMissing(target) {

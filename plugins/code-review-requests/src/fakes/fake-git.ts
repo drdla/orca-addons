@@ -9,6 +9,8 @@ type Method = 'fetchMergeRequestHead' | 'fetchBranch' | 'resetBranch' | 'statusP
 export class FakeGit implements Git {
   readonly fetches: ({ repoPath: string; iid: number } | { repoPath: string; branch: string })[] = []
   readonly resets: { worktreePath: string; ref: string }[] = []
+  /** Every worktree `headSha` was asked about, in order. */
+  readonly headReads: string[] = []
   #failures: Error[] = []
   #failuresOf = new Map<Method, Error[]>()
   #status = new Map<string, string[]>()
@@ -64,7 +66,10 @@ export class FakeGit implements Git {
   async resetBranch(worktreePath: string, ref: string): Promise<void> {
     this.#fail('resetBranch')
     this.resets.push({ worktreePath, ref })
-    this.#heads.delete(worktreePath)
+    // The worktree is now at what `ref` names there (setRef), or back at FAKE_HEAD_SHA.
+    const sha = this.#refs.get(`${worktreePath}\n${ref}`)
+    if (sha === undefined) this.#heads.delete(worktreePath)
+    else this.#heads.set(worktreePath, sha)
   }
 
   async resolveRef(path: string, ref: string): Promise<string | null> {
@@ -72,6 +77,7 @@ export class FakeGit implements Git {
   }
 
   async headSha(worktreePath: string): Promise<string> {
+    this.headReads.push(worktreePath)
     this.#fail('headSha')
     return this.#heads.get(worktreePath) ?? FAKE_HEAD_SHA
   }

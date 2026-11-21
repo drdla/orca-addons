@@ -1,7 +1,8 @@
 // What the panel's workspace buttons do (#6, #27): Start review (create the Review Workspace
 // through the orca CLI, linked to the MR, optionally followed by an Agent Review), Open workspace
 // and Run Agent Review. Start review and Open workspace also build and open the Review Cover Page
-// (#55, src/cover-page). Every failure rejects with a message the panel shows on the card.
+// (#55, src/cover-page). Update workspace (#57) moves a Review Workspace to the merge request's new
+// head. Every failure rejects with a message the panel shows on the card.
 import { coverPageTargetOf, type CoverPages } from '../cover-page/cover-pages'
 import type { ReviewRequestView } from '../protocol'
 import type { Worktree } from '../seams/orca-cli'
@@ -10,6 +11,7 @@ import { reviewCommandFor, reviewPromptFor } from './review-prompt'
 import { hostWorkspaceIdOf } from './host-workspace'
 import { findRepo, findReviewWorkspace, normalizeMergeRequestUrl } from './review-workspaces'
 import type { WorkspaceContext } from './workspace-context'
+import type { WorkspaceHeads } from './workspace-heads'
 import type { WorkspaceState } from './workspace-tracker'
 import { messageOf } from '../errors'
 
@@ -19,7 +21,15 @@ export type ReviewActionsDeps = WorkspaceContext & {
   reviewRequest: (url: string) => ReviewRequestView | undefined
   /** The Review Cover Page (#55), built and opened after the workspace exists. */
   coverPages: CoverPages
+  /** Which Review Workspaces are behind their merge request (#57); Update workspace records its HEAD. */
+  heads: WorkspaceHeads
 }
+
+/**
+ * What Update workspace did (#57): the Review Workspace moved from `from` to `to`. #58 compares
+ * Review Comments and Agent Findings made against `from` with the new head.
+ */
+export type WorkspaceUpdate = { url: string; worktreePath: string; from: string; to: string }
 
 export type ReviewActions = {
   /** Creates (or reuses) the Review Workspace, then starts an Agent Review if `withAgent`. */
@@ -28,6 +38,11 @@ export type ReviewActions = {
   runAgentReview(url: string): Promise<void>
   /** Opens the Review Cover Page, building it first if the workspace has none (#55). */
   openCoverPage(url: string): Promise<void>
+  /**
+   * Moves a clean Review Workspace to the merge request's current head and rebuilds its Review
+   * Cover Page (#57). Rejects, changing nothing, when it has uncommitted changes.
+   */
+  updateWorkspace(url: string): Promise<WorkspaceUpdate>
 }
 
 /** The workspace name Start review gives, for example `review-api-7`. */
@@ -152,6 +167,37 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     if (problems.length > 0) throw new Error(`The Review Workspace is ready, but ${problems.join('; ')}`)
   }
 
+  /**
+   * Update workspace (#57): fetch the target branch and the MR head, and hard-reset the workspace's
+   * branch to the head. Orca's `baseRef` (the remote-tracking target branch) is not changed, only
+   * fetched fresh, so "Committed on Branch" shows the updated merge request. Uncommitted changes
+   * would be lost, so they refuse it; the plugin's own `.orca-review/` folder doesn't count.
+   */
+  async function updateWorkspace(rr: ReviewRequestView): Promise<WorkspaceUpdate> {
+    const worktree = await existingWorkspace(rr)
+    const changes = (await deps.git.statusPorcelain(worktree.path)).filter((line) => !isReviewFolder(line))
+    if (changes.length > 0) {
+      const count = changes.length === 1 ? '1 uncommitted change' : `${changes.length} uncommitted changes`
+      throw new Error(
+        `The Review Workspace ${worktree.displayName} has ${count}: commit or stash them first. Nothing was changed.`
+      )
+    }
+    if (!rr.targetBranch) throw new Error('This Review Request has no target branch yet. Refresh and try again.')
+    const from = await deps.git.headSha(worktree.path)
+    // The base moves too: after a rebase onto a newer target, a stale remote-tracking target
+    // branch would put the target's commits into "Committed on Branch" and the Agent Review's diff.
+    await deps.git.fetchBranch(worktree.path, rr.targetBranch)
+    await deps.git.resetBranch(worktree.path, await deps.git.fetchMergeRequestHead(worktree.path, rr.iid))
+    const to = await deps.git.headSha(worktree.path)
+    deps.heads.record(worktree.path, to)
+    try {
+      await deps.coverPages.rebuild(coverPageTarget(worktree, rr))
+    } catch (error) {
+      throw new Error(`The workspace is updated, but its Review Cover Page wasn't rebuilt: ${messageOf(error)}`)
+    }
+    return { url: rr.url, worktreePath: worktree.path, from, to }
+  }
+
   /** Start reviews still running, by MR URL: a second click joins the first (one workspace). */
   const starting = new Map<string, Promise<void>>()
 
@@ -182,8 +228,16 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     async runAgentReview(url) {
       const rr = reviewRequestOf(url)
       await agentReview(await existingWorkspace(rr), rr)
+    },
+    async updateWorkspace(url) {
+      return updateWorkspace(reviewRequestOf(url))
     }
   }
+}
+
+/** A `git status --porcelain` line for the plugin's own `.orca-review/` folder (or a file in it). */
+function isReviewFolder(line: string): boolean {
+  return line.slice(3).startsWith('.orca-review/')
 }
 
 /** An error's message without its trailing period, to go on inside a sentence. */

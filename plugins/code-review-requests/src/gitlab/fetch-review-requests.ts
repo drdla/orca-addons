@@ -61,6 +61,7 @@ function toView(node: ReviewRequestNode): ReviewRequestView {
     requestedAt: Date.parse(node.createdAt),
     sourceBranch: node.sourceBranch,
     targetBranch: node.targetBranch,
+    headSha: node.diffRefs?.headSha ?? null,
     ci: ciOf(node.headPipeline?.status ?? null),
     // Filled in from the optional approvals query (approvals.ts), which CE may not answer.
     approvals: null,

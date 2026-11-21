@@ -1,5 +1,5 @@
 // The Review Workspace panel requests (#27, #28): Start review, Open workspace, Run Agent Review,
-// and the Ended tab's removal check and Remove workspace, plus Orca's `workspace.removed` event.
+// Update workspace (#57), and the Ended tab's removal check and Remove workspace, plus Orca's `workspace.removed` event.
 // worker.ts calls registerWorkspaceRequests once in activate.
 import type { OrcaWorkerApi } from 'orca/worker'
 import { coverPageTargetOf, createCoverPages } from '../cover-page/cover-pages'
@@ -12,6 +12,7 @@ import type { Settings } from '../settings'
 import { hostWorkspaceIdOf } from './host-workspace'
 import { createReviewActions } from './review-actions'
 import type { WorkspaceContext } from './workspace-context'
+import type { WorkspaceHeads } from './workspace-heads'
 
 export function registerWorkspaceRequests(
   orca: OrcaWorkerApi,
@@ -27,6 +28,8 @@ export function registerWorkspaceRequests(
     /** Writing the Review Cover Page (#55). */
     files: Files
     gitLab: () => Promise<GitLabAccess>
+    /** Which Review Workspaces are behind their merge request (#57). */
+    heads: WorkspaceHeads
   }
 ): Disposable {
   const { context, ended } = options
@@ -35,7 +38,8 @@ export function registerWorkspaceRequests(
     ...context,
     settings: options.settings,
     reviewRequest: options.reviewRequest,
-    coverPages
+    coverPages,
+    heads: options.heads
   })
 
   /** Runs a workspace change; open panels hear of it even when it fails. Answers the snapshot. */
@@ -73,6 +77,12 @@ export function registerWorkspaceRequests(
     }
     return { opened: true as const }
   })
+  // "Update workspace" (#57). The WorkspaceUpdate it returns (old and new head) is #58's hook.
+  orca.panels.handle('rr.updateWorkspace', async ({ url }) =>
+    changing(async () => {
+      await reviewActions.updateWorkspace(url)
+    })
+  )
   orca.panels.handle('rr.runAgentReview', async ({ url }) => {
     await reviewActions.runAgentReview(url)
     return { started: true as const }
