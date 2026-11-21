@@ -1,10 +1,11 @@
 // A Git that only records: which branches and MR heads were fetched where (in order) and which
 // worktrees were reset to what; answers `git status` from setStatus(), `rev-parse HEAD` from
-// setHead() and other refs from setRef(), ancestry from addAncestor(). failNext() makes the next
+// setHead() and other refs from setRef(), ancestry from addAncestor(), diffs between two commits
+// from setFileChanges() (recorded in `diffs`). failNext() makes the next
 // call fail; failNextOf() the next call of one method only; onNextOf() runs something as it starts.
-import { mergeRequestHeadRef, targetBranchRef, type Git } from '../seams/git'
+import { mergeRequestHeadRef, targetBranchRef, type FileChange, type Git } from '../seams/git'
 
-type Method = 'fetchMergeRequestHead' | 'fetchBranch' | 'resetBranch' | 'statusPorcelain' | 'headSha'
+type Method = 'fetchMergeRequestHead' | 'fetchBranch' | 'resetBranch' | 'statusPorcelain' | 'headSha' | 'fileChanges'
 
 export class FakeGit implements Git {
   readonly fetches: ({ repoPath: string; iid: number } | { repoPath: string; branch: string })[] = []
@@ -20,6 +21,9 @@ export class FakeGit implements Git {
   #ancestors = new Set<string>()
   #hooks = new Map<Method, (() => void)[]>()
   #failAfterReset: Error[] = []
+  #fileChanges = new Map<string, FileChange[]>()
+  /** Every pair of commits fileChanges was asked about, in order. */
+  readonly diffs: { from: string; to: string; paths: string[] }[] = []
 
   /** The uncommitted changes `git status --porcelain` reports at `path` (default: none). */
   setStatus(path: string, lines: string[]): void {
@@ -107,6 +111,29 @@ export class FakeGit implements Git {
 
   async resolveRef(path: string, ref: string): Promise<string | null> {
     return this.#refs.get(`${path}\n${ref}`) ?? null
+  }
+
+  /**
+   * What fileChanges answers between `from` and `to` (anywhere), of the files it is asked about;
+   * unset pairs changed nothing.
+   */
+  setFileChanges(from: string, to: string, changes: FileChange[]): void {
+    this.#fileChanges.set(`${from}..${to}`, changes)
+  }
+
+  async fileChanges(_path: string, from: string, to: string, paths: string[]): Promise<FileChange[]> {
+    this.diffs.push({ from, to, paths: [...paths] })
+    this.#fail('fileChanges')
+    const changes = this.#fileChanges.get(`${from}..${to}`) ?? []
+    // Like git: a rename is found only when both paths are asked about; else it is a delete (or an add).
+    return changes.flatMap((c): FileChange[] => {
+      const old = c.oldPath !== null && paths.includes(c.oldPath)
+      const now = c.newPath !== null && paths.includes(c.newPath)
+      if (old && (now || c.newPath === null)) return [structuredClone(c)]
+      if (old) return [{ oldPath: c.oldPath, newPath: null, hunks: 'all' }]
+      if (now) return [{ oldPath: c.oldPath === c.newPath ? c.oldPath : null, newPath: c.newPath, hunks: 'all' }]
+      return []
+    })
   }
 
   async headSha(worktreePath: string): Promise<string> {

@@ -295,6 +295,19 @@ export function createWorker(deps: Deps) {
       await statusBar.render(current)
       return { seen: true as const }
     })
+    // The Review Draft (#29): import and curation, also for an Ended Review Request whose
+    // workspace is still there; posting it (#30). The cards show its counts (#10), so open panels
+    // hear of each change.
+    const draftCards = (): ReviewRequestCard[] => [
+      ...viewNow().reviewRequests,
+      ...ended.entries().map((entry) => ({ ...entry, overdue: false }))
+    ]
+    const draftRequests = registerDraftRequests(orca, {
+      deps,
+      cards: draftCards,
+      workspaceState: () => workspaces.current(),
+      onChanged: postChanged
+    })
     // Review Workspace actions (#27) and removal (#28).
     const removedWatch = registerWorkspaceRequests(orca, {
       context,
@@ -305,20 +318,9 @@ export function createWorker(deps: Deps) {
       postChanged,
       files: deps.files,
       gitLab: gitLabAccess,
-      heads
-    })
-    // The Review Draft (#29): import and curation, also for an Ended Review Request whose
-    // workspace is still there; posting it (#30). The cards show its counts (#10), so open panels
-    // hear of each change.
-    const draftCards = (): ReviewRequestCard[] => [
-      ...viewNow().reviewRequests,
-      ...ended.entries().map((entry) => ({ ...entry, overdue: false }))
-    ]
-    registerDraftRequests(orca, {
-      deps,
-      cards: draftCards,
-      workspaceState: () => workspaces.current(),
-      onChanged: postChanged
+      heads,
+      // #58: what was written before the update keeps the commit it was written on.
+      onMoved: (update) => draftRequests.workspaceMoved(update.url, update.from)
     })
     registerPostRequests(orca, {
       drafts,

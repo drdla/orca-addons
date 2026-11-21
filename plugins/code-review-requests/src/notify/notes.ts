@@ -1,16 +1,13 @@
 // The wording of every notification the plugin sends about Review Requests (#11, #23).
 // Orca shows a plain title and body, prefixed with the plugin's name; notifications only inform.
 import type { ReviewRequestView } from '../protocol'
+import { plural } from '../plural'
 import { isEnded, type DropReason, type Dropped } from './changes'
 
 export type Note = { title: string; body: string }
 
 /** How many items a summary lists before "+N more". */
 const TOP = 3
-
-function plural(n: number, word: string): string {
-  return `${n} ${word}${n === 1 ? '' : 's'}`
-}
 
 function line(r: ReviewRequestView): string {
   return `!${r.iid} ${r.title}`

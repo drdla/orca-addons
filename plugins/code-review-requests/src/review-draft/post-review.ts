@@ -2,7 +2,10 @@
 //   1. Read the MR (current `diff_refs`), its diff versions, my pending drafts and GitLab's version.
 //   2. Create one draft per checked, unposted Review Comment: a line comment against the MR version
 //      whose head is the comment's commit, or, when no version matches (or it has no line), a
-//      general comment that starts with `path:line`.
+//      general comment that starts with `path:line`. A comment that may be outdated (#58) posts
+//      the same way: its line exists in the version it was written on (also when a later version
+//      changed or deleted it), so GitLab shows it there, marked outdated, with the code it meant.
+//      Moving it to the latest version would put it on whatever line now has that number.
 //   3. Publish them as one review: `bulk_publish` with the summary and reviewer state on GitLab
 //      19.2+, a `/submit_review <state>` note on 17.4–19.1. Approve also calls `POST /approve` with
 //      the current head SHA.
@@ -16,6 +19,8 @@ import { GitLabError, type GitLabAccess, type GitLabTransport, type Json } from 
 import { redactError } from '../gitlab/http-response'
 import type { FailedDraft, PostedComment, ReviewComment, ReviewDraft, ReviewDrafts } from './review-drafts'
 import { messageOf } from '../errors'
+import { plural } from '../plural'
+import { isOutdated } from './outdated'
 
 /** Which MR to post to. */
 export type PostTarget = { url: string; projectPath: string; iid: number }
@@ -36,6 +41,8 @@ type Planned = {
   older: boolean
   /** Has a line, but no MR version matches its commit: posts as a general comment. */
   unplaced: boolean
+  /** The last import found it may be outdated (#58). */
+  outdated: boolean
 }
 
 export function createReviewPoster(options: {
@@ -55,7 +62,11 @@ export function createReviewPoster(options: {
     ])
     const failed = draft?.failedDrafts ?? []
     const ours = new Set(failed.map((f) => f.draftNoteId))
-    const plan = (await drafts.toPost(target.url)).map((c) => planComment(c, versions, mr.diff_refs?.head_sha ?? null))
+    const latestHead = mr.diff_refs?.head_sha ?? null
+    const plan = (await drafts.toPost(target.url)).map((c) => ({
+      ...planComment(c, versions, latestHead),
+      outdated: isOutdated(c, draft?.outdated)
+    }))
     return {
       base,
       mr,
@@ -63,7 +74,7 @@ export function createReviewPoster(options: {
       /** My pending drafts that aren't ones this plugin left behind. */
       leftovers: pending.filter((d) => !ours.has(d.id)),
       /** Drafts the last post left that are still pending (they are replaced). */
-      stale: failed.filter((f) => pending.some((d) => d.id === f.draftNoteId))
+      replaced: failed.filter((f) => pending.some((d) => d.id === f.draftNoteId))
     }
   }
 
@@ -71,12 +82,12 @@ export function createReviewPoster(options: {
     async preview(target: PostTarget): Promise<PostPreview> {
       const { transport, token } = await options.connection()
       try {
-        const { plan, leftovers, stale } = await read(target, transport)
+        const { plan, leftovers, replaced } = await read(target, transport)
         return {
           url: target.url,
           comments: plan.length,
           leftoverDrafts: leftovers.map((d) => ({ id: d.id, body: d.note })),
-          warnings: warningsOf(plan, stale.length)
+          warnings: warningsOf(plan, replaced.length)
         }
       } catch (error) {
         throw postingError(error, token)
@@ -87,14 +98,14 @@ export function createReviewPoster(options: {
       const { transport, token } = await options.connection()
       const summary = request.summary.trim()
       try {
-        const { base, mr, plan, leftovers, stale } = await read(target, transport)
+        const { base, mr, plan, leftovers, replaced } = await read(target, transport)
         if (plan.length === 0 && leftovers.length === 0 && summary === '' && request.outcome === 'comment') {
           throw new Error('Nothing to post: check a Review Comment, write a summary or pick another outcome.')
         }
         const takesSummary = atLeast((await transport.rest<{ version: string }>('GET', '/version')).version, 19, 2)
 
         // Retry: the drafts the last post left behind are replaced by fresh ones.
-        for (const f of stale) await transport.rest('DELETE', `${base}/draft_notes/${f.draftNoteId}`)
+        for (const f of replaced) await transport.rest('DELETE', `${base}/draft_notes/${f.draftNoteId}`)
 
         const created: { planned: Planned; draftId: number }[] = []
         const failures: FailedDraft[] = []
@@ -200,7 +211,7 @@ function mrPath(target: PostTarget): string {
   return `/projects/${encodeURIComponent(target.projectPath)}/merge_requests/${target.iid}`
 }
 
-function planComment(comment: ReviewComment, versions: Version[], latestHead: string | null): Planned {
+function planComment(comment: ReviewComment, versions: Version[], latestHead: string | null): Omit<Planned, 'outdated'> {
   const version = comment.sha === null ? undefined : versions.find((v) => v.head_commit_sha === comment.sha)
   if (comment.filePath === null || comment.line === null || version === undefined) {
     const located = comment.filePath !== null
@@ -246,27 +257,34 @@ export function locationOf(comment: Pick<ReviewComment, 'filePath' | 'line' | 's
   return `${comment.filePath}:${lines}`
 }
 
-function warningsOf(plan: Planned[], stale: number): string[] {
+function warningsOf(plan: Planned[], replaced: number): string[] {
   const warnings: string[] = []
   const older = plan.filter((p) => p.older).length
   const unplaced = plan.filter((p) => p.unplaced).length
+  // Only those that post on their version: the unplaced warning covers the rest.
+  const outdated = plan.filter((p) => p.outdated && p.position !== null).length
   if (older > 0) {
-    warnings.push(`The MR has new commits since ${count(older)} were written: GitLab may show them as outdated.`)
+    warnings.push(
+      `The MR has new commits since ${plural(older, 'Review Comment')} ${older === 1 ? 'was' : 'were'} written: ` +
+        `GitLab may show ${older === 1 ? 'it' : 'them'} as outdated.`
+    )
+  }
+  if (outdated > 0) {
+    warnings.push(
+      `${plural(outdated, 'Review Comment')} may be outdated: ${outdated === 1 ? 'its' : 'their'} lines changed since. ` +
+        `${outdated === 1 ? 'It posts' : 'They post'} on the version ${outdated === 1 ? 'it was' : 'they were'} written on.`
+    )
   }
   if (unplaced > 0) {
     warnings.push(
-      `${count(unplaced)} ${unplaced === 1 ? 'was' : 'were'} written against a commit that is no MR version: ` +
+      `${plural(unplaced, 'Review Comment')} ${unplaced === 1 ? 'was' : 'were'} written against a commit that is no MR version: ` +
         `${unplaced === 1 ? 'it posts' : 'they post'} as general comments starting with path:line.`
     )
   }
-  if (stale > 0) {
-    warnings.push(`${stale === 1 ? '1 draft' : `${stale} drafts`} the last post left on GitLab will be replaced.`)
+  if (replaced > 0) {
+    warnings.push(`${plural(replaced, 'draft')} the last post left on GitLab will be replaced.`)
   }
   return warnings
-}
-
-function count(n: number): string {
-  return n === 1 ? '1 Review Comment' : `${n} Review Comments`
 }
 
 function withFailures(draft: ReviewDraft, failures: FailedDraft[]): ReviewDraft {

@@ -26,12 +26,17 @@ export type ReviewActionsDeps = WorkspaceContext & {
   coverPages: CoverPages
   /** Which Review Workspaces are behind their merge request (#57); Update workspace records its HEAD. */
   heads: WorkspaceHeads
+  /**
+   * Update workspace moved the workspace's HEAD (#58): called as soon as it did, before the steps
+   * that may still fail (finishing the reset, the Review Cover Page). Must not reject.
+   */
+  onMoved?: (update: WorkspaceUpdate) => Promise<void>
 }
 
 /**
- * What Update workspace did (#57): the Review Workspace moved from `from` to `to`. For #58 it is
- * only a trigger: #58 recomputes what is stale by comparing each Review Comment's `sha` and the
- * findings file's `headSha` with the workspace's current HEAD, so staleness survives a worker
+ * What Update workspace did (#57): the Review Workspace moved from `from` to `to`. For #58 it only
+ * hands over `from`: which Review Comments may be outdated is worked out by comparing each one's
+ * `sha` with the workspace's current HEAD at every Review Draft import, so it survives a worker
  * restart and an update made outside the plugin.
  */
 export type WorkspaceUpdate = { url: string; worktreePath: string; from: string; to: string }
@@ -252,6 +257,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     // Wherever the branch ended up, the card follows it, even when a later step of the reset failed.
     const to = await deps.git.headSha(worktree.path).catch(() => null)
     if (to !== null) deps.heads.record(worktree.path, to)
+    if (to !== null && to !== from) await deps.onMoved?.({ url: rr.url, worktreePath: worktree.path, from, to })
     if (failure !== null) {
       if (to !== null && to !== from) {
         throw new Error(
