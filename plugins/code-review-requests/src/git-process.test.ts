@@ -9,6 +9,7 @@ import {
   resetBranchArgs,
   unsetUpstreamArgs
 } from './git-process'
+import { diffNameStatusCapture, diffPatchCapture } from './fixtures/git-diff-capture'
 
 test('fetches a target branch with slashes fresh into its remote-tracking ref', () => {
   assert.deepEqual(fetchBranchArgs('/src/api', 'release/1.2'), [
@@ -38,13 +39,27 @@ test('asks git whether one commit is an ancestor of another', () => {
   ])
 })
 
-test('diffs two commits with renames, once as a file list and once as zero-context hunks (#58)', () => {
-  assert.deepEqual(diffArgs('/wt/review-api-7', 'aaa', 'bbb', 'files'), [
-    '-C', '/wt/review-api-7', 'diff', '--no-color', '--no-ext-diff', '--no-textconv', '-M', '--name-status', '-z',
-    'aaa', 'bbb', '--'
+test('diffs two commits with renames, once as a file list and once as zero-context hunks, for the given files only (#58)', () => {
+  const common = [
+    '--literal-pathspecs', '-C', '/wt/review-api-7', 'diff', '--no-color', '--no-ext-diff', '--no-textconv',
+    '--src-prefix=a/', '--dst-prefix=b/', '-M'
+  ]
+  assert.deepEqual(diffArgs('/wt/review-api-7', 'aaa', 'bbb', 'files', ['src/a.ts', 'odd*:name.ts']), [
+    ...common, '--name-status', '-z', 'aaa', 'bbb', '--', 'src/a.ts', 'odd*:name.ts'
   ])
-  assert.deepEqual(diffArgs('/wt/review-api-7', 'aaa', 'bbb', 'hunks'), [
-    '-C', '/wt/review-api-7', 'diff', '--no-color', '--no-ext-diff', '--no-textconv', '-M', '-U0', 'aaa', 'bbb', '--'
+  assert.deepEqual(diffArgs('/wt/review-api-7', 'aaa', 'bbb', 'hunks', ['src/a.ts']), [
+    ...common, '-U0', 'aaa', 'bbb', '--', 'src/a.ts'
+  ])
+})
+
+test('pairs the file list with the patch by path, from real git output: type change, rename, quoted path (#58)', () => {
+  assert.deepEqual(parseFileChanges(diffNameStatusCapture, diffPatchCapture), [
+    { oldPath: 'del.ts', newPath: 'del.ts', hunks: [{ start: 5, count: 2 }] },
+    // A file that became a symlink: two patch sections, wholly changed.
+    { oldPath: 'link-me.txt', newPath: 'link-me.txt', hunks: 'all' },
+    { oldPath: 'naïve "q".ts', newPath: 'naïve "q".ts', hunks: [{ start: 2, count: 1 }] },
+    { oldPath: 'rename-me.ts', newPath: 'renamed.ts', hunks: [{ start: 4, count: 1 }] },
+    { oldPath: 'z.ts', newPath: 'z.ts', hunks: [{ start: 2, count: 1 }] }
   ])
 })
 

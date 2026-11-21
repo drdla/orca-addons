@@ -65,11 +65,12 @@ export interface Git {
   /** The commit checked out in the worktree at `worktreePath` (`git rev-parse HEAD`), for #29. */
   headSha(worktreePath: string): Promise<string>
   /**
-   * What changed between commits `from` and `to`, seen from `path` (`git diff -M -U0`), one entry
-   * per changed file in git's order. #58 asks it whether a Review Comment written at `from` sits on
-   * lines `to` changed.
+   * What changed in `paths` between commits `from` and `to`, seen from `path` (`git diff -M -U0
+   * -- <paths>`), one entry per changed file in git's order. #58 asks it whether a Review Comment
+   * written at `from` sits on lines `to` changed. Renames are found within `paths` only: a file
+   * renamed to a path outside them shows as deleted.
    */
-  fileChanges(path: string, from: string, to: string): Promise<FileChange[]>
+  fileChanges(path: string, from: string, to: string, paths: string[]): Promise<FileChange[]>
   /**
    * The absolute path of `name` in the worktree's git dir as git resolves it
    * (`git rev-parse --path-format=absolute --git-path <name>`). In a linked worktree, `info/exclude`

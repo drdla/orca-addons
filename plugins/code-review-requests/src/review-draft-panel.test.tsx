@@ -149,7 +149,7 @@ test('comments that may be outdated and stale Agent Findings are marked, and sta
   const callout = view.find({ type: 'Callout', label: 'The Review Workspace has moved on' })
   assert.ok(callout)
   assert.ok(view.find({ text: /2 Review Comments may be outdated: their lines changed since they were written/ }))
-  assert.ok(view.find({ text: /2 Agent Findings are from an older commit: Run Agent Review for fresh ones, then import again/ }))
+  assert.ok(view.find({ text: /2 Agent Findings are from an older commit: run Agent Review for fresh ones, then import again/ }))
   // Still editable and checkable.
   assert.equal(view.findAll({ type: 'Textarea' }).length, 2)
   assert.notEqual(view.find({ type: 'Checkbox', label: 'src/login.ts:10' })!.disabled, true)

@@ -2,8 +2,11 @@
 // the poll compares the merge request's head with its Review Workspace's HEAD, and Update
 // workspace moves a clean workspace to the new head and rebuilds its Review Cover Page. GitLab,
 // the orca CLI, git, files and the clock are fakes; Orca's host is the kit's mock host.
-import { assert, mockHost, test } from 'orca/testing'
+import { assert, mockHost, mountWorker, test } from 'orca/testing'
+import type { OrcaWorkerApi } from 'orca/worker'
 import { fakeDeps, type Fakes } from './fakes'
+import { createReviewDrafts } from './review-draft/review-drafts'
+import type { DiffComment } from './seams/orca-cli'
 import { CONFIGURED, MINUTE, startWorker as startHarness } from './testing/worker-harness'
 
 const MR_URL = 'https://gitlab.example.com/acme/api/-/merge_requests/7'
@@ -55,45 +58,89 @@ test('after a push to the merge request, the next poll marks its card "Merge req
   await worker.deactivate()
 })
 
-test('Update workspace keeps diff-view notes at the head they were written on, so the Review Draft can flag them (#58)', async () => {
+const NOTE: DiffComment = {
+  id: 'n1',
+  worktreeId: `${REPO.repoId}::${WORKTREE}`,
+  filePath: 'src/login.ts',
+  lineNumber: 10,
+  body: 'Why not reuse the helper?',
+  createdAt: 1_000,
+  side: 'modified',
+  scope: 'branch'
+}
+
+/** The Review Drafts in the plugin's storage on `host`, as another worker of the plugin sees them. */
+async function draftsOn(fakes: Fakes, host: ReturnType<typeof mockHost>) {
+  let storage: OrcaWorkerApi['storage'] | undefined
+  await mountWorker({ default: (api: OrcaWorkerApi) => void (storage = api.storage) }, { host })
+  return createReviewDrafts(storage!, fakes.clock)
+}
+
+test('Update workspace opens no Review Draft; the next import gives notes written before it the head it left (#58)', async () => {
   const fakes = fakeDeps()
-  const mr = reviewingAtHead(fakes)
-  const oldHead = mr.diffRefs.headSha
-  const note = {
-    id: 'n1',
-    worktreeId: `${REPO.repoId}::${WORKTREE}`,
-    filePath: 'src/login.ts',
-    lineNumber: 10,
-    body: 'Why not reuse the helper?',
-    createdAt: 1_000,
-    side: 'modified' as const,
-    scope: 'branch' as const
-  }
+  const { worker, host, oldHead, newHead } = await behind(fakes)
   // Written in Orca's diff view; the Review Draft was never opened.
-  fakes.cli.setDiffComments(note.worktreeId, [note])
-  const { worker } = await startWorker(fakes)
-  fakes.gitlab.push('acme/api', 7)
-  await fakes.clock.advance(5 * MINUTE)
-  const newHead = mr.diffRefs.headSha
-  fakes.git.setRemoteMergeRequestHead(7, newHead)
+  fakes.cli.setDiffComments(NOTE.worktreeId, [NOTE])
   fakes.git.setFileChanges(oldHead, newHead, [
     { oldPath: 'src/login.ts', newPath: 'src/login.ts', hunks: [{ start: 10, count: 2 }] }
   ])
+  const drafts = await draftsOn(fakes, host)
 
   await worker.request('rr.updateWorkspace', { url: MR_URL })
-  const draft = await worker.request('rr.draft', { url: MR_URL })
-  assert.deepEqual(
-    draft.comments.map((c) => [c.id, c.sha, c.outdated]),
-    [['note:n1', oldHead, true]]
-  )
 
-  // Reworded in Orca after the update: still on the line it was written on, at the old head.
-  fakes.cli.setDiffComments(note.worktreeId, [{ ...note, body: 'Reuse the helper.', updatedAt: 9_000 }])
-  const reworded = await worker.request('rr.draft', { url: MR_URL })
+  // Card counts and removal protection follow the Review Draft, and there still is none.
+  assert.equal(await drafts.get(MR_URL), null)
+  assert.equal(await drafts.hasUnposted(MR_URL), false)
+  assert.equal((await card(worker)).toPost, 0)
+
+  const draft = await worker.request('rr.draft', { url: MR_URL })
+  assert.deepEqual(draft.comments.map((c) => [c.id, c.sha, c.outdated]), [['note:n1', oldHead, true]])
+
+  // Applied once: a note written after that import is at the workspace's HEAD. One reworded in
+  // Orca is still on the lines it was written on, at the old head.
+  fakes.cli.setDiffComments(NOTE.worktreeId, [
+    { ...NOTE, body: 'Reuse the helper.', updatedAt: 9_000 },
+    { ...NOTE, id: 'n2', lineNumber: 30 }
+  ])
+  const again = await worker.request('rr.draft', { url: MR_URL })
   assert.deepEqual(
-    reworded.comments.map((c) => [c.body, c.sha, c.outdated]),
-    [['Reuse the helper.', oldHead, true]]
+    again.comments.map((c) => [c.id, c.sha, c.outdated]),
+    [
+      ['note:n1', oldHead, true],
+      ['note:n2', newHead, undefined]
+    ]
   )
+  await worker.deactivate()
+})
+
+test('Update workspace imports into a Review Draft that exists, at the head it left (#58)', async () => {
+  const fakes = fakeDeps()
+  const { worker, host, oldHead } = await behind(fakes)
+  fakes.cli.setDiffComments(NOTE.worktreeId, [NOTE])
+  await worker.request('rr.draft', { url: MR_URL })
+  // A second note, written before the update; the Review Draft wasn't imported again.
+  fakes.cli.setDiffComments(NOTE.worktreeId, [NOTE, { ...NOTE, id: 'n2', lineNumber: 30 }])
+
+  await worker.request('rr.updateWorkspace', { url: MR_URL })
+
+  const stored = await (await draftsOn(fakes, host)).get(MR_URL)
+  assert.deepEqual(stored?.comments.map((c) => [c.id, c.sha]), [
+    ['note:n1', oldHead],
+    ['note:n2', oldHead]
+  ])
+  await worker.deactivate()
+})
+
+test('when Update workspace fails after the workspace moved, notes written before it still keep the head it left (#58)', async () => {
+  const fakes = fakeDeps()
+  const { worker, oldHead } = await behind(fakes)
+  fakes.cli.setDiffComments(NOTE.worktreeId, [NOTE])
+  fakes.git.failAfterNextReset(new Error('git branch --unset-upstream failed: locked'))
+
+  await assert.rejects(worker.request('rr.updateWorkspace', { url: MR_URL }), /finishing the reset failed/)
+
+  const draft = await worker.request('rr.draft', { url: MR_URL })
+  assert.deepEqual(draft.comments.map((c) => [c.id, c.sha]), [['note:n1', oldHead]])
   await worker.deactivate()
 })
 

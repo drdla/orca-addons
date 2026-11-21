@@ -117,27 +117,38 @@ test('a comment that may be outdated posts on the MR version it was written on, 
   const arranged = arrange([note('n1', { lineNumber: 10, body: 'Reuse the helper?' })])
   const { fakes, mr } = arranged
   const written = { ...mr.diffRefs }
+  // A kept Agent Finding the agent reviewed on a local commit, which is no MR version.
+  fakes.files.write(
+    FINDINGS_PATH,
+    JSON.stringify({ headSha: 'sha-local', findings: [{ path: 'src/login.ts', line: 10, body: 'Expiry?' }] })
+  )
   const { worker } = await start(arranged)
+  const finding = (await worker.request('rr.draft', { url: MR_URL })).comments[1]!
+  await worker.request('rr.updateDraftComment', { url: MR_URL, id: finding.id, checked: true })
   // The MR moved on, and Update workspace followed it; line 10 changed.
   fakes.gitlab.push('acme/api', 7)
   fakes.git.setHead(WT_PATH, mr.diffRefs.headSha)
-  fakes.git.setFileChanges(written.headSha, mr.diffRefs.headSha, [
-    { oldPath: 'src/login.ts', newPath: 'src/login.ts', hunks: [{ start: 10, count: 1 }] }
-  ])
+  for (const from of [written.headSha, 'sha-local']) {
+    fakes.git.setFileChanges(from, mr.diffRefs.headSha, [
+      { oldPath: 'src/login.ts', newPath: 'src/login.ts', hunks: [{ start: 10, count: 1 }] }
+    ])
+  }
   const draft = await worker.request('rr.draft', { url: MR_URL })
-  assert.equal(draft.comments[0]!.outdated, true)
+  assert.deepEqual(draft.comments.map((c) => c.outdated), [true, true])
 
+  // The finding posts as a general comment: only the positioned one is said to post on its version.
   const preview = await worker.request('rr.postPreview', { url: MR_URL })
   assert.deepEqual(preview.warnings, [
     'The MR has new commits since 1 Review Comment was written: GitLab may show it as outdated.',
-    '1 Review Comment may be outdated: its lines changed since. It posts on the version it was written on.'
+    '1 Review Comment may be outdated: its lines changed since. It posts on the version it was written on.',
+    '1 Review Comment was written against a commit that is no MR version: it posts as general comments starting with path:line.'
   ])
 
   const result = await worker.request('rr.postReview', { url: MR_URL, summary: '', outcome: 'comment' })
-  assert.equal(result.posted, 1)
+  assert.equal(result.posted, 2)
   const created = fakes.gitlab.requests.filter((r) => r.operation.endsWith('/draft_notes') && r.body !== undefined)
   // Its line exists there, so GitLab can show it in place (as outdated) rather than lose where it was.
-  assert.deepEqual(created.map((r) => r.body), [
+  assert.deepEqual(created.map((r) => r.body).slice(0, 1), [
     {
       note: 'Reuse the helper?',
       position: {

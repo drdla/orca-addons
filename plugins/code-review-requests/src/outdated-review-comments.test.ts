@@ -75,11 +75,16 @@ test('after the workspace moved, comments on changed or deleted lines may be out
     ['note:range-inserted-into', true, false],
     ['note:after-an-insertion', false, false],
     ['note:deleted-file', true, false],
-    ['note:renamed-unchanged', false, false]
+    // Only the comments' files are diffed, so git can't see where src/old.ts went: it looks deleted.
+    ['note:renamed-unchanged', true, false]
   ])
   // Kept, and still made against the commit they were written on.
   assert.ok(after.comments.every((c) => c.sha === 'sha-old' && c.checked))
-  assert.deepEqual(fakes.git.diffs, [{ from: 'sha-old', to: 'sha-new' }], 'one diff per commit the comments were written on')
+  assert.deepEqual(
+    fakes.git.diffs,
+    [{ from: 'sha-old', to: 'sha-new', paths: ['src/login.ts', 'src/gone.ts', 'src/old.ts'] }],
+    'one diff per commit the comments were written on, of their files only'
+  )
   await worker.deactivate()
 })
 

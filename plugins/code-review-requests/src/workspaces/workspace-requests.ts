@@ -4,6 +4,7 @@
 // worker.ts calls registerWorkspaceRequests once in activate.
 import type { OrcaWorkerApi } from 'orca/worker'
 import { coverPageTargetOf, createCoverPages } from '../cover-page/cover-pages'
+import { messageOf } from '../errors'
 import type { EndedWorkspaces } from '../ended/ended-workspaces'
 import type { ReviewRequestsSnapshot, ReviewRequestView } from '../protocol'
 import type { Disposable } from '../seams/clock'
@@ -31,8 +32,11 @@ export function registerWorkspaceRequests(
     gitLab: () => Promise<GitLabAccess>
     /** Which Review Workspaces are behind their merge request (#57). */
     heads: WorkspaceHeads
-    /** After Update workspace moved a Review Workspace (#58); it never rejects. */
-    onUpdated?: (update: WorkspaceUpdate) => Promise<void>
+    /**
+     * Update workspace moved a Review Workspace (#58), also when a later step of it then failed.
+     * A rejection is logged: the workspace did move, so it only costs the outdated flags.
+     */
+    onMoved?: (update: WorkspaceUpdate) => Promise<void>
   }
 ): Disposable {
   const { context, ended } = options
@@ -42,7 +46,14 @@ export function registerWorkspaceRequests(
     settings: options.settings,
     reviewRequest: options.reviewRequest,
     coverPages,
-    heads: options.heads
+    heads: options.heads,
+    onMoved: async (update) => {
+      try {
+        await options.onMoved?.(update)
+      } catch (error) {
+        context.log(`Review Draft after Update workspace of ${update.url} failed: ${messageOf(error)}`)
+      }
+    }
   })
 
   /** Runs a workspace change; open panels hear of it even when it fails. Answers the snapshot. */
@@ -82,11 +93,10 @@ export function registerWorkspaceRequests(
   })
   // "Update workspace" (#57). Which Review Comments may be outdated is worked out against the
   // workspace's HEAD whenever the Review Draft is imported (#58); the update only hands over the
-  // head it left, so what was written before it keeps that commit.
+  // head it left (onMoved, as soon as HEAD moved), so what was written before it keeps that commit.
   orca.panels.handle('rr.updateWorkspace', async ({ url }) =>
     changing(async () => {
-      const update = await reviewActions.updateWorkspace(url)
-      await options.onUpdated?.(update)
+      await reviewActions.updateWorkspace(url)
     })
   )
   orca.panels.handle('rr.runAgentReview', async ({ url }) => {

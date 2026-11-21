@@ -319,12 +319,8 @@ export function createWorker(deps: Deps) {
       files: deps.files,
       gitLab: gitLabAccess,
       heads,
-      // #58: what was written before the update keeps the commit it was written on. The workspace
-      // did move, so a failure here only costs the flags of notes not yet in the Review Draft.
-      onUpdated: (update) =>
-        draftRequests
-          .importWrittenAt(update.url, update.from)
-          .catch((error: unknown) => log(`Review Draft import after Update workspace failed: ${messageOf(error)}`))
+      // #58: what was written before the update keeps the commit it was written on.
+      onMoved: (update) => draftRequests.workspaceMoved(update.url, update.from)
     })
     registerPostRequests(orca, {
       drafts,

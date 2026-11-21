@@ -28,6 +28,7 @@ import {
 import type { ReviewCommentView, ReviewDraftView } from './protocol'
 import { openConfirm, PostSection, resetPosting, setupPosting } from './review-post-view'
 import { messageOf } from './errors'
+import { plural } from './plural'
 
 /** The Review Request whose draft is open (its MR URL), or null for the tabs. Kept across reloads. */
 const draftUrl = atom<string | null>('rr.draftUrl', null, { persist: 'plugin' })
@@ -221,14 +222,14 @@ function MovedOn({ comments }: { comments: ReviewCommentView[] }) {
         {outdated > 0 && (
           <Text size="sm">
             {outdated === 1
-              ? '1 Review Comment may be outdated: its lines changed since it was written. Check it, then keep, edit or drop it.'
-              : `${outdated} Review Comments may be outdated: their lines changed since they were written. Check them, then keep, edit or drop them.`}
+              ? `${plural(1, 'Review Comment')} may be outdated: its lines changed since it was written. Check it, then keep, edit or drop it.`
+              : `${plural(outdated, 'Review Comment')} may be outdated: their lines changed since they were written. Check them, then keep, edit or drop them.`}
           </Text>
         )}
         {stale > 0 && (
           <Text size="sm">
-            {`${stale === 1 ? '1 Agent Finding is' : `${stale} Agent Findings are`} from an older commit: ` +
-              'Run Agent Review for fresh ones, then import again.'}
+            {`${plural(stale, 'Agent Finding')} ${stale === 1 ? 'is' : 'are'} from an older commit: ` +
+              'run Agent Review for fresh ones, then import again.'}
           </Text>
         )}
       </Stack>
