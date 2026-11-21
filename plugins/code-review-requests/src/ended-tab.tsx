@@ -6,18 +6,18 @@ import {
   atom,
   Badge,
   Box,
-  Button,
   Callout,
   host,
-  Link,
   plugin,
   read,
   Row,
   Spinner,
   Stack,
   Text,
-  update
+  update,
 } from 'orca'
+import { Button } from './button'
+import { MergeRequestLink } from './merge-request-link'
 import type { EndedCard, EndedReason, RemovalCheck, ReviewRequestsSnapshot } from './protocol'
 import { openReviewDraft } from './review-draft-view'
 import { ErrorDetails } from './setup-checklist'
@@ -130,14 +130,20 @@ function EndedCardView(props: {
   return (
     <Box border radius="md" padding="sm" direction="column" gap="xs">
       <Row justify="between" align="start">
-        <Text weight="semibold">{card.title}</Text>
+        <Row gap="sm" align="start">
+          <MergeRequestLink url={card.url} iid={card.iid} onOpen={openInGitLab} />
+          {/* Nudged down 2px so the title's first line sits level with the button's text. */}
+          <Box direction="column">
+            <Box height={2} />
+            <Text weight="semibold">{card.title}</Text>
+          </Box>
+        </Row>
         <Badge tone={card.reason === 'merged' || card.reason === 'approved' ? 'success' : 'neutral'}>
           {REASONS[card.reason] ?? 'Ended'}
         </Badge>
       </Row>
       <Text muted size="xs">
-        <Link onPress={() => openInGitLab(card.url)}>{`${card.projectPath} !${card.iid}`}</Link>
-        {` · ${card.author} · ended `}
+        {`${card.author} · ended `}
         <MinuteTime at={card.endedAt} />
         {` · ${card.workspace.name}`}
       </Text>

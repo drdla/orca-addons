@@ -1,5 +1,5 @@
 // What the worker derives for the To review tab (#22): the cards in order, longest waiting
-// first, each marked overdue or not, and the bell's overdue look. Overdue depends on the time, so
+// first, each marked overdue or not, and the status bar item's overdue look. Overdue depends on the time, so
 // it is derived when asked, never stored in the poll state.
 import { isOverdue } from './overdue'
 import { overdueSplit } from './overdue-split'
@@ -19,7 +19,7 @@ export function cardsOf(state: PollState, context: OverdueContext): ReviewReques
 }
 
 /**
- * "in time | overdue!" in the bell while any Review Request is overdue (#10): "2 | 3!". Only
+ * "in time | overdue!" in the status bar item while any Review Request is overdue (#10): "2 | 3!". Only
  * overdue shows just that count ("2!", never "0 | 2!"). The "!" marks the overdue count instead of
  * colour: a status bar item has one tone, so the overdue part can't be red on its own.
  */

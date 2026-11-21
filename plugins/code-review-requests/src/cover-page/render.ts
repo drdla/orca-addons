@@ -1,6 +1,6 @@
 // The Review Cover Page (#55): a read-only Markdown snapshot of a merge request that a Review
 // Workspace opens in Orca's main view, with everything to read before the code: title,
-// description, metadata and the changed-file list. Pure: GitLab's REST answers in, Markdown out.
+// description and the changed-file list. Pure: GitLab's REST answers in, Markdown out.
 // Discussion threads and Agent Findings are left out on purpose.
 
 /** `GET /projects/:id/merge_requests/:iid`, only the fields read. */
@@ -9,13 +9,8 @@ export type RestMergeRequest = {
   title: string
   description: string | null
   web_url: string
-  author: { username: string; name: string }
-  source_branch: string
-  target_branch: string
-  labels: string[]
   /** The MR's head commit on GitLab now. */
   sha: string
-  head_pipeline?: { status: string } | null
   references?: { full: string }
 }
 
@@ -31,29 +26,15 @@ export type RestDiff = {
   collapsed?: boolean
 }
 
-/** `GET …/approvals`, only the fields read. GitLab CE may leave out the required count. */
-export type RestApprovals = {
-  approvals_required?: number | null
-  approvals_left?: number | null
-  approved_by?: { user: { username: string; name: string } }[]
-}
-
-/** A Linear ticket the Review Workspace itself links to. */
-export type LinearLink = { identifier: string; url: string }
-
 export type CoverPageSource = {
   /** The MR's project path, for example `acme/api`. */
   projectPath: string
   /** The commit checked out in the Review Workspace: what the page is a snapshot of. */
   headSha: string
-  /** The workspace's own Linear link, or null. */
-  linear: LinearLink | null
   mr: RestMergeRequest
   diffs: RestDiff[]
   /** True when GitLab had more diff pages than were read. */
   diffsTruncated: boolean
-  /** Null when GitLab didn't answer them. */
-  approvals: RestApprovals | null
 }
 
 export function renderCoverPage(source: CoverPageSource): string {
@@ -61,18 +42,6 @@ export function renderCoverPage(source: CoverPageSource): string {
   const reference = mr.references?.full ?? `${source.projectPath}!${mr.iid}`
   const page = [
     `# ${text(mr.title)}`,
-    '',
-    `[${text(reference)}](${mr.web_url}) by ${text(mr.author.name)} (@${text(mr.author.username)})`,
-    '',
-    '| | |',
-    '| --- | --- |',
-    `| Branches | ${code(mr.source_branch)} → ${code(mr.target_branch)} |`,
-    `| Labels | ${mr.labels.length === 0 ? 'none' : cell(mr.labels.map(text).join(', '))} |`,
-    `| Linear ticket | ${linearTicketOf(source)} |`,
-    `| Pipeline | ${pipelineOf(mr)} |`,
-    `| Approvals | ${approvalsCell(source.approvals)} |`,
-    '',
-    '## Description',
     '',
     descriptionOf(source),
     '',
@@ -257,39 +226,7 @@ function withoutCodeSpans(prose: string, rewrite: (text: string) => string): str
   return parts.map((part, i) => (i % 2 === 1 ? part : rewrite(part))).join('')
 }
 
-// --- Metadata ----------------------------------------------------------------------------------
-
-const LINEAR_URL = /https:\/\/linear\.app\/[^/\s)]+\/issue\/([A-Za-z][A-Za-z0-9]*-\d+)[^\s)>\]]*/
-/** `<team key>-<number>` at the start of the branch or a `/` segment, keys of 2–5 letters. */
-const BRANCH_IDENTIFIER = /(?:^|\/)([A-Za-z]{2,5})-(\d+)(?![0-9])/
-/** Look like a team key, but in a branch name they are almost always something else. */
-const NOT_TEAM_KEYS = new Set(['UTF', 'SHA', 'ISO', 'CVE', 'RFC', 'HTTP', 'MD5'])
-
-/** The workspace's own Linear link, a Linear link in the description, the branch name, or none. */
-function linearTicketOf(source: CoverPageSource): string {
-  if (source.linear !== null) return `[${text(source.linear.identifier)}](${source.linear.url})`
-  const link = LINEAR_URL.exec(source.mr.description ?? '')
-  if (link) return `[${link[1]!.toUpperCase()}](${link[0]})`
-  const match = BRANCH_IDENTIFIER.exec(source.mr.source_branch)
-  if (!match || NOT_TEAM_KEYS.has(match[1]!.toUpperCase())) return 'none'
-  return `${match[1]!.toUpperCase()}-${match[2]}`
-}
-
-function pipelineOf(mr: RestMergeRequest): string {
-  const status = mr.head_pipeline?.status
-  if (!status) return 'none'
-  return status === 'success' ? 'passed' : cell(text(status))
-}
-
-/** Who approved; out of the required number when GitLab requires any (CE may not say). */
-function approvalsCell(approvals: RestApprovals | null): string {
-  if (approvals === null) return 'unknown'
-  const by = (approvals.approved_by ?? []).map((a) => text(a.user.name))
-  const required = approvals.approvals_required ?? 0
-  const names = by.length === 0 ? '' : ` (${cell(by.join(', '))})`
-  if (required > 0) return `${by.length} of ${required}${names}`
-  return by.length === 0 ? 'none' : `${by.length}${names}`
-}
+// --- Changed files -----------------------------------------------------------------------------
 
 /** A row of the changed-file list. No links: plugins can't open a per-file branch diff. */
 function fileRow(diff: RestDiff): string {

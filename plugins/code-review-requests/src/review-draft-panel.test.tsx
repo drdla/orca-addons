@@ -72,7 +72,7 @@ test('an In review card opens its Review Draft; Back returns to the tabs', async
   assert.ok(view.find({ text: '1 of 2 checked' }))
   assert.equal(view.find({ type: 'Tabs' }), null)
 
-  await view.press(view.find({ type: 'Button', text: 'Back' })!)
+  await view.press(view.find({ type: 'Button', text: '← Back' })!)
   assert.ok(view.find({ type: 'Tabs' }))
   assert.deepEqual(view.errors, [])
   assert.deepEqual(view.refusals, [])

@@ -65,7 +65,7 @@ function toView(node: ReviewRequestNode): ReviewRequestView {
     ci: ciOf(node.headPipeline?.status ?? null),
     // Filled in from the optional approvals query (approvals.ts), which CE may not answer.
     approvals: null,
-    comments: node.userNotesCount ?? 0
+    comments: openThreadsOf(node)
   }
 }
 
@@ -87,4 +87,9 @@ function ciOf(status: PipelineStatus | null): CiStatus | null {
     default:
       return null
   }
+}
+
+/** Unresolved threads: resolved ones and plain comments that can't be resolved don't count. */
+function openThreadsOf(node: ReviewRequestNode): number {
+  return Math.max(0, (node.resolvableDiscussionsCount ?? 0) - (node.resolvedDiscussionsCount ?? 0))
 }

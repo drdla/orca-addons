@@ -19,7 +19,7 @@ export type StatusBarUpdate = {
   tooltip?: string
 }
 
-/** The bell's latest update; pass `id` for another item, such as the red overdue count. */
+/** The status bar item's latest update; pass `id` for another item, such as the red overdue count. */
 export function lastStatusBar(
   host: ReturnType<typeof mockHost>,
   id = 'review-requests'

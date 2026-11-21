@@ -1,5 +1,5 @@
 // What each card carries beyond the Review Request itself (#10): CI, approvals and comment
-// badges, the New mark (appeared since the panel was last opened, per host) and the bell's
+// badges, the New mark (appeared since the panel was last opened, per host) and the status bar item's
 // "M new", and the Agent Review line on In review cards. Through the worker's public surface.
 import { assert, test } from 'orca/testing'
 import { fakeDeps, type Fakes } from './fakes'
@@ -12,7 +12,7 @@ async function cardOf(worker: Awaited<ReturnType<typeof startWorker>>['worker'],
   return (await worker.request('rr.snapshot')).reviewRequests.find((c) => c.iid === iid)
 }
 
-test('cards carry the CI status, approvals given/required and the comment count', async () => {
+test('cards carry the CI status, approvals given/required and the open comment count, leaving resolved threads out', async () => {
   const fakes = fakeDeps()
   fakes.gitlab.addMergeRequest({
     projectPath: 'acme/api',
@@ -20,7 +20,8 @@ test('cards carry the CI status, approvals given/required and the comment count'
     pipeline: 'FAILED',
     approvalsRequired: 2,
     approvedBy: ['ada'],
-    userNotesCount: 3
+    openThreads: 3,
+    resolvedThreads: 4
   })
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 2, pipeline: 'RUNNING' })
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 3, pipeline: 'SUCCESS' })
@@ -42,7 +43,7 @@ test('cards carry the CI status, approvals given/required and the comment count'
 
 test('on GitLab CE (no approval fields) the list still loads; only the approvals badge is hidden', async () => {
   const fakes = fakeDeps({ gitlab: { edition: 'ce' } })
-  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 1, pipeline: 'SUCCESS', userNotesCount: 2, approvalsRequired: 2 })
+  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 1, pipeline: 'SUCCESS', openThreads: 2, approvalsRequired: 2 })
   const { worker, host } = await startWorker(fakes)
   await fakes.clock.advance(5 * MINUTE)
 
@@ -88,7 +89,7 @@ test('nothing is New on the first run; what appears later is New until the panel
 
   await worker.request('rr.markSeen')
   assert.equal((await cardOf(worker, 2))?.isNew, true, 'still marked while this panel is open')
-  assert.equal(lastStatusBar(host)?.tooltip, '3 Review Requests. Click to open.', 'the bell counts it seen')
+  assert.equal(lastStatusBar(host)?.tooltip, '3 Review Requests. Click to open.', 'the status bar item counts it seen')
 
   await worker.request('rr.markSeen')
   assert.equal((await cardOf(worker, 2))?.isNew, false, 'seen at the next opening')

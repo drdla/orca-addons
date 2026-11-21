@@ -1,6 +1,6 @@
 // Relative times in the panel never show seconds: "just now", then "1m ago", "2h ago", "3d ago".
 import { assert, test } from 'orca/testing'
-import { formatAgo, nextChangeAt } from './minute-time'
+import { formatAge, formatAgo, nextChangeAt } from './minute-time'
 
 const NOW = Date.UTC(2026, 10, 16, 9, 0, 0)
 const SECOND = 1000
@@ -28,4 +28,12 @@ test('the text next changes when the shown minute (or hour, or day) does, not ev
   assert.equal(nextChangeAt(NOW - 2 * HOUR - 10 * MINUTE, NOW), NOW + 50 * MINUTE)
   assert.equal(nextChangeAt(NOW + 90 * SECOND, NOW), NOW + 30 * SECOND)
   assert.equal(nextChangeAt(NOW + 30 * SECOND, NOW), NOW + 30 * SECOND)
+})
+
+test('an age is short, "5m" rather than "5m ago", and under a minute is "1m"', () => {
+  assert.equal(formatAge(NOW - 59 * SECOND, NOW), '1m')
+  assert.equal(formatAge(NOW - 5 * MINUTE - 20 * SECOND, NOW), '5m')
+  assert.equal(formatAge(NOW - 2 * HOUR, NOW), '2h')
+  assert.equal(formatAge(NOW - 88 * 24 * HOUR, NOW), '88d')
+  assert.equal(formatAge(NOW + MINUTE, NOW), '1m')
 })

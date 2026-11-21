@@ -18,7 +18,7 @@
       {
         "id": "review-requests",
         "title": "Review Requests",
-        "icon": "bell",
+        "icon": "check",
         "entry": "src/panel.tsx",
         "ui": "components"
       }
@@ -30,7 +30,7 @@
     "statusBarItems": [
       {
         "id": "review-requests",
-        "icon": "bell",
+        "icon": "check",
         "tooltip": "Review Requests",
         "command": "code-review-requests.open"
       }

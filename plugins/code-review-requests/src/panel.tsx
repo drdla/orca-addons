@@ -1,11 +1,11 @@
-// The Review Requests panel (#10 variant D): a header, then tabs To review / In review / Ended
+// The Review Requests panel (#10 variant D): a header, then tabs Todo / Reviewing / Done
 // over bordered cards. No build step: Orca strips the types and compiles the JSX on load.
 // It has no network: every piece of data comes from the worker through plugin.request and the
 // rr.changed push, and every request needs a .catch (an unhandled rejection fails tests and
 // `orca plugin check`).
 //
-// Tabs: To review holds Review Requests without a Review Workspace, In review those with one
-// (#27), Ended the Ended Review Requests (#28). Later slices fill a tab by changing what
+// Tabs: Todo holds Review Requests without a Review Workspace, Reviewing those with one
+// (#27), Done the Ended Review Requests (#28). Later slices fill a tab by changing what
 // stagesOf() returns for it. #24: in Body(), a broken connection gets a warning above the tabs
 // that opens the Settings view (settings-view.tsx: the connection with the setup checklist, then
 // every setting), and the refresh problem sits above them on a failed poll.
@@ -13,7 +13,6 @@ import {
   atom,
   Badge,
   Box,
-  Button,
   Callout,
   EmptyState,
   Heading,
@@ -32,15 +31,16 @@ import {
   Text,
   ui,
   update,
-  type IconName,
   type Tone,
   type OrcaNode,
-  type PanelContext
+  type PanelContext,
 } from 'orca'
+import { Button } from './button'
+import { MergeRequestLink } from './merge-request-link'
 import type { CiStatus, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
 import { canPostReviews, connectionProblem, loadConnection } from './connection-section'
 import { messageOf } from './errors'
-import { MinuteTime, setupClock } from './minute-time'
+import { MinuteTime, minuteTimeText, setupClock } from './minute-time'
 import { overdueSplit } from './overdue-split'
 import { RefreshProblem } from './refresh-problem'
 import { headline, type NeedsYouView } from './setup-checklist'
@@ -53,7 +53,7 @@ import {
   setupReviewDraft
 } from './review-draft-view'
 import { API_SCOPE_HINT } from './review-post-view'
-import { isSettingsOpen, openSettings, SettingsScreen, setupSettings } from './settings-view'
+import { hasReviewPrompt, isSettingsOpen, openSettings, SettingsScreen, setupSettings } from './settings-view'
 
 type TabId = 'todo' | 'in' | 'ended'
 
@@ -81,7 +81,7 @@ export function setup(ctx: PanelContext): void {
     .request('rr.snapshot')
     .then(received)
     .catch((error: unknown) => set(failure, messageOf(error)))
-  // Opening the panel shows its Review Requests: the bell stops counting them as new (#10).
+  // Opening the panel shows its Review Requests: the status bar item stops counting them as new (#10).
   plugin.request('rr.markSeen').catch(() => {})
   setupReviewDraft()
   setupSettings(ctx)
@@ -149,6 +149,18 @@ function openWorkspace(url: string): void {
   cardAction(url, "Couldn't open the workspace", () => plugin.request('rr.openWorkspace', { url }))
 }
 
+/** The merge request summary: the workspace's Review Cover Page (#55). */
+function openCoverPage(url: string): void {
+  cardAction(url, "Couldn't open the merge request summary", () =>
+    plugin.request('rr.openCoverPage', { url }, { timeoutMs: 60_000 })
+  )
+}
+
+/** Orca's Source Control sidebar in the workspace, for its changed files. */
+function showChanges(url: string): void {
+  cardAction(url, "Couldn't show the changed files", () => plugin.request('rr.showChanges', { url }))
+}
+
 /**
  * "Update workspace" (#57): fetches, hard-resets the clean workspace and rebuilds its Review Cover
  * Page. A refusal (uncommitted changes, commits of the reviewer's own) shows on the card.
@@ -189,6 +201,24 @@ export default function Panel() {
   )
 }
 
+/** Refresh as one borderless, text-like button: the icon and when the list was last refreshed. */
+function RefreshButton({ refreshedAt }: { refreshedAt: number | null }) {
+  // While refreshing it is just disabled: no spinner.
+  return (
+    <Button
+      size="xs"
+      variant="ghost"
+      tone="neutral"
+      icon="refresh"
+      tooltip="Refresh"
+      disabled={read(refreshing)}
+      onPress={refresh}
+    >
+      {refreshedAt === null ? 'Refresh' : minuteTimeText(refreshedAt)}
+    </Button>
+  )
+}
+
 function Header() {
   const current = read(snapshot)
   return (
@@ -198,16 +228,7 @@ function Header() {
         {current !== null && <HeadingCounts key="heading-counts" cards={current.reviewRequests} />}
       </Row>
       <Row gap="sm">
-        {read(refreshing) ? (
-          <Spinner label="Refreshing" labelHidden />
-        ) : (
-          current?.refreshedAt != null && (
-            <Text muted size="xs">
-              <When at={current.refreshedAt} />
-            </Text>
-          )
-        )}
-        <IconButton icon="refresh" label="Refresh" variant="ghost" size="sm" onPress={refresh} />
+        <RefreshButton refreshedAt={current?.refreshedAt ?? null} />
         <IconButton icon="settings" label="Settings" variant="ghost" size="sm" onPress={openSettings} />
       </Row>
     </Row>
@@ -215,19 +236,40 @@ function Header() {
 }
 
 /**
- * The heading's count, split like the bell (#53): a neutral badge for the Review Requests not yet
- * overdue, a danger one for the Overdue Review Requests, each hidden at 0; a neutral "0" when there
- * are none. Neutral, not accent: accent is a white pill with dark text in dark themes, hard to
- * read. Two badges, not one split badge: Orca accepts only text inside a Badge, so a red Text
- * can't sit in a neutral one.
+ * The heading's count, split like the status bar item (#53): one pill holding the Review Requests
+ * not yet overdue, dimmed, and the Overdue Review Requests in the strong text colour, each hidden
+ * at 0; a "0" when there are none. While any is overdue the pill gets a red tint and outline. A Box styled as a
+ * pill, not a Badge: Orca's renderer accepts only text inside a Badge.
  */
 function HeadingCounts({ cards }: { cards: readonly ReviewRequestCard[] }) {
   const { inTime, overdue } = overdueSplit(cards)
+  const showInTime = inTime > 0 || overdue === 0
   return (
-    <Row gap="xs">
-      {(inTime > 0 || overdue === 0) && <Badge tone="neutral">{String(inTime)}</Badge>}
-      {overdue > 0 && <Badge tone="danger">{String(overdue)}</Badge>}
-    </Row>
+    <Box
+      direction="row"
+      align="center"
+      gap="xs"
+      paddingX="sm"
+      radius="full"
+      background={overdue > 0 ? 'danger' : 'muted'}
+      border={overdue > 0 ? 'danger' : false}
+    >
+      {showInTime && (
+        <Text muted size="sm" weight="medium">
+          {String(inTime)}
+        </Text>
+      )}
+      {showInTime && overdue > 0 && (
+        <Text muted size="sm">
+          |
+        </Text>
+      )}
+      {overdue > 0 && (
+        <Text size="sm" weight="semibold">
+          {String(overdue)}
+        </Text>
+      )}
+    </Box>
   )
 }
 
@@ -321,7 +363,7 @@ function Body() {
   )
 }
 
-type Stage = { id: TabId; title: string; count: number; overdue: boolean; body: OrcaNode }
+type Stage = { id: TabId; title: string; count: number; body: OrcaNode }
 
 function cardStage(id: TabId, title: string, cards: ReviewRequestCard[], empty: OrcaNode): Stage {
   const body =
@@ -332,36 +374,40 @@ function cardStage(id: TabId, title: string, cards: ReviewRequestCard[], empty: 
         ))}
       </Stack>
     )
-  return { id, title, count: cards.length, overdue: cards.some((c) => c.overdue), body }
+  return { id, title, count: cards.length, body }
 }
 
 function stagesOf(current: ReviewRequestsSnapshot): Stage[] {
-  const nothingHere = (
-    <Text muted size="sm">
-      Nothing here.
-    </Text>
-  )
   const inReview = (c: ReviewRequestCard) => c.workspace != null
   const ended = current.ended ?? []
   return [
     cardStage(
       'todo',
-      'To review',
+      'Todo',
       current.reviewRequests.filter((c) => !inReview(c)),
       <EmptyState icon="check" title="Nothing to review" />
     ),
-    cardStage('in', 'In review', current.reviewRequests.filter(inReview), nothingHere),
+    cardStage(
+      'in',
+      'Reviewing',
+      current.reviewRequests.filter(inReview),
+      <EmptyState icon="folder" title="Nothing in review" />
+    ),
     {
       id: 'ended',
-      title: 'Ended',
+      title: 'Done',
       count: ended.length,
-      overdue: false,
       body:
-        ended.length === 0 ? nothingHere : (
+        ended.length === 0 ? <EmptyState icon="check" title="No done reviews" /> : (
           <EndedList cards={ended} disabled={current.workspacesUnavailable !== undefined} received={received} />
         )
     }
   ]
+}
+
+/** A tab's name and its count, for example "Todo · 3"; just the name at 0. */
+function labelOf(stage: Stage): string {
+  return stage.count === 0 ? stage.title : `${stage.title} · ${stage.count}`
 }
 
 function StageTabs({ snapshot: current }: { snapshot: ReviewRequestsSnapshot }) {
@@ -377,7 +423,6 @@ function StageTabs({ snapshot: current }: { snapshot: ReviewRequestsSnapshot }) 
 
 function StageTabsOnly({ snapshot: current }: { snapshot: ReviewRequestsSnapshot }) {
   const stages = stagesOf(current)
-  const icon = (stage: Stage): IconName | undefined => (stage.overdue ? 'warning' : undefined)
 
   // `Table` taught us the catalog can list what this Orca doesn't draw (#10): check first.
   if (!ui.has('Tabs')) {
@@ -385,7 +430,7 @@ function StageTabsOnly({ snapshot: current }: { snapshot: ReviewRequestsSnapshot
       <Stack gap="md">
         {stages.map((stage) => (
           <Stack key={stage.id} gap="sm">
-            <Heading level={3}>{`${stage.title} ${stage.count}`}</Heading>
+            <Heading level={3}>{labelOf(stage)}</Heading>
             {stage.body}
           </Stack>
         ))}
@@ -395,7 +440,7 @@ function StageTabsOnly({ snapshot: current }: { snapshot: ReviewRequestsSnapshot
   return (
     <Tabs label="Stage" value={read(selectedTab)} onChange={(value) => set(selectedTab, value as TabId)}>
       {stages.map((stage) => (
-        <Tab key={stage.id} value={stage.id} label={`${stage.title} ${stage.count}`} icon={icon(stage)}>
+        <Tab key={stage.id} value={stage.id} label={labelOf(stage)}>
           {stage.body}
         </Tab>
       ))}
@@ -404,19 +449,44 @@ function StageTabsOnly({ snapshot: current }: { snapshot: ReviewRequestsSnapshot
 }
 
 /** "3d ago", "just now": never seconds (minute-time.tsx). */
-function When({ at, overdue = false }: { at: number; overdue?: boolean }) {
-  return <MinuteTime at={at} tone={overdue ? 'danger' : undefined} />
+function When({ at }: { at: number }) {
+  return <MinuteTime at={at} />
 }
 
-/** Start review (plus its Agent Review button), or Open workspace and Run Agent Review (#6). */
+/** Start review, or Review draft first and then the workspace's icon buttons (#6). */
 function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
   const busy = read(busyCards)[card.url] === true
   if (card.workspace != null) {
     return (
-      <Row gap="xs">
-        <Button size="xs" icon="folder" disabled={busy} onPress={() => openWorkspace(card.url)}>
-          Open workspace
+      <Row gap="xs" wrap>
+        <Button size="xs" variant="outline" icon="edit" onPress={() => openReviewDraft(card.url)}>
+          Review draft
         </Button>
+        <IconButton
+          icon="folder"
+          label="Open workspace"
+          variant="ghost"
+          size="xs"
+          disabled={busy}
+          onPress={() => openWorkspace(card.url)}
+        />
+        <IconButton
+          icon="branch"
+          label="Changed files"
+          tooltip="Toggle Source Control in the workspace, with the changed files"
+          variant="ghost"
+          size="xs"
+          disabled={busy}
+          onPress={() => showChanges(card.url)}
+        />
+        <IconButton
+          icon="file-text"
+          label="Merge request summary"
+          variant="ghost"
+          size="xs"
+          disabled={busy}
+          onPress={() => openCoverPage(card.url)}
+        />
         {card.mergeRequestUpdated === true && (
           <Button
             size="xs"
@@ -429,17 +499,17 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
             Update workspace
           </Button>
         )}
-        <IconButton
-          icon="agent"
-          label="Run Agent Review"
-          variant="ghost"
-          size="xs"
-          disabled={busy}
-          onPress={() => runAgentReview(card.url)}
-        />
-        <Button size="xs" variant="outline" icon="edit" onPress={() => openReviewDraft(card.url)}>
-          Review draft
-        </Button>
+        {hasReviewPrompt() && (
+          <IconButton
+            icon="agent"
+            label="Run Agent Review"
+            tooltip="Start another Agent Review in the workspace"
+            variant="ghost"
+            size="xs"
+            disabled={busy}
+            onPress={() => runAgentReview(card.url)}
+          />
+        )}
         {(card.toPost ?? 0) > 0 && (
           <Button
             size="xs"
@@ -456,47 +526,48 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
     )
   }
   const blocked = card.startBlocked ?? null
+  // With a Review Prompt set, every Start review also starts an Agent Review.
+  const withAgent = hasReviewPrompt()
+  const hint = withAgent
+    ? 'Create the Review Workspace for this merge request and start an Agent Review in it'
+    : 'Create a Review Workspace for this merge request'
   return (
-    <Row gap="xs">
+    <Row gap="xs" wrap>
       <Button
         size="xs"
         icon="play"
         disabled={busy || blocked !== null}
-        tooltip={blocked ?? 'Create a Review Workspace for this merge request'}
-        onPress={() => startReview(card.url, false)}
+        tooltip={blocked ?? hint}
+        onPress={() => startReview(card.url, withAgent)}
       >
         Start review
       </Button>
-      <IconButton
-        icon="agent"
-        label="Start review with Agent Review"
-        tooltip={blocked ?? 'Create the Review Workspace and start an Agent Review in it'}
-        variant="ghost"
-        size="xs"
-        disabled={busy || blocked !== null}
-        onPress={() => startReview(card.url, true)}
-      />
       {busy && <Spinner label="Creating the Review Workspace" labelHidden />}
     </Row>
   )
 }
 
-const CI_BADGES: Record<CiStatus, { text: string; tone: Tone }> = {
-  passed: { text: 'CI passed', tone: 'success' },
+/** Only CI that holds a review up gets a badge: a passed pipeline, or none, has nothing to say. */
+const CI_BADGES: Record<CiStatus, { text: string; tone: Tone } | null> = {
+  passed: null,
   failed: { text: 'CI failed', tone: 'danger' },
   running: { text: 'CI running', tone: 'neutral' }
 }
 
-/** CI, approvals given/required and comments (#10); each only when there is something to say. */
+/** CI, approvals given/required and open comments (#10); each only when there is something to say. */
 function StatusBadges({ card }: { card: ReviewRequestCard }) {
   const ci = card.ci == null ? null : CI_BADGES[card.ci]
   const comments = card.comments ?? 0
   if (ci === null && card.approvals == null && comments === 0) return null
   return (
-    <Row gap="xs" wrap>
+    <Row gap="xs" align="center" wrap>
       {ci !== null && <Badge tone={ci.tone}>{ci.text}</Badge>}
       {card.approvals != null && <Badge>{`${card.approvals.given}/${card.approvals.required} approvals`}</Badge>}
-      {comments > 0 && <Badge>{comments === 1 ? '1 comment' : `${comments} comments`}</Badge>}
+      {comments > 0 && (
+        <Text muted size="xs">
+          {comments === 1 ? '1 open comment' : `${comments} open comments`}
+        </Text>
+      )}
     </Row>
   )
 }
@@ -520,15 +591,20 @@ function Card({ card }: { card: ReviewRequestCard }) {
   return (
     <Box border={card.overdue ? 'danger' : isNew ? 'accent' : true} radius="md" padding="sm" direction="column" gap="xs">
       <Row justify="between" align="start">
-        <Text weight="semibold">{card.title}</Text>
-        {card.overdue && <Badge tone="danger">Overdue</Badge>}
+        <Row gap="sm" align="start">
+          <MergeRequestLink url={card.url} iid={card.iid} onOpen={openInGitLab} />
+          {/* Nudged down 2px so the title's first line sits level with the button's text. */}
+          <Box direction="column">
+            <Box height={2} />
+            <Text weight="semibold">{card.title}</Text>
+          </Box>
+        </Row>
+        {card.overdue && <Badge tone="danger">Late</Badge>}
         {isNew && <Badge tone="accent">New</Badge>}
         {card.mergeRequestUpdated === true && <Badge tone="warning">Merge request updated</Badge>}
       </Row>
       <Text muted size="xs">
-        <Link onPress={() => openInGitLab(card.url)}>{`${card.projectPath} !${card.iid}`}</Link>
-        {` · ${card.author} · requested `}
-        <When at={card.requestedAt} overdue={card.overdue} />
+        {card.author}
       </Text>
       <StatusBadges card={card} />
       {agentLine !== null && (
@@ -537,7 +613,18 @@ function Card({ card }: { card: ReviewRequestCard }) {
           <Text size="xs">{agentLine}</Text>
         </Row>
       )}
-      <WorkspaceActions card={card} />
+      {/* The age, short and muted like Orca's workspace list ("40m", "2h"), stays bottom right on
+          one line: the buttons wrap before it does. */}
+      <Box direction="row" justify="between" align="end" gap="xs">
+        <Box grow>
+          <WorkspaceActions card={card} />
+        </Box>
+        <Box shrink={false}>
+          <Text muted size="xs">
+            <MinuteTime at={card.requestedAt} age />
+          </Text>
+        </Box>
+      </Box>
       {blocked !== null && (
         <Text muted size="xs">
           {blocked}

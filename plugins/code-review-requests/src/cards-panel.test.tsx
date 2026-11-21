@@ -31,22 +31,6 @@ async function mountWith(requests: Record<string, unknown>, persisted?: Record<s
   return mount(panel, { host, ...(persisted ? { persisted: { plugin: persisted } } : {}) })
 }
 
-test('a New card has the New badge and an accent border; Overdue wins over New', async () => {
-  const view = await mountWith({
-    'rr.snapshot': snapshot(card(1, { isNew: true }), card(2, { isNew: true, overdue: true }), card(3))
-  })
-
-  const borders = view
-    .findAll({ type: 'Box' })
-    .filter((b) => b.props.radius === 'md')
-    .map((b) => b.props.border)
-  assert.deepEqual(borders.sort(), ['accent', 'danger', true].sort())
-  assert.equal(view.findAll({ type: 'Badge', text: 'New' }).length, 1)
-  assert.equal(view.findAll({ type: 'Badge', text: 'Overdue' }).length, 1)
-  assert.deepEqual(view.errors, [])
-  await view.unmount()
-})
-
 test('opening the panel tells the worker its Review Requests are seen', async () => {
   let marked = 0
   const view = await mountWith({
@@ -61,7 +45,7 @@ test('opening the panel tells the worker its Review Requests are seen', async ()
   await view.unmount()
 })
 
-test('cards show CI, approvals and comment badges, and nothing for what is unknown', async () => {
+test('cards show failed or running CI, approvals and open comments, and nothing for what holds nothing up', async () => {
   const view = await mountWith({
     'rr.snapshot': snapshot(
       card(1, { ci: 'failed', approvals: { given: 1, required: 2 }, comments: 3 }),
@@ -71,12 +55,13 @@ test('cards show CI, approvals and comment badges, and nothing for what is unkno
   })
 
   assert.equal(view.find({ type: 'Badge', text: 'CI failed' })?.props.tone, 'danger')
-  assert.equal(view.find({ type: 'Badge', text: 'CI passed' })?.props.tone, 'success')
+  assert.equal(view.find({ text: /CI passed/ }), null, 'a passed pipeline holds nothing up')
   assert.ok(view.find({ type: 'Badge', text: 'CI running' }))
   assert.ok(view.find({ type: 'Badge', text: '1/2 approvals' }))
-  assert.ok(view.find({ type: 'Badge', text: '3 comments' }))
-  assert.ok(view.find({ type: 'Badge', text: '1 comment' }))
-  assert.equal(view.find({ type: 'Badge', text: '0 comments' }), null)
+  assert.equal(view.find({ type: 'Text', text: '3 open comments' })?.props.muted, true)
+  assert.ok(view.find({ type: 'Text', text: '1 open comment' }))
+  assert.equal(view.find({ type: 'Badge', text: /open comment/ }), null, 'comments are plain text')
+  assert.equal(view.find({ text: '0 open comments' }), null)
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })

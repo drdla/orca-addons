@@ -6,7 +6,6 @@
 import {
   atom,
   Box,
-  Button,
   Callout,
   Heading,
   plugin,
@@ -17,8 +16,9 @@ import {
   Spinner,
   Stack,
   Text,
-  Textarea
+  Textarea,
 } from 'orca'
+import { Button } from './button'
 import { canPostReviews } from './connection-section'
 import type { PostPreview, PostResult, ReviewDraftView, ReviewOutcome } from './protocol'
 import { messageOf } from './errors'

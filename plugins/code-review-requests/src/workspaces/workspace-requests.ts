@@ -85,10 +85,16 @@ export function registerWorkspaceRequests(
   orca.panels.handle('rr.openCoverPage', async ({ url }) => {
     if (ended.has(url)) {
       const entry = ended.entry(url)
+      await orca.host.call('workspace.open', { workspaceId: await hostWorkspaceIdOf(orca.host, entry.workspace) })
       await coverPages.open(coverPageTargetOf(entry, entry.workspace))
     } else {
       await reviewActions.openCoverPage(url)
     }
+    return { opened: true as const }
+  })
+  // The In review card's Changed files button.
+  orca.panels.handle('rr.showChanges', async ({ url }) => {
+    await reviewActions.showChanges(url)
     return { opened: true as const }
   })
   // "Update workspace" (#57). Which Review Comments may be outdated is worked out against the

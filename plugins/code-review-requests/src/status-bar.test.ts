@@ -1,4 +1,4 @@
-// The bell's extension point: refiners change the look (overdue #22, problem states #24).
+// The status bar item's extension point: refiners change the look (overdue #22, problem states #24).
 import { assert, mockHost, mountWorker, test } from 'orca/testing'
 import type { OrcaWorkerApi } from 'orca/worker'
 import { INITIAL_POLL_STATE } from './poll/poll-state'
@@ -26,7 +26,7 @@ test('refiners change the look in order, and an unchanged look is not sent again
     {
       id: 'review-requests',
       text: '0',
-      icon: 'bell',
+      icon: 'check',
       tone: 'danger',
       tooltip: '0 Review Requests. Click to open.',
       visible: false
@@ -34,7 +34,7 @@ test('refiners change the look in order, and an unchanged look is not sent again
     {
       id: 'review-requests',
       text: 'GitLab: offline',
-      icon: 'bell',
+      icon: 'check',
       tone: 'danger',
       tooltip: '0 Review Requests. Click to open.',
       visible: true

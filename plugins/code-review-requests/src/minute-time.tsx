@@ -30,7 +30,16 @@ export function formatAgo(at: number, now: number, locale?: string): string {
   return new Intl.RelativeTimeFormat(locale, { style: 'narrow', numeric: 'always' }).format(value, unit)
 }
 
-/** When formatAgo(at, …) next reads differently. */
+/** An age, short like Orca's workspace list: "1m", "5m", "2h", "3d". Times ahead of now count as "1m". */
+export function formatAge(at: number, now: number): string {
+  const size = Math.max(now - at, 0)
+  if (size < MINUTE) return '1m'
+  const unitMs = unitOf(size)
+  const unit = unitMs === MINUTE ? 'm' : unitMs === HOUR ? 'h' : 'd'
+  return `${Math.floor(size / unitMs)}${unit}`
+}
+
+/** When formatAgo(at, …) or formatAge(at, …) next reads differently. */
 export function nextChangeAt(at: number, now: number): number {
   if (at > now) {
     const ahead = at - now
@@ -71,11 +80,22 @@ export function setupClock(ctx: PanelContext): void {
   })
 }
 
-/** A relative time with whole minutes at most, kept current; inline, so it may sit inside Text. */
-export function MinuteTime(props: { at: number; tone?: Tone }) {
+/**
+ * MinuteTime's text as a plain string, for places that take only text, such as a Button's label.
+ * Call it while rendering: it asks for the redraw at the next change the same way.
+ */
+export function minuteTimeText(at: number, age = false): string {
   const now = Math.max(read(clock), Date.now())
-  wakeAt(nextChangeAt(props.at, now))
-  const text = formatAgo(props.at, now)
+  wakeAt(nextChangeAt(at, now))
+  return age ? formatAge(at, now) : formatAgo(at, now)
+}
+
+/**
+ * A relative time with whole minutes at most, kept current; inline, so it may sit inside Text.
+ * `age` reads "3d" instead of "3d ago".
+ */
+export function MinuteTime(props: { at: number; tone?: Tone; age?: boolean }) {
+  const text = minuteTimeText(props.at, props.age === true)
   if (props.tone === undefined) return text
   return <Text tone={props.tone}>{text}</Text>
 }
