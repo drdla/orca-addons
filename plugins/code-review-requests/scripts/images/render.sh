@@ -7,10 +7,10 @@ out="$here/../../images"
 chrome="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 font="$(ls /Applications/Orca.app/Contents/Resources/app.asar.unpacked/out/renderer/assets/Geist-Variable-*.woff2 | head -1)"
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
-cp "$here/mock.html" "$work/"; cp "$font" "$work/Geist.woff2"
+cp "$here/mock.html" "$here/cover-art.jpg" "$work/"; cp "$font" "$work/Geist.woff2"
 shot() { # frame, css size, output name
   "$chrome" --headless=new --disable-gpu --hide-scrollbars --default-background-color=00000000 \
-    --force-device-scale-factor=2 --window-size="$2" --virtual-time-budget=2000 \
+    --force-device-scale-factor=2 --window-size="$2" --virtual-time-budget=4000 \
     --screenshot="$out/$3.png" "file://$work/mock.html#$1" >/dev/null 2>&1
 }
 shot icon 256,256 icon
