@@ -89,15 +89,12 @@ test('a tab without a match says so, worded per tab', async () => {
   await view.unmount()
 })
 
-test('× clears the search and shows every card again', async () => {
+test('clearing the search shows every card again', async () => {
   const view = await mountPanel()
-  assert.equal(view.find({ type: 'IconButton', label: 'Clear search' }), null)
 
   await view.type(searchInput(view), 'login')
   assert.deepEqual(tabLabels(view), ['Todo · 1', 'Reviewing', 'Done'])
-  await view.press(view.find({ type: 'IconButton', label: 'Clear search' })!)
-  assert.equal(view.valueOf(searchInput(view)), '')
+  await view.type(searchInput(view), '', { replace: true })
   assert.deepEqual(tabLabels(view), ['Todo · 2', 'Reviewing · 1', 'Done · 1'])
-  assert.equal(view.find({ type: 'IconButton', label: 'Clear search' }), null)
   await view.unmount()
 })

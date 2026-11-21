@@ -446,25 +446,17 @@ function search(query: string): void {
   set(selectedTab, tabWithMatches(matchCounts(current, query), read(selectedTab)))
 }
 
-/** The search, full width above the tabs; × clears it. */
+/** The search, full width above the tabs. A search input: Orca draws its own clear button. */
 function SearchInput() {
-  const query = read(searchQuery)
   return (
-    <Box direction="row" align="center" gap="xs">
-      <Box grow>
-        <Input
-          type="search"
-          label="Search Review Requests"
-          labelHidden
-          placeholder="Search title or URL"
-          value={query}
-          onChange={search}
-        />
-      </Box>
-      {query !== '' && (
-        <IconButton icon="close" label="Clear search" variant="ghost" size="sm" onPress={() => search('')} />
-      )}
-    </Box>
+    <Input
+      type="search"
+      label="Search Review Requests"
+      labelHidden
+      placeholder="Search title or URL"
+      value={read(searchQuery)}
+      onChange={search}
+    />
   )
 }
 
