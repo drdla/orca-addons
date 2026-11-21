@@ -95,7 +95,7 @@ test('falls back to when the merge request was opened if GitLab cannot say, and 
   await second.worker.deactivate()
 })
 
-test('overdue Review Requests split the bell: in time in the bell, overdue in red beside it', async () => {
+test('overdue Review Requests split the bell into "in time | overdue", in one neutral item', async () => {
   const fakes = fakeDeps()
   const now = fakes.clock.now()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', requestedAt: now - 6 * DAY })
@@ -104,20 +104,14 @@ test('overdue Review Requests split the bell: in time in the bell, overdue in re
 
   const { host, worker } = await startWorker(fakes)
 
-  assert.equal(lastStatusBar(host)?.text, '1 |')
+  assert.equal(lastStatusBar(host)?.text, '1 | 2')
   assert.equal(lastStatusBar(host)?.tone, 'neutral')
   assert.equal(lastStatusBar(host)?.tooltip, '3 Review Requests, 2 overdue. Click to open.')
-  assert.deepEqual(lastStatusBar(host, 'review-requests-overdue'), {
-    id: 'review-requests-overdue',
-    text: '2',
-    tone: 'danger',
-    tooltip: '3 Review Requests, 2 overdue. Click to open.',
-    visible: true
-  })
+  assert.deepEqual(new Set(host.callsOf('statusBar.update').map((call) => (call as { id: string }).id)), new Set(['review-requests']))
   await worker.deactivate()
 })
 
-test('only overdue Review Requests: the bell shows the red count alone, with no "0 |"', async () => {
+test('only overdue Review Requests: the bell shows that count alone, with no "0 |"', async () => {
   const fakes = fakeDeps()
   const now = fakes.clock.now()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', requestedAt: now - 6 * DAY })
@@ -126,12 +120,12 @@ test('only overdue Review Requests: the bell shows the red count alone, with no 
   const { host, worker } = await startWorker(fakes)
 
   assert.equal(lastStatusBar(host)?.text, '2')
-  assert.equal(lastStatusBar(host)?.tone, 'danger')
-  assert.equal(lastStatusBar(host, 'review-requests-overdue')?.visible, false)
+  assert.equal(lastStatusBar(host)?.tone, 'neutral')
+  assert.equal(lastStatusBar(host)?.tooltip, '2 Review Requests, 2 overdue. Click to open.')
   await worker.deactivate()
 })
 
-test('nothing overdue: the bell shows the count in the neutral tone, with no overdue item', async () => {
+test('nothing overdue: the bell shows the count in the neutral tone', async () => {
   const fakes = fakeDeps()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', requestedAt: fakes.clock.now() - HOUR })
 
@@ -140,7 +134,6 @@ test('nothing overdue: the bell shows the count in the neutral tone, with no ove
   assert.equal(lastStatusBar(host)?.text, '1')
   assert.equal(lastStatusBar(host)?.tone, 'neutral')
   assert.equal(lastStatusBar(host)?.tooltip, '1 Review Request. Click to open.')
-  assert.equal(lastStatusBar(host, 'review-requests-overdue')?.visible, false)
   await worker.deactivate()
 })
 
