@@ -145,7 +145,12 @@ test('Start review creates a workspace based on the target branch, at the MR hea
   assert.deepEqual(fakes.git.resets, [
     { worktreePath: '/worktrees/review-api-7', ref: 'refs/remotes/origin/merge-requests/7' }
   ])
-  assert.equal(answer.reviewRequests[0]!.workspace?.name, 'review-api-7')
+  // Created as review-api-7 (Orca's branch and folder), then shown as "REVIEW <MR title>".
+  assert.deepEqual(fakes.cli.calls.find((c) => c.command === 'worktree set')?.args, {
+    selector: 'id:repo-api::/worktrees/review-api-7',
+    displayName: 'REVIEW Add login'
+  })
+  assert.equal(answer.reviewRequests[0]!.workspace?.name, 'REVIEW Add login')
   // Orca switches to the new workspace, then shows its Review Cover Page in front.
   const opens = host.calls.map((c) => c.method).filter((m) => m === 'workspace.open' || m === 'editor.open')
   assert.deepEqual(opens, ['workspace.open', 'editor.open'])
@@ -155,7 +160,7 @@ test('Start review creates a workspace based on the target branch, at the MR hea
   const pushed = worker.posts.filter((p) => p.event === 'rr.changed').at(-1)?.payload as {
     reviewRequests: { workspace?: { name: string } | null }[]
   }
-  assert.equal(pushed.reviewRequests[0]!.workspace?.name, 'review-api-7')
+  assert.equal(pushed.reviewRequests[0]!.workspace?.name, 'REVIEW Add login')
   await worker.deactivate()
 })
 
@@ -264,7 +269,23 @@ test('when the agent does not start, Start review says the workspace is ready an
     /workspace is ready, but .*the Agent Review didn't start/i.test(String(error))
   )
   const [card] = (await worker.request('rr.snapshot')).reviewRequests
-  assert.equal(card!.workspace?.name, 'review-api-7')
+  assert.equal(card!.workspace?.name, 'REVIEW Add login')
+  await worker.deactivate()
+})
+
+test('when Orca refuses the new name, Start review still succeeds with the workspace under its created name', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  const { worker } = await startWorker(fakes, { workspaces: ['/src/api', '/worktrees/review-api-7'] })
+  const setDisplayName = fakes.cli.setDisplayName.bind(fakes.cli)
+  fakes.cli.setDisplayName = async () => {
+    throw new OrcaCliError('invalid_argument', 'no')
+  }
+
+  const answer = await worker.request('rr.startReview', { url: MR_URL, withAgent: false })
+  assert.equal(answer.reviewRequests[0]!.workspace?.name, 'review-api-7')
+  fakes.cli.setDisplayName = setDisplayName
   await worker.deactivate()
 })
 

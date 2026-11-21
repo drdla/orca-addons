@@ -99,6 +99,8 @@ export interface OrcaCli {
   showWorktree(selector: string): Promise<WorktreeDetail>
   createWorktree(input: CreateWorktreeInput): Promise<Worktree>
   removeWorktree(selector: string, options?: RemoveWorktreeOptions): Promise<void>
+  /** `orca worktree set --display-name`: the name Orca shows; the branch and folder stay. */
+  setDisplayName(selector: string, name: string): Promise<void>
 }
 
 /** A failed CLI call: `code` is the envelope's `error.code` (or `unavailable` if it can't run). */
