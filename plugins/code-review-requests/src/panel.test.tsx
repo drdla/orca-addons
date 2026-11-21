@@ -149,7 +149,7 @@ test('the other tabs show the same empty state as Todo', async () => {
   const view = await mount(panel, { host })
 
   await view.select(view.find({ type: 'Tabs' })!, 'in')
-  assert.ok(view.find({ type: 'EmptyState', text: 'Nothing in review' }))
+  assert.ok(view.find({ type: 'EmptyState', text: 'No review in progress' }))
   await view.select(view.find({ type: 'Tabs' })!, 'ended')
   assert.ok(view.find({ type: 'EmptyState', text: 'No done reviews' }))
   assert.deepEqual(view.errors, [])

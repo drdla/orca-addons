@@ -108,7 +108,7 @@ export function createDraftImport(options: {
         let next = comment
         if (change.body !== undefined) {
           if (comment.origin === 'diff-note') {
-            throw new DraftChangeError('This is a diff-view note: edit it in Orca, then open the Review Draft again.')
+            throw new DraftChangeError("This is a diff-view note: edit it in Orca's diff view; the Review Draft picks up the change.")
           }
           const body = change.body.trim()
           if (body === '') throw new DraftChangeError('A Review Comment needs some text.')

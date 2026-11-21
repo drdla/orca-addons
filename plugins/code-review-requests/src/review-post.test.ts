@@ -274,6 +274,49 @@ test('Delete failed drafts removes only the drafts the last post left; the comme
   await worker.deactivate()
 })
 
+test('GitLab publishing the comments but answering 500 (gitlab.com 19.7): they count as posted, the summary and state follow once', async () => {
+  const arranged = arrange([note('n1', { body: 'Line comment.' }), note('n2', { lineNumber: 12, body: 'Other line.' })])
+  const { fakes, mr } = arranged
+  fakes.gitlab.failNextPublish('acme/api', 7, 'notes-published')
+  const { worker } = await start(arranged)
+
+  const result = await worker.request('rr.postReview', { url: MR_URL, summary: 'See comments', outcome: 'requested_changes' })
+
+  assert.equal(result.posted, 2)
+  assert.deepEqual(result.failed, [])
+  assert.deepEqual(result.draft.comments.map((c) => c.posted), [true, true])
+  assert.deepEqual(fakes.gitlab.draftNotesOf('acme/api', 7), [], 'the drafts GitLab kept after publishing are deleted')
+  assert.deepEqual(mr.published.map((n) => n.body), ['Line comment.', 'Other line.', 'See comments'], 'each once')
+  assert.equal(mr.reviewStates[fakes.gitlab.me], 'REQUESTED_CHANGES')
+
+  const again = await worker.request('rr.postPreview', { url: MR_URL })
+  assert.equal(again.comments, 0)
+  assert.deepEqual(again.leftoverDrafts, [], 'nothing left that a retry would post twice')
+  await worker.deactivate()
+})
+
+test('GitLab answering 500 without publishing: the error shows, the new drafts are gone and a retry posts each comment once', async () => {
+  const arranged = arrange([note('n1', { body: 'Line comment.' })])
+  const { fakes, mr } = arranged
+  fakes.gitlab.failNextPublish('acme/api', 7, 'nothing-published')
+  const { worker } = await start(arranged)
+
+  const error = await worker.request('rr.postReview', { url: MR_URL, summary: 'Hm', outcome: 'comment' }).then(
+    () => null,
+    (e: unknown) => e as Error
+  )
+
+  assert.match(error?.message ?? '', /500 Internal Server Error/)
+  assert.deepEqual(fakes.gitlab.draftNotesOf('acme/api', 7), [])
+  assert.equal(mr.published.length, 0)
+  assert.equal((await worker.request('rr.draft', { url: MR_URL })).comments[0]!.posted, false)
+
+  const retried = await worker.request('rr.postReview', { url: MR_URL, summary: 'Hm', outcome: 'comment' })
+  assert.equal(retried.posted, 1)
+  assert.deepEqual(mr.published.map((n) => n.body), ['Line comment.', 'Hm'])
+  await worker.deactivate()
+})
+
 test('a token without the api scope gets the api-scope hint, with the token redacted', async () => {
   const arranged = arrange([note('n1')])
   const { fakes } = arranged

@@ -84,7 +84,7 @@ export function setup(ctx: PanelContext): void {
     .catch((error: unknown) => set(failure, messageOf(error)))
   // Opening the panel shows its Review Requests: the status bar item stops counting them as new (#10).
   plugin.request('rr.markSeen').catch(() => {})
-  setupReviewDraft()
+  setupReviewDraft(ctx)
   setupSettings(ctx)
   setupClock(ctx)
   void loadConnection()
@@ -392,7 +392,7 @@ function stagesOf(current: ReviewRequestsSnapshot): Stage[] {
       'in',
       'Reviewing',
       current.reviewRequests.filter(inReview),
-      <EmptyState icon="folder" title="Nothing in review" />
+      <EmptyState icon="folder" title="No review in progress" />
     ),
     {
       id: 'ended',
@@ -512,16 +512,22 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
             Update Workspace
           </Button>
         )}
-        {hasReviewPrompt() && (
-          <IconButton
-            icon="agent"
-            label="Run Agent Review"
-            tooltip="Start another agent review"
-            variant="ghost"
-            size="xs"
-            disabled={busy}
-            onPress={() => runAgentReview(card.url)}
-          />
+        {/* While an Agent Review works, a spinner takes the agent button's place. Orca gives a
+            Spinner no tooltip and a Button only text, so its label is for screen readers only. */}
+        {card.agentReview?.state === 'running' ? (
+          <Spinner label="Agent Review in progress" labelHidden />
+        ) : (
+          hasReviewPrompt() && (
+            <IconButton
+              icon="agent"
+              label="Run Agent Review"
+              tooltip="Start an agent review"
+              variant="ghost"
+              size="xs"
+              disabled={busy}
+              onPress={() => runAgentReview(card.url)}
+            />
+          )
         )}
         {(card.toPost ?? 0) > 0 && (
           <Button
@@ -568,22 +574,25 @@ const CI_BLOCKERS: Record<CiStatus, string | null> = {
 }
 
 /** What holds the review up: CI still running or failed, then open comments; empty when nothing does. */
-function blockers(card: ReviewRequestCard): string[] {
+function blockers(card: ReviewRequestCard): { text: string; url: string }[] {
   const ci = card.ci == null ? null : CI_BLOCKERS[card.ci]
   const comments = card.comments ?? 0
   return [
-    ...(ci === null ? [] : [ci]),
-    ...(comments === 0 ? [] : [comments === 1 ? '1 open comment' : `${comments} open comments`])
+    ...(ci === null ? [] : [{ text: ci, url: `${card.url}/pipelines` }]),
+    ...(comments === 0
+      ? []
+      : [{ text: comments === 1 ? '1 open comment' : `${comments} open comments`, url: card.url }])
   ]
 }
 
 /**
  * What holds the merge request up, mid-dot separated ("CI failed · 1 open comment"), after the
- * card's buttons; nothing when nothing does. Each piece is its own Text so the Row's gap spaces
+ * card's buttons; nothing when nothing does. Each is a link: CI to the MR's pipelines, open
+ * comments to the MR, where its threads are. Each piece is its own node so the Row's gap spaces
  * the dots evenly.
  */
 function Blockers({ card }: { card: ReviewRequestCard }) {
-  return blockers(card).flatMap((reason, index) => [
+  return blockers(card).flatMap((blocker, index) => [
     ...(index > 0
       ? [
           <Text key={`dot-${index}`} muted size="xs">
@@ -591,9 +600,9 @@ function Blockers({ card }: { card: ReviewRequestCard }) {
           </Text>
         ]
       : []),
-    <Text key={reason} muted size="xs">
-      {reason}
-    </Text>
+    <Link key={blocker.text} onPress={() => openInGitLab(blocker.url)}>
+      {blocker.text}
+    </Link>
   ])
 }
 
@@ -607,22 +616,11 @@ function Approvals({ card }: { card: ReviewRequestCard }) {
   )
 }
 
-/** "Agent Review running", or "Agent Review done · N comments ready" (#10). */
-function agentReviewLine(card: ReviewRequestCard): string | null {
-  const review = card.agentReview
-  if (card.workspace == null || review == null) return null
-  if (review.state === 'running') return 'Agent Review running'
-  const ready = review.commentsReady
-  if (ready === 0) return 'Agent Review done'
-  return `Agent Review done · ${ready === 1 ? '1 comment' : `${ready} comments`} ready`
-}
-
 function Card({ card }: { card: ReviewRequestCard }) {
   const error = read(cardErrors)[card.url]
   const blocked = card.workspace == null ? (card.startBlocked ?? null) : null
   // Overdue takes precedence over New (#10).
   const isNew = card.isNew === true && !card.overdue
-  const agentLine = agentReviewLine(card)
   return (
     <Box border={isNew ? 'accent' : true} radius="md" padding="sm" direction="column" gap="xs">
       <Row justify="between" align="start">
@@ -641,12 +639,6 @@ function Card({ card }: { card: ReviewRequestCard }) {
         {card.mergeRequestUpdated === true && <Badge tone="warning">Merge request updated</Badge>}
       </Row>
       <Approvals card={card} />
-      {agentLine !== null && (
-        <Row gap="xs" align="center">
-          {card.agentReview?.state === 'running' && <Spinner label="Agent Review running" labelHidden />}
-          <Text size="xs">{agentLine}</Text>
-        </Row>
-      )}
       <WorkspaceNavigation card={card} />
       {/* The age, short and muted like Orca's workspace list ("40m", "2h"), red once overdue, stays
           right on one line, centred on the buttons' row: the buttons wrap before it does. */}

@@ -29,7 +29,9 @@ export const API_SCOPE_HINT = 'Posting a review needs a token with the api scope
 
 type Version = { head_commit_sha: string; base_commit_sha: string; start_commit_sha: string }
 type MergeRequest = { diff_refs: { base_sha: string; start_sha: string; head_sha: string } | null }
-type DraftNote = { id: number; note: string }
+type Place = { new_path?: string; new_line?: number | null }
+type DraftNote = { id: number; note: string; position?: Place | null }
+type Note = { body: string; author: { username: string }; position?: Place | null }
 
 /** One Review Comment as it posts. */
 type Planned = {
@@ -122,15 +124,24 @@ export function createReviewPoster(options: {
 
         const state = request.outcome === 'requested_changes' ? 'requested_changes' : 'reviewed'
         if (created.length + leftovers.length > 0) {
-          if (takesSummary) {
-            await transport.rest('POST', `${base}/draft_notes/bulk_publish`, {
-              ...(summary === '' ? {} : { note: summary }),
-              reviewer_state: state
-            })
-          } else {
-            await transport.rest('POST', `${base}/notes`, {
-              body: `${summary === '' ? '' : `${summary}\n\n`}/submit_review ${state}`
-            })
+          try {
+            if (takesSummary) {
+              await transport.rest('POST', `${base}/draft_notes/bulk_publish`, {
+                ...(summary === '' ? {} : { note: summary }),
+                reviewer_state: state
+              })
+            } else {
+              await transport.rest('POST', `${base}/notes`, {
+                body: `${summary === '' ? '' : `${summary}\n\n`}/submit_review ${state}`
+              })
+            }
+          } catch (error) {
+            if (error instanceof GitLabError && error.status === 403) throw error
+            const ours = [
+              ...created.map((c) => ({ id: c.draftId, note: c.planned.body, position: c.planned.position as Place | null })),
+              ...leftovers
+            ]
+            await settleFailedPublish(transport, base, ours, new Set(created.map((c) => c.draftId)), summary, state, error)
           }
         } else if (summary !== '' || request.outcome === 'requested_changes') {
           // Nothing to publish: the summary (and Request changes) as one note.
@@ -206,6 +217,55 @@ export function createReviewPoster(options: {
 }
 
 export type ReviewPoster = ReturnType<typeof createReviewPoster>
+
+/**
+ * After the publish call failed: gitlab.com 19.7 answered 500 after it had turned the drafts
+ * into notes, but left them as drafts too and never applied the summary or reviewer state. A retry
+ * would then post every comment twice. So read what GitLab actually did:
+ *   - nothing published: delete the drafts this post created (the Review Comments stay unposted)
+ *     and report the error;
+ *   - some published: delete their leftover drafts, then post the summary (unless it's there) and
+ *     Request changes as a note. The caller goes on as after a publish: what's still a draft is
+ *     retried or recorded as failed.
+ * A draft counts as published when one of my recent notes has its text on the same line.
+ */
+async function settleFailedPublish(
+  transport: GitLabTransport,
+  base: string,
+  drafts: DraftNote[],
+  createdIds: Set<number>,
+  summary: string,
+  state: string,
+  error: unknown
+): Promise<void> {
+  const [me, notes, pending] = await Promise.all([
+    transport.rest<{ username: string }>('GET', '/user'),
+    transport.rest<Note[]>('GET', `${base}/notes?sort=desc&order_by=created_at&per_page=100`),
+    transport.rest<DraftNote[]>('GET', `${base}/draft_notes`)
+  ])
+  const mine = notes.filter((n) => n.author.username === me.username)
+  const stillPending = new Set(pending.map((d) => d.id))
+  const published = drafts.filter((d) => mine.some((n) => n.body === d.note && samePlace(n.position, d.position)))
+  if (published.length === 0) {
+    for (const d of drafts) {
+      if (createdIds.has(d.id) && stillPending.has(d.id)) await transport.rest('DELETE', `${base}/draft_notes/${d.id}`)
+    }
+    throw error
+  }
+  for (const d of published) {
+    if (stillPending.has(d.id)) await transport.rest('DELETE', `${base}/draft_notes/${d.id}`)
+  }
+  const summaryThere = summary === '' || mine.some((n) => n.body === summary && !n.position)
+  const body = [summaryThere ? '' : summary, state === 'requested_changes' ? '/request_changes' : '']
+    .filter((s) => s !== '')
+    .join('\n\n')
+  if (body !== '') await transport.rest('POST', `${base}/notes`, { body })
+}
+
+function samePlace(a: Place | null | undefined, b: Place | null | undefined): boolean {
+  if (!a || !b) return !a && !b
+  return a.new_path === b.new_path && a.new_line === b.new_line
+}
 
 function mrPath(target: PostTarget): string {
   return `/projects/${encodeURIComponent(target.projectPath)}/merge_requests/${target.iid}`
