@@ -18,9 +18,9 @@ export function cardsOf(state: PollState, context: OverdueContext): ReviewReques
 }
 
 /**
- * "in time | overdue" in the bell while any Review Request is overdue (#10): "2 | 3". Only overdue
- * shows just that count ("2", never "0 | 2"); the tooltip names it. No colour: a status bar item
- * has one tone, so the overdue part can't be red on its own.
+ * "in time | overdue!" in the bell while any Review Request is overdue (#10): "2 | 3!". Only
+ * overdue shows just that count ("2!", never "0 | 2!"). The "!" marks the overdue count instead of
+ * colour: a status bar item has one tone, so the overdue part can't be red on its own.
  */
 export function overdueRefiner(context: OverdueContext): StatusBarRefiner {
   return (look, state) => {
@@ -29,7 +29,7 @@ export function overdueRefiner(context: OverdueContext): StatusBarRefiner {
     const inTime = state.reviewRequests.length - overdue
     return {
       ...look,
-      text: inTime === 0 ? String(overdue) : `${inTime} | ${overdue}`,
+      text: inTime === 0 ? `${overdue}!` : `${inTime} | ${overdue}!`,
       tooltip: look.tooltip.replace(/\. Click to open\.$/, `, ${overdue} overdue. Click to open.`)
     }
   }
