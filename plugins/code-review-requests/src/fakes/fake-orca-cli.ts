@@ -22,6 +22,8 @@ export type WorktreeSeed = {
   branch?: string | null
   /** MR web URLs linked to the worktree. */
   references?: string[]
+  /** A Linear issue linked to the worktree, listed after the references. */
+  linearIssue?: { identifier: string; url: string }
   baseRef?: string
   /** Uncommitted changes: removal without force is refused. */
   dirty?: boolean
@@ -59,7 +61,10 @@ export class FakeOrcaCli implements OrcaCli {
       branch: fullRef(seed.branch === undefined ? seed.name : seed.branch),
       displayName: seed.name,
       linkedGitLabMR: seed.legacyGitLabMR ?? mrIid(seed.references?.[0]),
-      linkedItems: (seed.references ?? []).map((url) => linkedItem(url)),
+      linkedItems: [
+        ...(seed.references ?? []).map((url) => linkedItem(url)),
+        ...(seed.linearIssue ? [{ provider: 'linear', type: 'issue', ...seed.linearIssue }] : [])
+      ],
       ...(seed.baseRef ? { baseRef: seed.baseRef } : {}),
       diffComments: [],
       dirty: seed.dirty ?? false
@@ -137,6 +142,8 @@ export class FakeOrcaCli implements OrcaCli {
       name: input.name,
       ...(repo ? { repoId: repo.repoId, projectId: repo.projectId } : {}),
       ...(input.branch ? { branch: input.branch } : {}),
+      // Orca stores `compareBaseRef ?? remoteTrackingBase?.ref ?? baseBranch`; the CLI sends no
+      // compareBaseRef, and for `origin/<branch>` remoteTrackingBase.ref is that same name (#54).
       ...(input.baseBranch ? { baseRef: input.baseBranch } : {}),
       ...(input.references ? { references: input.references } : {}),
       ...(input.gitlabMr ? { references: [input.gitlabMr] } : {})

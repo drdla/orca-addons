@@ -148,6 +148,29 @@ test('posted comments are marked and locked; warnings and empty sections are exp
   await view.unmount()
 })
 
+test('Cover page reopens the review cover page, and says why when it cannot', async () => {
+  const asked: unknown[] = []
+  let fail = false
+  const { view } = await openDraft({
+    'rr.draft': draft([]),
+    'rr.openCoverPage': (input: unknown) => {
+      asked.push(input)
+      if (fail) throw hostError('action_failed', 'Orca is not showing a window.')
+      return { opened: true }
+    }
+  })
+
+  await view.press(view.find({ type: 'Button', text: 'Cover page' })!)
+  assert.deepEqual(asked, [{ url: URL }])
+  assert.equal(view.find({ text: /not showing a window/ }), null)
+
+  fail = true
+  await view.press(view.find({ type: 'Button', text: 'Cover page' })!)
+  assert.ok(view.find({ text: /Can't open the Review Cover Page: .*not showing a window/ }))
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
 test('says so when the Review Draft cannot be loaded, and Import again retries', async () => {
   let calls = 0
   const { view } = await openDraft({

@@ -43,6 +43,8 @@ export type MergeRequestSeed = {
   approvalsRequired?: number
   /** Comments by people on the MR; 0 by default. */
   userNotesCount?: number
+  /** The MR description; empty by default. */
+  description?: string
 }
 
 export type FakeMergeRequest = {
@@ -83,6 +85,7 @@ export type FakeMergeRequest = {
   pipeline: PipelineStatus | null
   approvalsRequired: number
   userNotesCount: number
+  description: string
 }
 
 export type FakeVersion = { id: number; baseSha: string; startSha: string; headSha: string; createdAt: number }
@@ -178,7 +181,8 @@ export class FakeGitLab implements GitLabTransport {
       hidden: false,
       pipeline: seed.pipeline ?? null,
       approvalsRequired: seed.approvalsRequired ?? 0,
-      userNotesCount: seed.userNotesCount ?? 0
+      userNotesCount: seed.userNotesCount ?? 0,
+      description: seed.description ?? ''
     }
     this.#addVersion(mr)
     this.#mergeRequests.push(mr)
@@ -478,7 +482,8 @@ export class FakeGitLab implements GitLabTransport {
       return this.#personalAccessToken(this.glabScopes)
     }
 
-    const m = /^\/projects\/([^/]+)\/merge_requests\/(\d+)(\/.*)?$/.exec(path)
+    const [route = '', query = ''] = path.split('?')
+    const m = /^\/projects\/([^/]+)\/merge_requests\/(\d+)(\/.*)?$/.exec(route)
     if (m) {
       const mr = this.#find(decodeURIComponent(m[1]!), Number(m[2]))
       const rest = m[3] ?? ''
@@ -525,7 +530,20 @@ export class FakeGitLab implements GitLabTransport {
         if (summary !== null) mr.published.push({ id: this.#nextId++, body: summary, position: null })
         return null
       }
-      if (method === 'GET' && rest === '/diffs') return mr.diffs as unknown as Json
+      if (method === 'GET' && rest === '/diffs') {
+        // Paged like GitLab: `page` (from 1) and `per_page` (default 20).
+        const params = new URLSearchParams(query)
+        const perPage = Number(params.get('per_page') ?? 20)
+        const page = Number(params.get('page') ?? 1)
+        return mr.diffs.slice((page - 1) * perPage, page * perPage) as unknown as Json
+      }
+      if (method === 'GET' && rest === '/approvals') {
+        return {
+          approvals_required: mr.approvalsRequired,
+          approvals_left: Math.max(0, mr.approvalsRequired - mr.approvedBy.length),
+          approved_by: mr.approvedBy.map((username) => ({ user: { username, name: username } }))
+        }
+      }
       if (method === 'GET' && rest === '/notes') {
         return [...mr.published].reverse().map((n) => ({
           ...(this.#restNote(mr, n.body) as Record<string, Json>),
@@ -616,7 +634,12 @@ export class FakeGitLab implements GitLabTransport {
       title: mr.title,
       state: mr.state,
       draft: mr.draft,
+      description: mr.description,
       web_url: this.#webUrl(mr),
+      references: { full: `${mr.projectPath}!${mr.iid}` },
+      labels: mr.labels,
+      // The capture (src/fixtures) had no head_pipeline field to compare; send it only with a pipeline.
+      ...(mr.pipeline === null ? {} : { head_pipeline: { status: mr.pipeline.toLowerCase() } }),
       source_branch: mr.sourceBranch,
       target_branch: mr.targetBranch,
       sha: mr.diffRefs.headSha,

@@ -1,15 +1,14 @@
 // What the panel's workspace buttons do (#6, #27): Start review (create the Review Workspace
 // through the orca CLI, linked to the MR, optionally followed by an Agent Review), Open workspace
-// and Run Agent Review. Every failure rejects with a message the panel shows on the card.
-//
-// The orca CLI and the host API name workspaces differently (`<repoId>::<path>` vs the id
-// `workspace.list` gives), so host calls map a worktree to its host id by path.
-import type { OrcaWorkerApi } from 'orca/worker'
+// and Run Agent Review. Start review and Open workspace also build and open the Review Cover Page
+// (#55, src/cover-page). Every failure rejects with a message the panel shows on the card.
+import { coverPageTargetOf, type CoverPages } from '../cover-page/cover-pages'
 import type { ReviewRequestView } from '../protocol'
 import type { Worktree } from '../seams/orca-cli'
 import type { Settings } from '../settings'
 import { reviewCommandFor, reviewPromptFor } from './review-prompt'
-import { findRepo, findReviewWorkspace } from './review-workspaces'
+import { hostWorkspaceIdOf } from './host-workspace'
+import { findRepo, findReviewWorkspace, normalizeMergeRequestUrl } from './review-workspaces'
 import type { WorkspaceContext } from './workspace-context'
 import type { WorkspaceState } from './workspace-tracker'
 import { messageOf } from '../errors'
@@ -18,6 +17,8 @@ export type ReviewActionsDeps = WorkspaceContext & {
   settings: () => Promise<Settings>
   /** The listed Review Request with this URL, if any. */
   reviewRequest: (url: string) => ReviewRequestView | undefined
+  /** The Review Cover Page (#55), built and opened after the workspace exists. */
+  coverPages: CoverPages
 }
 
 export type ReviewActions = {
@@ -25,6 +26,8 @@ export type ReviewActions = {
   startReview(url: string, withAgent: boolean): Promise<void>
   openWorkspace(url: string): Promise<void>
   runAgentReview(url: string): Promise<void>
+  /** Opens the Review Cover Page, building it first if the workspace has none (#55). */
+  openCoverPage(url: string): Promise<void>
 }
 
 /** The workspace name Start review gives, for example `review-api-7`. */
@@ -69,34 +72,112 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     }
   }
 
+  /**
+   * Creates the Review Workspace (#54): based on the freshly fetched target branch, so Orca's
+   * `baseRef` is the target branch and Source Control's "Committed on Branch" lists the MR's
+   * changes, then reset to the MR head. A workspace whose reset failed is removed again.
+   *
+   * Orca's setup (repo setup hooks) is skipped: it would run while the worktree is still at the
+   * target branch and race the reset, and neither the orca CLI nor the host API can run it later.
+   * The trade-off: a Review Workspace gets no setup-hook work (dependency installs and the like).
+   */
+  async function createReviewWorkspace(rr: ReviewRequestView, repoPath: string, repoId: string): Promise<Worktree> {
+    if (!rr.targetBranch) throw new Error('This Review Request has no target branch yet. Refresh and try again.')
+    const baseBranch = await deps.git.fetchBranch(repoPath, rr.targetBranch)
+    const head = await deps.git.fetchMergeRequestHead(repoPath, rr.iid)
+    const worktree = await deps.cli().createWorktree({
+      name: reviewWorkspaceName(rr),
+      repo: `id:${repoId}`,
+      baseBranch,
+      gitlabMr: rr.url,
+      noParent: true,
+      setup: 'skip'
+    })
+    try {
+      await deps.git.resetBranch(worktree.path, head)
+    } catch (error) {
+      const reason = `Couldn't check out the merge request in the new Review Workspace ${worktree.displayName}: ${sentence(error)}`
+      try {
+        await deps.cli().removeWorktree(`id:${worktree.id}`, { force: true, deleteBranch: true })
+      } catch (removeError) {
+        throw new Error(
+          `${reason}. Removing it failed too (${sentence(removeError)}); remove it in Orca before you start the review again.`
+        )
+      } finally {
+        await deps.workspaces.refresh()
+      }
+      throw new Error(`${reason}. The workspace was removed; start the review again.`)
+    }
+    await deps.workspaces.refresh()
+    return worktree
+  }
+
+  /**
+   * An existing Review Workspace whose branch is still at the target branch (a create whose reset
+   * never ran) is moved to the MR head, but only when it has no uncommitted changes; an Agent
+   * Review there would see an empty diff. A workspace with commits of its own is left alone.
+   */
+  async function ensureAtMergeRequest(worktree: Worktree, rr: ReviewRequestView): Promise<void> {
+    if (!rr.targetBranch) return
+    const target = await deps.git.resolveRef(worktree.path, `refs/remotes/origin/${rr.targetBranch}`)
+    if (target === null || (await deps.git.headSha(worktree.path)) !== target) return
+    if ((await deps.git.statusPorcelain(worktree.path)).length > 0) {
+      throw new Error(
+        `The Review Workspace ${worktree.displayName} is still at the target branch ${rr.targetBranch} and has uncommitted changes, so it doesn't show the merge request. Remove it and start the review again.`
+      )
+    }
+    await deps.git.resetBranch(worktree.path, await deps.git.fetchMergeRequestHead(worktree.path, rr.iid))
+  }
+
+  async function startReview(rr: ReviewRequestView, withAgent: boolean): Promise<void> {
+    const index = listed(await deps.workspaces.refresh())
+    let worktree = findReviewWorkspace(index, rr)
+    if (worktree) {
+      await ensureAtMergeRequest(worktree, rr)
+    } else {
+      const repo = findRepo(index, rr)
+      if (!repo) throw new Error(`Add ${rr.projectPath} to Orca to review here.`)
+      worktree = await createReviewWorkspace(rr, repo.path, repo.repoId)
+    }
+    // The Review Cover Page (#55) builds while the agent starts, and opens last: the tab in front.
+    const target = coverPageTarget(worktree, rr)
+    const [page, agent] = await Promise.allSettled([
+      deps.coverPages.ensure(target),
+      withAgent ? agentReview(worktree, rr) : Promise.resolve()
+    ])
+    const problems: string[] = []
+    if (agent.status === 'rejected') problems.push(`the Agent Review didn't start: ${messageOf(agent.reason)}`)
+    const shown = page.status === 'rejected' ? page.reason : await deps.coverPages.reveal(target).then(() => null, (e: unknown) => e)
+    if (shown !== null) problems.push(`the Review Cover Page didn't open: ${messageOf(shown)}`)
+    if (problems.length > 0) throw new Error(`The Review Workspace is ready, but ${problems.join('; ')}`)
+  }
+
+  /** Start reviews still running, by MR URL: a second click joins the first (one workspace). */
+  const starting = new Map<string, Promise<void>>()
+
+  const coverPageTarget = (worktree: Worktree, rr: ReviewRequestView) =>
+    coverPageTargetOf(rr, { ...worktree, name: worktree.displayName })
+
   return {
     async startReview(url, withAgent) {
       const rr = reviewRequestOf(url)
-      const index = listed(await deps.workspaces.refresh())
-      let worktree = findReviewWorkspace(index, rr)
-      if (!worktree) {
-        const repo = findRepo(index, rr)
-        if (!repo) throw new Error(`Add ${rr.projectPath} to Orca to review here.`)
-        const baseBranch = await deps.git.fetchMergeRequestHead(repo.path, rr.iid)
-        worktree = await deps.cli().createWorktree({
-          name: reviewWorkspaceName(rr),
-          repo: `id:${repo.repoId}`,
-          baseBranch,
-          gitlabMr: rr.url,
-          noParent: true
-        })
-        await deps.workspaces.refresh()
-      }
-      if (!withAgent) return
-      try {
-        await agentReview(worktree, rr)
-      } catch (error) {
-        throw new Error(`The Review Workspace is ready, but the Agent Review didn't start: ${messageOf(error)}`)
-      }
+      const key = normalizeMergeRequestUrl(rr.url) ?? rr.url
+      const running = starting.get(key)
+      if (running) return running
+      const started = startReview(rr, withAgent).finally(() => starting.delete(key))
+      starting.set(key, started)
+      return started
     },
     async openWorkspace(url) {
-      const worktree = await existingWorkspace(reviewRequestOf(url))
+      const rr = reviewRequestOf(url)
+      const worktree = await existingWorkspace(rr)
       await deps.host.call('workspace.open', { workspaceId: await hostWorkspaceId(worktree) })
+      // A Review Workspace from before #55 (or made by hand) gets its Review Cover Page now.
+      await deps.coverPages.openIfMissing(coverPageTarget(worktree, rr))
+    },
+    async openCoverPage(url) {
+      const rr = reviewRequestOf(url)
+      await deps.coverPages.open(coverPageTarget(await existingWorkspace(rr), rr))
     },
     async runAgentReview(url) {
       const rr = reviewRequestOf(url)
@@ -105,13 +186,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
   }
 }
 
-/** The host's id (`workspace.list`) for a workspace the orca CLI lists, matched by path. */
-export async function hostWorkspaceIdOf(
-  host: OrcaWorkerApi['host'],
-  workspace: { name: string; path: string }
-): Promise<string> {
-  const { workspaces } = await host.call('workspace.list')
-  const row = workspaces.find((w) => w.path === workspace.path)
-  if (!row) throw new Error(`Orca doesn't list the workspace ${workspace.name}.`)
-  return row.id
+/** An error's message without its trailing period, to go on inside a sentence. */
+function sentence(error: unknown): string {
+  return messageOf(error).trim().replace(/\.+$/, '')
 }

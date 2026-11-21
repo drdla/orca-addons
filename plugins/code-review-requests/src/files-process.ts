@@ -1,5 +1,6 @@
 // The real Files seam. Nothing here runs on load: `orca plugin check` imports the real worker.
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import type { Files } from './seams/files'
 
 export const systemFiles: Files = {
@@ -10,5 +11,9 @@ export const systemFiles: Files = {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
       throw error
     }
+  },
+  async writeText(path, text) {
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(path, text, 'utf8')
   }
 }

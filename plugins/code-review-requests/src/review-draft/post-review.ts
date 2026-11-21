@@ -12,16 +12,13 @@
 //      Delete failed drafts removes it. That is the only time the plugin deletes a GitLab draft.
 // Drafts I started elsewhere (the web UI) publish too; the confirm step lists them first.
 import type { PostPreview, PostResult, ReviewOutcome } from '../protocol'
-import { GitLabError, type GitLabTransport, type Json } from '../seams/gitlab'
+import { GitLabError, type GitLabAccess, type GitLabTransport, type Json } from '../seams/gitlab'
 import { redactError } from '../gitlab/http-response'
 import type { FailedDraft, PostedComment, ReviewComment, ReviewDraft, ReviewDrafts } from './review-drafts'
 import { messageOf } from '../errors'
 
 /** Which MR to post to. */
 export type PostTarget = { url: string; projectPath: string; iid: number }
-
-/** The transport for the configured connection, and its token (to redact), or null for glab. */
-export type PostConnection = { transport: GitLabTransport; token: string | null }
 
 export const API_SCOPE_HINT = 'Posting a review needs a token with the api scope.'
 
@@ -43,7 +40,7 @@ type Planned = {
 
 export function createReviewPoster(options: {
   drafts: ReviewDrafts
-  connection: () => Promise<PostConnection>
+  connection: () => Promise<GitLabAccess>
   notify: (title: string, body: string) => Promise<unknown>
 }) {
   const { drafts } = options

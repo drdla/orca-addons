@@ -84,6 +84,12 @@ const withOverdue: ReviewRequestsSnapshot = {
   refreshedAt: NOW
 }
 
+/** Every Review Request overdue (#53): the heading shows only the danger count. */
+const allOverdue: ReviewRequestsSnapshot = {
+  reviewRequests: [card(9, 'Migrate billing to the new API', 72, true), card(8, 'Retire the v1 webhooks', 50, true)],
+  refreshedAt: NOW
+}
+
 const DRAFT_URL = `https://gitlab.example.com/acme/api/-/merge_requests/12`
 
 /** A curated Review Draft (#29): a note range, a posted note, an edited range finding, a general one. */
@@ -296,6 +302,7 @@ export default defineCheck({
   toReview: { requests: { 'rr.snapshot': toReview } },
   /** An overdue card: danger border and badge, warning icon on the tab. */
   overdue: { requests: { 'rr.snapshot': withOverdue } },
+  allOverdue: { requests: { 'rr.snapshot': allOverdue } },
   /** The person left the panel on In review, with nothing there. */
   inReviewTab: { requests: { 'rr.snapshot': toReview }, persisted: { plugin: { 'rr.tab': 'in' } } },
   /** In review: a card with a Review Workspace, Open workspace and Run Agent Review (#27). */
