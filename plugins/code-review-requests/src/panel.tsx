@@ -52,6 +52,7 @@ import {
   setupReviewDraft
 } from './review-draft-view'
 import { API_SCOPE_HINT } from './review-post-view'
+import { overdueSplit } from './to-review'
 import { isSettingsOpen, openSettings, SettingsScreen, setupSettings } from './settings-view'
 
 type TabId = 'todo' | 'in' | 'ended'
@@ -180,12 +181,11 @@ export default function Panel() {
 
 function Header() {
   const current = read(snapshot)
-  const count = current?.reviewRequests.length ?? 0
   return (
     <Row justify="between">
       <Row gap="sm">
         <Heading level={2}>Review Requests</Heading>
-        {current !== null && <Badge tone={count > 0 ? 'accent' : 'neutral'}>{String(count)}</Badge>}
+        {current !== null && <HeadingCounts cards={current.reviewRequests} />}
       </Row>
       <Row gap="sm">
         {read(refreshing) ? (
@@ -200,6 +200,23 @@ function Header() {
         <IconButton icon="refresh" label="Refresh" variant="ghost" size="sm" onPress={refresh} />
         <IconButton icon="settings" label="Settings" variant="ghost" size="sm" onPress={openSettings} />
       </Row>
+    </Row>
+  )
+}
+
+/**
+ * The heading's count, split like the bell (#53): an accent badge for the Review Requests not yet
+ * overdue, a danger one for the Overdue Review Requests, each hidden at 0; a neutral "0" when there
+ * are none. Two badges, not one split badge: Orca accepts only text inside a Badge, so a red
+ * Text can't sit in a neutral one.
+ */
+function HeadingCounts({ cards }: { cards: readonly ReviewRequestCard[] }) {
+  const { inTime, overdue } = overdueSplit(cards)
+  if (inTime === 0 && overdue === 0) return <Badge tone="neutral">0</Badge>
+  return (
+    <Row gap="xs">
+      {inTime > 0 && <Badge tone="accent">{String(inTime)}</Badge>}
+      {overdue > 0 && <Badge tone="danger">{String(overdue)}</Badge>}
     </Row>
   )
 }

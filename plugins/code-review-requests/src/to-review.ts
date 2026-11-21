@@ -18,15 +18,26 @@ export function cardsOf(state: PollState, context: OverdueContext): ReviewReques
 }
 
 /**
+ * How many Review Requests are not yet overdue and how many are Overdue Review Requests. The bell
+ * and the panel heading (#53) both count with this, from cards marked by cardsOf(), so they agree.
+ */
+export function overdueSplit(cards: readonly Pick<ReviewRequestCard, 'overdue'>[]): {
+  inTime: number
+  overdue: number
+} {
+  const overdue = cards.filter((card) => card.overdue).length
+  return { inTime: cards.length - overdue, overdue }
+}
+
+/**
  * "in time | overdue!" in the bell while any Review Request is overdue (#10): "2 | 3!". Only
  * overdue shows just that count ("2!", never "0 | 2!"). The "!" marks the overdue count instead of
  * colour: a status bar item has one tone, so the overdue part can't be red on its own.
  */
 export function overdueRefiner(context: OverdueContext): StatusBarRefiner {
   return (look, state) => {
-    const overdue = cardsOf(state, context).filter((card) => card.overdue).length
+    const { inTime, overdue } = overdueSplit(cardsOf(state, context))
     if (overdue === 0) return look
-    const inTime = state.reviewRequests.length - overdue
     return {
       ...look,
       text: inTime === 0 ? `${overdue}!` : `${inTime} | ${overdue}!`,

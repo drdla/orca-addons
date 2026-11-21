@@ -90,6 +90,57 @@ test('an overdue card gets an Overdue badge and the To review tab a warning icon
   await view.unmount()
 })
 
+/** The heading's count badges as [count, tone]: the card badges ("Overdue", "New") hold words. */
+function headingCounts(view: Awaited<ReturnType<typeof mount>>): [string, unknown][] {
+  return view
+    .findAll({ type: 'Badge', text: /^\d+$/ })
+    .map((badge): [string, unknown] => [badge.text, badge.props.tone])
+}
+
+const overdue = (iid: number) => card(iid, { overdue: true })
+
+test('the heading splits the count into in-time and overdue, the overdue count red', async () => {
+  const host = mockHost({
+    requests: { 'rr.snapshot': snapshot(overdue(52), overdue(51), overdue(50), card(2), card(1)) }
+  })
+  const view = await mount(panel, { host })
+
+  assert.deepEqual(headingCounts(view), [
+    ['2', 'accent'],
+    ['3', 'danger']
+  ])
+  assert.deepEqual(view.errors, [])
+  assert.deepEqual(view.refusals, [])
+  await view.unmount()
+})
+
+test('the heading shows only the red overdue count when every Review Request is overdue', async () => {
+  const host = mockHost({ requests: { 'rr.snapshot': snapshot(overdue(51), overdue(50)) } })
+  const view = await mount(panel, { host })
+
+  assert.deepEqual(headingCounts(view), [['2', 'danger']])
+  assert.deepEqual(view.refusals, [])
+  await view.unmount()
+})
+
+test('the heading shows only the in-time count when no Review Request is overdue', async () => {
+  const host = mockHost({ requests: { 'rr.snapshot': snapshot(card(3), card(2), card(1)) } })
+  const view = await mount(panel, { host })
+
+  assert.deepEqual(headingCounts(view), [['3', 'accent']])
+  assert.deepEqual(view.refusals, [])
+  await view.unmount()
+})
+
+test('the heading shows a single neutral 0 when there are no Review Requests', async () => {
+  const host = mockHost({ requests: { 'rr.snapshot': snapshot() } })
+  const view = await mount(panel, { host })
+
+  assert.deepEqual(headingCounts(view), [['0', 'neutral']])
+  assert.deepEqual(view.refusals, [])
+  await view.unmount()
+})
+
 test('the other tabs say there is nothing there yet', async () => {
   const host = mockHost({ requests: { 'rr.snapshot': snapshot(card(1)) } })
   const view = await mount(panel, { host })
