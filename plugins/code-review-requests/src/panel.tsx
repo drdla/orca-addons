@@ -708,9 +708,10 @@ function Blockers({ card }: { card: ReviewRequestCard }) {
           </Text>
         ]
       : []),
-    <Link key={blocker.text} onPress={() => openInGitLab(blocker.url)}>
-      {blocker.text}
-    </Link>
+    // Link has no size: the Text around it makes it xs, like the author and age.
+    <Text key={blocker.text} size="xs">
+      <Link onPress={() => openInGitLab(blocker.url)}>{blocker.text}</Link>
+    </Text>
   ])
 }
 

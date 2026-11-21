@@ -1,13 +1,14 @@
 // The panel's Ended tab (#7, #28): one card per Ended Review Request that still has its Review
-// Workspace. Its actions are Review draft (post what is left, #30) and Remove workspace: the worker checks what removal would lose, the
-// card asks to confirm (Remove, or Remove anyway when it would force), and on failure shows
-// Orca's error with Open workspace. Also the banner shown while the orca CLI is broken (#15).
+// Workspace. It offers Open workspace and Remove workspace: the worker checks what removal would
+// lose, the card asks to confirm (Remove, or Remove anyway when it would force), and on failure
+// shows Orca's error. Also the banner shown while the orca CLI is broken (#15).
 import {
   atom,
   Badge,
   Box,
   Callout,
   host,
+  IconButton,
   plugin,
   read,
   Row,
@@ -19,17 +20,16 @@ import {
 import { Button } from './button'
 import { MergeRequestLink } from './merge-request-link'
 import type { EndedCard, EndedReason, RemovalCheck, ReviewRequestsSnapshot } from './protocol'
-import { openReviewDraft } from './review-draft-view'
 import { ErrorDetails } from './setup-checklist'
 import { messageOf } from './errors'
-import { MinuteTime } from './minute-time'
+import { shortTitle } from './short-title'
 
 /** Open confirmations, by Review Request URL: what removal would lose. */
 const confirming = atom<Record<string, RemovalCheck>>({})
 /** Cards with a check or removal under way. */
 const busy = atom<Record<string, true>>({})
-/** Per-card errors; `removal` ones offer Open workspace. */
-const errors = atom<Record<string, { message: string; detail?: string; removal: boolean }>>({})
+/** Per-card errors. */
+const errors = atom<Record<string, { message: string; detail?: string }>>({})
 
 const REASONS: Record<EndedReason, string> = {
   approved: 'Approved',
@@ -57,7 +57,7 @@ function askToRemove(url: string): void {
     .request('rr.checkRemoval', { url }, { timeoutMs: 60_000 })
     .then((check) => patch(confirming, url, check))
     .catch((error: unknown) =>
-      patch(errors, url, { message: "Couldn't check the workspace", detail: messageOf(error), removal: false })
+      patch(errors, url, { message: "Couldn't check the workspace", detail: messageOf(error) })
     )
     .finally(() => patch(busy, url, null))
 }
@@ -69,7 +69,7 @@ function remove(url: string, force: boolean, received: (snapshot: ReviewRequests
     .request('rr.removeWorkspace', { url, force }, { timeoutMs: REMOVE_TIMEOUT_MS })
     .then(received)
     .catch((error: unknown) =>
-      patch(errors, url, { message: `Couldn't remove the workspace: ${messageOf(error)}`, removal: true })
+      patch(errors, url, { message: `Couldn't remove the workspace: ${messageOf(error)}` })
     )
     .finally(() => patch(busy, url, null))
 }
@@ -78,7 +78,7 @@ function openWorkspace(url: string): void {
   plugin
     .request('rr.openWorkspace', { url })
     .catch((error: unknown) =>
-      patch(errors, url, { message: `Couldn't open the workspace: ${messageOf(error)}`, removal: true })
+      patch(errors, url, { message: `Couldn't open the workspace: ${messageOf(error)}` })
     )
 }
 
@@ -86,7 +86,7 @@ function openInGitLab(url: string): void {
   host
     .call('shell.openExternal', { url })
     .catch((error: unknown) =>
-      patch(errors, url, { message: `Couldn't open the link: ${messageOf(error)}`, removal: false })
+      patch(errors, url, { message: `Couldn't open the link: ${messageOf(error)}` })
     )
 }
 
@@ -132,21 +132,27 @@ function EndedCardView(props: {
       <Row justify="between" align="start">
         <Row gap="sm" align="start">
           <MergeRequestLink url={card.url} iid={card.iid} onOpen={openInGitLab} />
-          {/* Nudged down 2px so the title's first line sits level with the button's text. */}
+          {/* Nudged down 2px so the title's first line sits level with the button's text; the
+              author sits under the title, at its indent, as on the other cards. */}
           <Box direction="column">
             <Box height={2} />
-            <Text weight="semibold">{card.title}</Text>
+            <Text weight="semibold">{shortTitle(card.title)}</Text>
+            <Text muted size="xs">{`by ${card.author}`}</Text>
           </Box>
         </Row>
-        <Badge tone={card.reason === 'merged' || card.reason === 'approved' ? 'success' : 'neutral'}>
-          {REASONS[card.reason] ?? 'Ended'}
-        </Badge>
+        <ReasonPill reason={card.reason} />
       </Row>
-      <Text muted size="xs">
-        {`${card.author} · ended `}
-        <MinuteTime at={card.endedAt} />
-        {` · ${card.workspace.name}`}
-      </Text>
+      {/* Like a Reviewing card: the way into the workspace on its own row, above the action. */}
+      <Row gap="xs" align="center">
+        <IconButton
+          icon="folder"
+          label="Open workspace"
+          variant="ghost"
+          size="xs"
+          disabled={props.disabled || working}
+          onPress={() => openWorkspace(card.url)}
+        />
+      </Row>
       {check === undefined && (
         <Row gap="xs">
           <Button
@@ -157,9 +163,6 @@ function EndedCardView(props: {
             onPress={() => askToRemove(card.url)}
           >
             Remove Workspace
-          </Button>
-          <Button size="xs" variant="outline" icon="edit" onPress={() => openReviewDraft(card.url)}>
-            Review Draft
           </Button>
           {working && <Spinner label="Working" labelHidden />}
         </Row>
@@ -178,17 +181,15 @@ function EndedCardView(props: {
             {error.message}
           </Text>
           {error.detail !== undefined && <ErrorDetails message={error.detail} />}
-          {error.removal && (
-            <Row>
-              <Button size="xs" icon="folder" disabled={props.disabled} onPress={() => openWorkspace(card.url)}>
-                Open Workspace
-              </Button>
-            </Row>
-          )}
         </Stack>
       )}
     </Box>
   )
+}
+
+/** Why the review ended, in a neutral Badge: a toned one would draw a status dot. */
+function ReasonPill({ reason }: { reason: EndedReason }) {
+  return <Badge tone="neutral">{REASONS[reason] ?? 'Ended'}</Badge>
 }
 
 function Confirmation(props: {
