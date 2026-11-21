@@ -30,7 +30,7 @@ test('shows that there is nothing to review when the worker has no Review Reques
 
   assert.ok(view.find({ type: 'Heading', text: 'Review Requests' }))
   assert.ok(view.find({ type: 'EmptyState' }))
-  assert.ok(view.find({ text: 'Nothing to review' }))
+  assert.ok(view.find({ text: 'No open review requests' }))
   assert.deepEqual(view.errors, [])
   assert.deepEqual(view.refusals, [])
   await view.unmount()
@@ -149,9 +149,9 @@ test('the other tabs show the same empty state as Todo', async () => {
   const view = await mount(panel, { host })
 
   await view.select(view.find({ type: 'Tabs' })!, 'in')
-  assert.ok(view.find({ type: 'EmptyState', text: 'No review in progress' }))
+  assert.ok(view.find({ type: 'EmptyState', text: 'No reviews in progress' }))
   await view.select(view.find({ type: 'Tabs' })!, 'ended')
-  assert.ok(view.find({ type: 'EmptyState', text: 'No done reviews' }))
+  assert.ok(view.find({ type: 'EmptyState', text: 'No completed reviews' }))
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })
@@ -196,7 +196,7 @@ test('the refresh button asks the worker to poll and shows the new list', async 
     requests: { 'rr.snapshot': snapshot(), 'rr.refresh': snapshot(card(1, { title: 'Fresh' })) }
   })
   const view = await mount(panel, { host })
-  assert.ok(view.find({ text: 'Nothing to review' }))
+  assert.ok(view.find({ text: 'No open review requests' }))
 
   const refreshButton = view.findAll({ type: 'Button' }).find((b) => b.props.tooltip === 'Refresh')
   assert.equal(refreshButton?.props.icon, 'refresh')
@@ -205,6 +205,16 @@ test('the refresh button asks the worker to poll and shows the new list', async 
 
   assert.ok(view.find({ text: 'Fresh' }))
   assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('before the first refresh, Refresh is just its icon, with no label', async () => {
+  const view = await mount(panel, {
+    host: mockHost({ requests: { 'rr.snapshot': { reviewRequests: [], refreshedAt: null } } })
+  })
+
+  assert.ok(view.find({ type: 'IconButton', label: 'Refresh' }))
+  assert.equal(view.find({ text: 'Refresh' }), null)
   await view.unmount()
 })
 

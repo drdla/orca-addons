@@ -201,18 +201,34 @@ export default function Panel() {
       />
     )
   }
+  // The panel's full height: the list scrolls on its own, the footer stays at the bottom.
   return (
-    <Stack gap="md">
-      <Header />
-      <Body />
-      <FilterNotes />
-    </Stack>
+    <Box direction="column" height="100%" gap="xs">
+      <Box grow scroll="y">
+        <Stack gap="md">
+          <Header />
+          <Body />
+          <FilterNotes />
+        </Stack>
+      </Box>
+      <Box shrink={false}>
+        <Footer />
+      </Box>
+    </Box>
   )
 }
 
-/** Refresh as one borderless, text-like button: the icon and when the list was last refreshed. */
+/**
+ * Refresh as one borderless, text-like button: the icon and when the list was last refreshed; just
+ * the icon before the first refresh.
+ */
 function RefreshButton({ refreshedAt }: { refreshedAt: number | null }) {
   // While refreshing it is just disabled: no spinner.
+  if (refreshedAt === null) {
+    return (
+      <IconButton icon="refresh" label="Refresh" variant="ghost" size="sm" disabled={read(refreshing)} onPress={refresh} />
+    )
+  }
   return (
     <Button
       size="xs"
@@ -223,7 +239,7 @@ function RefreshButton({ refreshedAt }: { refreshedAt: number | null }) {
       disabled={read(refreshing)}
       onPress={refresh}
     >
-      {refreshedAt === null ? 'Refresh' : minuteTimeText(refreshedAt)}
+      {minuteTimeText(refreshedAt)}
     </Button>
   )
 }
@@ -231,13 +247,21 @@ function RefreshButton({ refreshedAt }: { refreshedAt: number | null }) {
 function Header() {
   const current = read(snapshot)
   return (
-    <Row justify="between">
-      <Row gap="sm">
-        <Heading level={2}>Review Requests</Heading>
-        {current !== null && <HeadingCounts key="heading-counts" cards={current.reviewRequests} />}
-      </Row>
-      <Row gap="sm">
-        <RefreshButton refreshedAt={current?.refreshedAt ?? null} />
+    <Row gap="sm">
+      <Heading level={2}>Review Requests</Heading>
+      {current !== null && <HeadingCounts key="heading-counts" cards={current.reviewRequests} />}
+    </Row>
+  )
+}
+
+/** The row at the bottom of the panel: Refresh on the left, the Manual and Settings on the right. */
+function Footer() {
+  const current = read(snapshot)
+  return (
+    <Row justify="between" align="center">
+      <RefreshButton refreshedAt={current?.refreshedAt ?? null} />
+      {/* No gap: the ghost buttons' own padding already spaces them. */}
+      <Row gap="none" align="center">
         <IconButton icon="info" label="Manual" variant="ghost" size="sm" onPress={openManual} />
         <IconButton icon="settings" label="Settings" variant="ghost" size="sm" onPress={openSettings} />
       </Row>
@@ -407,13 +431,13 @@ function stagesOf(current: ReviewRequestsSnapshot, query: string): Stage[] {
       'todo',
       'Todo',
       cards.filter((c) => !inReview(c)),
-      searching ? noMatch('check', 'open review requests') : <EmptyState icon="check" title="Nothing to review" />
+      searching ? noMatch('check', 'open review requests') : <EmptyState icon="check" title="No open review requests" />
     ),
     cardStage(
       'in',
       'Reviewing',
       cards.filter(inReview),
-      searching ? noMatch('folder', 'reviews in progress') : <EmptyState icon="folder" title="No review in progress" />
+      searching ? noMatch('folder', 'reviews in progress') : <EmptyState icon="folder" title="No reviews in progress" />
     ),
     {
       id: 'ended',
@@ -422,7 +446,7 @@ function stagesOf(current: ReviewRequestsSnapshot, query: string): Stage[] {
       body:
         ended.length === 0 ?
           searching ? noMatch('check', 'completed reviews')
-          : <EmptyState icon="check" title="No done reviews" />
+          : <EmptyState icon="check" title="No completed reviews" />
         : <EndedList cards={ended} disabled={current.workspacesUnavailable !== undefined} received={received} />
     }
   ]
@@ -514,37 +538,46 @@ function When({ at }: { at: number }) {
 
 /**
  * A Reviewing card's ways into its Review Workspace (#6): open it, its changed files and the
- * merge request summary. Their own row, above the actions; nothing on a Todo card.
+ * merge request summary, then what holds the merge request up. Their own row, above the actions;
+ * nothing on a Todo card.
  */
 function WorkspaceNavigation({ card }: { card: ReviewRequestCard }) {
   if (card.workspace == null) return null
   const busy = read(busyCards)[card.url] === true
+  // Two groups, further apart than the buttons within them.
   return (
-    <Row gap="xs" align="center">
-      <IconButton
-        icon="folder"
-        label="Open workspace"
-        variant="ghost"
-        size="xs"
-        disabled={busy}
-        onPress={() => openWorkspace(card.url)}
-      />
-      <IconButton
-        icon="branch"
-        label="View changes"
-        variant="ghost"
-        size="xs"
-        disabled={busy}
-        onPress={() => showChanges(card.url)}
-      />
-      <IconButton
-        icon="file-text"
-        label="View MR summary"
-        variant="ghost"
-        size="xs"
-        disabled={busy}
-        onPress={() => openCoverPage(card.url)}
-      />
+    <Row gap="md" align="center" wrap>
+      <Row gap="xs" align="center">
+        <IconButton
+          icon="folder"
+          label="Open workspace"
+          variant="ghost"
+          size="xs"
+          disabled={busy}
+          onPress={() => openWorkspace(card.url)}
+        />
+        <IconButton
+          icon="branch"
+          label="View changes"
+          variant="ghost"
+          size="xs"
+          disabled={busy}
+          onPress={() => showChanges(card.url)}
+        />
+        <IconButton
+          icon="file-text"
+          label="View MR summary"
+          variant="ghost"
+          size="xs"
+          disabled={busy}
+          onPress={() => openCoverPage(card.url)}
+        />
+      </Row>
+      {blockers(card).length > 0 && (
+        <Row gap="xs" align="center">
+          <Blockers card={card} />
+        </Row>
+      )}
     </Row>
   )
 }
@@ -704,7 +737,8 @@ function Card({ card }: { card: ReviewRequestCard }) {
         <Box grow>
           <Row gap="sm" align="center" wrap>
             <WorkspaceActions card={card} />
-            <Blockers card={card} />
+            {/* A Reviewing card shows them after its navigation buttons instead. */}
+            {card.workspace == null && <Blockers card={card} />}
           </Row>
         </Box>
         <Box shrink={false}>
