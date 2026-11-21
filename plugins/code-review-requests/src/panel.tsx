@@ -41,6 +41,7 @@ import type { CiStatus, ReviewRequestCard, ReviewRequestsSnapshot } from './prot
 import { canPostReviews, connectionProblem, loadConnection } from './connection-section'
 import { messageOf } from './errors'
 import { MinuteTime, setupClock } from './minute-time'
+import { overdueSplit } from './overdue-split'
 import { RefreshProblem } from './refresh-problem'
 import { headline, type NeedsYouView } from './setup-checklist'
 import { EndedList, WorkspacesUnavailable } from './ended-tab'
@@ -180,12 +181,11 @@ export default function Panel() {
 
 function Header() {
   const current = read(snapshot)
-  const count = current?.reviewRequests.length ?? 0
   return (
     <Row justify="between">
       <Row gap="sm">
         <Heading level={2}>Review Requests</Heading>
-        {current !== null && <Badge tone={count > 0 ? 'accent' : 'neutral'}>{String(count)}</Badge>}
+        {current !== null && <HeadingCounts key="heading-counts" cards={current.reviewRequests} />}
       </Row>
       <Row gap="sm">
         {read(refreshing) ? (
@@ -200,6 +200,23 @@ function Header() {
         <IconButton icon="refresh" label="Refresh" variant="ghost" size="sm" onPress={refresh} />
         <IconButton icon="settings" label="Settings" variant="ghost" size="sm" onPress={openSettings} />
       </Row>
+    </Row>
+  )
+}
+
+/**
+ * The heading's count, split like the bell (#53): a neutral badge for the Review Requests not yet
+ * overdue, a danger one for the Overdue Review Requests, each hidden at 0; a neutral "0" when there
+ * are none. Neutral, not accent: accent is a white pill with dark text in dark themes, hard to
+ * read. Two badges, not one split badge: Orca accepts only text inside a Badge, so a red Text
+ * can't sit in a neutral one.
+ */
+function HeadingCounts({ cards }: { cards: readonly ReviewRequestCard[] }) {
+  const { inTime, overdue } = overdueSplit(cards)
+  return (
+    <Row gap="xs">
+      {(inTime > 0 || overdue === 0) && <Badge tone="neutral">{String(inTime)}</Badge>}
+      {overdue > 0 && <Badge tone="danger">{String(overdue)}</Badge>}
     </Row>
   )
 }

@@ -2,6 +2,7 @@
 // first, each marked overdue or not, and the bell's overdue look. Overdue depends on the time, so
 // it is derived when asked, never stored in the poll state.
 import { isOverdue } from './overdue'
+import { overdueSplit } from './overdue-split'
 import type { PollState } from './poll/poll-state'
 import type { ReviewRequestCard } from './protocol'
 import type { StatusBarRefiner } from './status-bar'
@@ -24,9 +25,8 @@ export function cardsOf(state: PollState, context: OverdueContext): ReviewReques
  */
 export function overdueRefiner(context: OverdueContext): StatusBarRefiner {
   return (look, state) => {
-    const overdue = cardsOf(state, context).filter((card) => card.overdue).length
+    const { inTime, overdue } = overdueSplit(cardsOf(state, context))
     if (overdue === 0) return look
-    const inTime = state.reviewRequests.length - overdue
     return {
       ...look,
       text: inTime === 0 ? `${overdue}!` : `${inTime} | ${overdue}!`,

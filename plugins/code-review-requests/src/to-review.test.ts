@@ -1,8 +1,10 @@
 // The worker side of the To review tab (#22): what rr.snapshot tells the panel about waiting
 // time, order and overdue, and the overdue bell, through the worker's public surface.
-import { assert, test } from 'orca/testing'
+import { assert, mockHost, mount, test } from 'orca/testing'
 import { fakeDeps } from './fakes'
+import * as panel from './panel'
 import { GitLabError } from './seams/gitlab'
+import { headingCounts } from './testing/panel-heading'
 import { CONFIGURED, lastStatusBar, MINUTE, startWorker } from './testing/worker-harness'
 
 const HOUR = 60 * MINUTE
@@ -108,6 +110,26 @@ test('overdue Review Requests split the bell into "in time | overdue!", in one n
   assert.equal(lastStatusBar(host)?.tone, 'neutral')
   assert.equal(lastStatusBar(host)?.tooltip, '3 Review Requests, 2 overdue. Click to open.')
   assert.deepEqual(new Set(host.callsOf('statusBar.update').map((call) => (call as { id: string }).id)), new Set(['review-requests']))
+  await worker.deactivate()
+})
+
+test('the panel heading counts in time and overdue the same as the bell (#53)', async () => {
+  const fakes = fakeDeps()
+  const now = fakes.clock.now()
+  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', requestedAt: now - 6 * DAY })
+  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', requestedAt: now - 7 * DAY })
+  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', requestedAt: now - HOUR })
+
+  const { host, worker } = await startWorker(fakes)
+  const snapshot = await worker.request('rr.snapshot')
+  const view = await mount(panel, { host: mockHost({ requests: { 'rr.snapshot': snapshot } }) })
+
+  assert.equal(lastStatusBar(host)?.text, '1 | 2!')
+  assert.deepEqual(headingCounts(view), [
+    ['1', 'neutral'],
+    ['2', 'danger']
+  ])
+  await view.unmount()
   await worker.deactivate()
 })
 
