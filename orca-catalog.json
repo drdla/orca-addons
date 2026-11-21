@@ -16,6 +16,33 @@
       "categories": ["productivity"],
       "releases": [
         {
+          "version": "0.5.1",
+          "commit": "2ba0fe4dc833962113ca8ff07a2dfbb8a5a0db9e",
+          "contentHash": "a6a67a773c0bba29b720aa686fca76c278388894076217da027fe533e69ef8a3",
+          "execution": "trusted-worker",
+          "minimumOrca": "1.4.259",
+          "name": "Code Review Requests",
+          "contributes": [
+            { "kind": "panels", "name": "Review Requests" },
+            { "kind": "commands", "name": "Review Requests: Open panel" },
+            { "kind": "commands", "name": "Review Requests: Refresh" },
+            { "kind": "events", "name": "workspace.removed" },
+            { "kind": "statusBarItems", "name": "review-requests" }
+          ],
+          "capabilities": [
+            "storage:own",
+            "settings:own",
+            "secrets:own",
+            "notifications:show",
+            "workspace:read",
+            "workspace:write",
+            "workspace:create",
+            "agent:read",
+            "agent:launch",
+            "terminal:send"
+          ]
+        },
+        {
           "version": "0.5.0",
           "commit": "de5bad2a575325a5ef10392da4c6e25a6a298717",
           "contentHash": "8960c9a5949255bff764fb918d1a9e3d51cf74f1f1c77d0fc9dbdb83f3ace623",
