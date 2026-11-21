@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "code-review-requests",
   "name": "Code Review Requests",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "Your GitLab Review Requests in Orca: a count in the status bar, a panel, and review workspaces.",
   "author": { "name": "Dominik Rodler" },
   "repository": "https://github.com/drdla/orca-addons",

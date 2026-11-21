@@ -37,21 +37,22 @@ test('the Ended tab counts and draws Ended Review Requests with their reason', a
 
   assert.ok(view.find({ type: 'Tab', label: 'Done · 2' }))
   assert.ok(view.find({ text: 'Merge request 7' }))
-  assert.ok(view.find({ type: 'Badge', text: 'Merged' }))
+  assert.equal(view.find({ type: 'Badge', text: 'Merged' })?.props.tone, 'neutral', 'a toned Badge draws a dot')
   assert.ok(view.find({ type: 'Badge', text: 'Removed as reviewer' }))
+  assert.equal(view.find({ type: 'Button', text: 'Review Draft' }), null)
   assert.equal(view.findAll({ type: 'Button', text: 'Remove Workspace' }).length, 2)
   assert.deepEqual(headingCounts(view), [['0', 'dim']], 'Ended cards do not count as Review Requests')
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })
 
-test("an Ended card's MR reference opens it in the browser, and its time has no seconds", async () => {
-  const host = mockHost({
-    requests: { 'rr.snapshot': snapshot({ ended: [ended(7, { endedAt: Date.now() - 2 * HOUR - 30_000 })] }) }
-  })
+test("an Ended card's MR reference opens it in the browser; under the title, only its author", async () => {
+  const host = mockHost({ requests: { 'rr.snapshot': snapshot({ ended: [ended(7)] }) } })
   const view = await mount(panel, { host, persisted: ON_ENDED })
 
-  assert.ok(view.find({ text: /ended 2h ago/ }))
+  assert.ok(view.find({ text: 'by ada' }))
+  assert.equal(view.find({ text: /ended/ }), null, 'no time since it ended')
+  assert.equal(view.find({ text: /review-api-7/ }), null, 'no workspace name')
   assert.equal(view.find({ type: 'IconButton', label: 'Open in GitLab' }), null)
   await view.press(view.find({ type: 'Button', text: '7' })!)
   assert.deepEqual(host.callsOf('shell.openExternal'), [{ url: ended(7).url }])
@@ -139,7 +140,7 @@ test('Cancel closes the confirmation without removing', async () => {
   await view.unmount()
 })
 
-test("a failed removal shows Orca's error and offers Open workspace", async () => {
+test("a failed removal shows Orca's error; Open workspace stays on the card", async () => {
   const opened: string[] = []
   const host = mockHost({
     requests: {
@@ -160,7 +161,7 @@ test("a failed removal shows Orca's error and offers Open workspace", async () =
   await view.press(view.find({ type: 'Button', text: 'Remove' })!)
 
   assert.ok(view.find({ text: /Couldn't remove the workspace: .*local-only ignored files/ }))
-  await view.press(view.find({ type: 'Button', text: 'Open Workspace' })!)
+  await view.press(view.find({ type: 'IconButton', label: 'Open workspace' })!)
   assert.deepEqual(opened, [ended(7).url])
   assert.deepEqual(view.errors, [])
   await view.unmount()
@@ -178,6 +179,7 @@ test('while the orca CLI is broken, a banner says so and Remove workspace is dis
   assert.equal(banner?.props.title, 'Orca CLI unavailable: workspace actions disabled')
   assert.ok(view.find({ text: 'The orca CLI failed: Orca is not running' }) === null, 'the reason sits under Details')
   assert.equal(view.find({ type: 'Button', text: 'Remove Workspace' })!.disabled, true)
+  assert.equal(view.find({ type: 'IconButton', label: 'Open workspace' })!.disabled, true)
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })
