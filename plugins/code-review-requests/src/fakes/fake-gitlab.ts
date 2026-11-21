@@ -76,6 +76,8 @@ export type FakeMergeRequest = {
   outsideDiff: Set<string>
   /** Drafts containing one of these never publish. */
   refusedTexts: string[]
+  /** How the next `bulk_publish` fails with a 500, if it does (see `failNextPublish`). */
+  failingPublish: 'nothing-published' | 'notes-published' | null
   /** Bodies of the plain notes posted (`POST …/notes`), quick actions removed. */
   notes: string[]
   /** Every published note, oldest first, as `GET …/notes` lists them (newest first). */
@@ -178,6 +180,7 @@ export class FakeGitLab implements GitLabTransport {
       reviews: [],
       outsideDiff: new Set(),
       refusedTexts: [],
+      failingPublish: null,
       notes: [],
       published: [],
       diffs: [],
@@ -249,6 +252,14 @@ export class FakeGitLab implements GitLabTransport {
   /** Drafts whose text contains `text` never publish (a refusal the plugin can't work around). */
   refuseToPublish(projectPath: string, iid: number, text: string): void {
     this.#find(projectPath, iid).refusedTexts.push(text)
+  }
+
+  /**
+   * The next `bulk_publish` answers 500. `notes-published` is what gitlab.com 19.7 did: the drafts
+   * became notes but stayed drafts too, and the summary and reviewer state were never applied.
+   */
+  failNextPublish(projectPath: string, iid: number, how: 'nothing-published' | 'notes-published'): void {
+    this.#find(projectPath, iid).failingPublish = how
   }
 
   /** The files `GET …/diffs` lists for the MR. */
@@ -530,6 +541,16 @@ export class FakeGitLab implements GitLabTransport {
       if (method === 'POST' && rest === '/draft_notes/bulk_publish') {
         // `note` and `reviewer_state` are declared from 19.2 on; older GitLab ignores them.
         const takesSummary = atLeast(this.version, 19, 2)
+        const failing = mr.failingPublish
+        if (failing !== null) {
+          mr.failingPublish = null
+          if (failing === 'notes-published') {
+            for (const d of mr.draftNotes.filter((d) => d.author === this.me)) {
+              mr.published.push({ id: this.#nextId++, body: d.note, position: d.position })
+            }
+          }
+          throw new GitLabError('rejected', `${this.host}: 500 Internal Server Error`, { status: 500 })
+        }
         const summary = takesSummary && typeof body.note === 'string' ? body.note : null
         this.#publish(mr, summary, takesSummary && typeof body.reviewer_state === 'string' ? body.reviewer_state : null)
         if (summary !== null) mr.published.push({ id: this.#nextId++, body: summary, position: null })
@@ -579,6 +600,8 @@ export class FakeGitLab implements GitLabTransport {
         const text = body.body.replace(/^\/\w+.*$/gm, '').trim()
         if (submit) {
           this.#publish(mr, text === '' ? null : text, submit[1] ?? 'reviewed')
+        } else if (/^\/request_changes[ \t]*$/m.test(body.body) && mr.reviewers.includes(this.me)) {
+          mr.reviewStates[this.me] = 'REQUESTED_CHANGES'
         }
         const note = this.#restNote(mr, text) as { id: number }
         if (text !== '') {

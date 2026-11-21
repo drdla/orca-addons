@@ -57,9 +57,17 @@ export type ReviewActions = {
   updateWorkspace(url: string): Promise<WorkspaceUpdate>
 }
 
-/** The workspace name Start review gives, for example `review-api-7`. */
+/**
+ * The name Start review creates the workspace with, for example `review-api-7`: Orca makes the
+ * branch and folder from it.
+ */
 export function reviewWorkspaceName(rr: ReviewRequestView): string {
   return `review-${rr.projectPath.split('/').at(-1)}-${rr.iid}`
+}
+
+/** The name Orca then shows for a Review Workspace: `REVIEW <MR title>`. */
+export function reviewDisplayName(rr: ReviewRequestView): string {
+  return `REVIEW ${rr.title.trim()}`
 }
 
 export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
@@ -147,8 +155,14 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
       }
       throw new Error(`${reason}. The workspace was removed; start the review again.`)
     }
+    // Only the shown name: the workspace works without it, so a failure here is not the review's.
+    let shown = worktree
+    try {
+      await deps.cli().setDisplayName(`id:${worktree.id}`, reviewDisplayName(rr))
+      shown = { ...worktree, displayName: reviewDisplayName(rr) }
+    } catch {}
     await deps.workspaces.refresh()
-    return worktree
+    return shown
   }
 
   /**

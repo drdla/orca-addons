@@ -58,20 +58,36 @@ test('a card held up by CI or open comments shows the reasons mid-dot separated 
   assert.equal(view.find({ text: /mergeable|Blocked/ }), null, 'no label in front of the reasons')
   const tree = JSON.stringify(view.tree())
   assert.ok(tree.indexOf('Start Review') < tree.indexOf('CI failed'), 'the reasons follow the button')
-  assert.equal(view.find({ type: 'Text', text: 'CI failed' })?.props.muted, true)
-  assert.ok(view.find({ type: 'Text', text: 'CI running' }))
+  assert.ok(view.find({ type: 'Link', text: 'CI failed' }))
+  assert.ok(view.find({ type: 'Link', text: 'CI running' }))
   assert.equal(view.find({ text: /CI passed/ }), null, 'a passed pipeline holds nothing up')
-  assert.ok(view.find({ type: 'Text', text: '3 open comments' }))
-  assert.ok(view.find({ type: 'Text', text: '1 open comment' }))
+  assert.ok(view.find({ type: 'Link', text: '3 open comments' }))
+  assert.ok(view.find({ type: 'Link', text: '1 open comment' }))
   assert.equal(view.find({ text: '0 open comments' }), null)
   assert.equal(view.findAll({ type: 'Text', text: '·' }).length, 1, 'only card 1 has two reasons')
-  assert.equal(view.find({ type: 'Badge', text: /CI|open comment/ }), null, 'the reasons are plain text')
+  assert.equal(view.find({ type: 'Badge', text: /CI|open comment/ }), null, 'the reasons are links, not badges')
   assert.ok(view.find({ type: 'Badge', text: '1/2 approvals' }))
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })
 
-test('an In review card shows its Agent Review: running, or done with the comments ready', async () => {
+test("the reasons open in the browser: CI on the MR's pipelines, open comments on the MR", async () => {
+  const host = mockHost({
+    requests: { 'rr.markSeen': { seen: true }, 'rr.snapshot': snapshot(card(1, { ci: 'failed', comments: 2 })) } as never,
+    results: { 'shell.openExternal': { opened: true } }
+  })
+  const view = await mount(panel, { host })
+  const url = snapshot(card(1)).reviewRequests[0]!.url
+
+  await view.press(view.find({ type: 'Link', text: 'CI failed' })!)
+  await view.press(view.find({ type: 'Link', text: '2 open comments' })!)
+
+  assert.deepEqual(host.callsOf('shell.openExternal'), [{ url: `${url}/pipelines` }, { url }])
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('a running Agent Review replaces the agent button with a spinner; a done one shows no line', async () => {
   const view = await mountWith(
     {
       'rr.snapshot': snapshot(
@@ -86,8 +102,9 @@ test('an In review card shows its Agent Review: running, or done with the commen
     { 'rr.tab': 'in' }
   )
 
-  assert.ok(view.find({ text: 'Agent Review running' }))
-  assert.ok(view.find({ text: 'Agent Review done · 4 comments ready' }))
+  assert.equal(view.findAll({ type: 'Spinner', label: 'Agent Review in progress' }).length, 1, 'only the running one')
+  assert.equal(view.findAll({ type: 'IconButton', label: 'Run Agent Review' }).length <= 1, true, 'the spinner replaces the agent button')
+  assert.equal(view.find({ text: /Agent Review (running|done)/ }), null, 'no text line')
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })

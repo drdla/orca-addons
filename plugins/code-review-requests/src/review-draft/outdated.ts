@@ -8,7 +8,7 @@
 //   - an Agent Finding whose commit isn't HEAD is stale, whatever changed.
 // General comments and posted ones are never outdated.
 //
-// It is recomputed against HEAD every time the Review Draft is imported (opened, Import again),
+// It is recomputed against HEAD every time the Review Draft is imported (opened, and again while it is open),
 // never per poll: one `git diff` per distinct older commit.
 import { messageOf } from '../errors'
 import { plural } from '../plural'

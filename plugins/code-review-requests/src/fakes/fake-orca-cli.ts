@@ -150,6 +150,11 @@ export class FakeOrcaCli implements OrcaCli {
     })
   }
 
+  async setDisplayName(selector: string, name: string): Promise<void> {
+    this.#record('worktree set', { selector, displayName: name })
+    this.#select(selector).displayName = name
+  }
+
   async removeWorktree(selector: string, options: RemoveWorktreeOptions = {}): Promise<void> {
     this.#record('worktree rm', { selector, ...options })
     const worktree = this.#select(selector)

@@ -64,6 +64,11 @@ function isPosting(current: PostStep): boolean {
   return current.kind === 'confirm' && current.postingSince !== null && Date.now() - current.postingSince < POST_TIMEOUT_MS
 }
 
+/** Is a post under way for the open Review Draft? The automatic re-import waits for it. */
+export function isPostingNow(): boolean {
+  return isPosting(read(step))
+}
+
 /**
  * For the panel's setup: a step whose request was lost with the last panel goes back to the Post
  * button (the re-import shows what got posted). A post still within its timeout shows as posting

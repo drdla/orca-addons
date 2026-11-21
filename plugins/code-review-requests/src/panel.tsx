@@ -8,7 +8,8 @@
 // (#27), Done the Ended Review Requests (#28). Later slices fill a tab by changing what
 // stagesOf() returns for it. #24: in Body(), a broken connection gets a warning above the tabs
 // that opens the Settings view (settings-view.tsx: the connection with the setup checklist, then
-// every setting), and the refresh problem sits above them on a failed poll.
+// every setting), and the refresh problem sits above them on a failed poll. The search above the
+// tabs narrows all three (search.ts); the ⓘ next to Refresh opens the Manual (manual-view.tsx).
 import {
   atom,
   Badge,
@@ -18,6 +19,7 @@ import {
   Heading,
   host,
   IconButton,
+  Input,
   Link,
   plugin,
   read,
@@ -31,17 +33,20 @@ import {
   Text,
   ui,
   update,
+  type IconName,
   type Tone,
   type OrcaNode,
   type PanelContext,
 } from 'orca'
 import { Button } from './button'
+import { isManualOpen, ManualScreen, openManual } from './manual-view'
 import { MergeRequestLink } from './merge-request-link'
 import type { CiStatus, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
 import { canPostReviews, connectionProblem, loadConnection } from './connection-section'
 import { messageOf } from './errors'
 import { MinuteTime, minuteTimeText, setupClock } from './minute-time'
-import { overdueSplit } from './overdue-split'
+import { countText, overdueSplit } from './overdue-split'
+import { matchesQuery, normalizeQuery, tabWithMatches } from './search'
 import { shortTitle } from './short-title'
 import { RefreshProblem } from './refresh-problem'
 import { headline, type NeedsYouView } from './setup-checklist'
@@ -66,6 +71,10 @@ const failure = atom<string | null>(null)
 const refreshing = atom(false)
 /** The selected tab, kept across reloads. */
 const selectedTab = atom<TabId>('rr.tab', 'todo', { persist: 'plugin' })
+/** What the search input holds: kept across polls and tab switches, not across reloads. */
+const searchQuery = atom('')
+/** The Review Request whose review was started last in this panel: first on Reviewing until a reload. */
+const justStarted = atom<string | null>(null)
 /** Per-card action errors, by Review Request URL. */
 const cardErrors = atom<Record<string, string>>({})
 /** Review Request URLs with a workspace action under way (#27); their buttons wait. */
@@ -84,7 +93,7 @@ export function setup(ctx: PanelContext): void {
     .catch((error: unknown) => set(failure, messageOf(error)))
   // Opening the panel shows its Review Requests: the status bar item stops counting them as new (#10).
   plugin.request('rr.markSeen').catch(() => {})
-  setupReviewDraft()
+  setupReviewDraft(ctx)
   setupSettings(ctx)
   setupClock(ctx)
   void loadConnection()
@@ -142,7 +151,14 @@ const START_TIMEOUT_MS = 120_000
 
 function startReview(url: string, withAgent: boolean): void {
   cardAction(url, "Couldn't create the Review Workspace", () =>
-    plugin.request('rr.startReview', { url, withAgent }, { timeoutMs: START_TIMEOUT_MS }).then(received)
+    plugin
+      .request('rr.startReview', { url, withAgent }, { timeoutMs: START_TIMEOUT_MS })
+      .then((answer) => {
+        received(answer)
+        // Show the new Reviewing card: that tab, with the card on top.
+        set(justStarted, url)
+        set(selectedTab, 'in')
+      })
   )
 }
 
@@ -181,6 +197,7 @@ function runAgentReview(url: string): void {
 export default function Panel() {
   // #29: an open Review Draft takes the whole panel; its Back button returns here.
   if (isReviewDraftOpen()) return <ReviewDraftScreen />
+  if (isManualOpen()) return <ManualScreen />
   if (isSettingsOpen()) {
     const current = read(snapshot)
     return (
@@ -193,18 +210,34 @@ export default function Panel() {
       />
     )
   }
+  // The panel's full height: the list scrolls on its own, the footer stays at the bottom.
   return (
-    <Stack gap="md">
-      <Header />
-      <Body />
-      <FilterNotes />
-    </Stack>
+    <Box direction="column" height="100%" gap="xs">
+      <Box grow scroll="y">
+        <Stack gap="md">
+          <Header />
+          <Body />
+          <FilterNotes />
+        </Stack>
+      </Box>
+      <Box shrink={false}>
+        <Footer />
+      </Box>
+    </Box>
   )
 }
 
-/** Refresh as one borderless, text-like button: the icon and when the list was last refreshed. */
+/**
+ * Refresh as one borderless, text-like button: the icon and when the list was last refreshed; just
+ * the icon before the first refresh.
+ */
 function RefreshButton({ refreshedAt }: { refreshedAt: number | null }) {
   // While refreshing it is just disabled: no spinner.
+  if (refreshedAt === null) {
+    return (
+      <IconButton icon="refresh" label="Refresh" variant="ghost" size="sm" disabled={read(refreshing)} onPress={refresh} />
+    )
+  }
   return (
     <Button
       size="xs"
@@ -215,7 +248,7 @@ function RefreshButton({ refreshedAt }: { refreshedAt: number | null }) {
       disabled={read(refreshing)}
       onPress={refresh}
     >
-      {refreshedAt === null ? 'Refresh' : minuteTimeText(refreshedAt)}
+      {minuteTimeText(refreshedAt)}
     </Button>
   )
 }
@@ -223,13 +256,22 @@ function RefreshButton({ refreshedAt }: { refreshedAt: number | null }) {
 function Header() {
   const current = read(snapshot)
   return (
-    <Row justify="between">
-      <Row gap="sm">
-        <Heading level={2}>Review Requests</Heading>
-        {current !== null && <HeadingCounts key="heading-counts" cards={current.reviewRequests} />}
-      </Row>
-      <Row gap="sm">
-        <RefreshButton refreshedAt={current?.refreshedAt ?? null} />
+    <Row gap="sm">
+      <Heading level={2}>Review Requests</Heading>
+      {current !== null && <HeadingCounts key="heading-counts" cards={current.reviewRequests} />}
+    </Row>
+  )
+}
+
+/** The row at the bottom of the panel: Refresh on the left, the Manual and Settings on the right. */
+function Footer() {
+  const current = read(snapshot)
+  return (
+    <Row justify="between" align="center">
+      <RefreshButton refreshedAt={current?.refreshedAt ?? null} />
+      {/* No gap: the ghost buttons' own padding already spaces them. */}
+      <Row gap="none" align="center">
+        <IconButton icon="info" label="Manual" variant="ghost" size="sm" onPress={openManual} />
         <IconButton icon="settings" label="Settings" variant="ghost" size="sm" onPress={openSettings} />
       </Row>
     </Row>
@@ -364,7 +406,8 @@ function Body() {
   )
 }
 
-type Stage = { id: TabId; title: string; count: number; body: OrcaNode }
+/** A tab: `count` is how many cards it has; `countLabel` writes it like the status bar ("2 | 3!"). */
+type Stage = { id: TabId; title: string; count: number; countLabel: string; body: OrcaNode }
 
 function cardStage(id: TabId, title: string, cards: ReviewRequestCard[], empty: OrcaNode): Stage {
   const body =
@@ -375,40 +418,92 @@ function cardStage(id: TabId, title: string, cards: ReviewRequestCard[], empty: 
         ))}
       </Stack>
     )
-  return { id, title, count: cards.length, body }
+  return { id, title, count: cards.length, countLabel: countText(overdueSplit(cards)), body }
 }
 
-function stagesOf(current: ReviewRequestsSnapshot): Stage[] {
+/**
+ * The tabs, each narrowed to the cards matching the search. While a search finds nothing on a tab,
+ * its empty state says so, worded like the tab's usual one.
+ */
+function stagesOf(current: ReviewRequestsSnapshot, query: string): Stage[] {
+  const normalized = normalizeQuery(query)
+  const searching = normalized !== ''
+  const matching = <T extends { url: string; title: string }>(cards: readonly T[]) =>
+    cards.filter((c) => matchesQuery(c, normalized))
+  const noMatch = (icon: IconName, what: string) => (
+    <EmptyState icon={icon} title={`No ${what} matching "${query.trim()}"`} />
+  )
   const inReview = (c: ReviewRequestCard) => c.workspace != null
-  const ended = current.ended ?? []
+  const cards = matching(current.reviewRequests)
+  const ended = matching(current.ended ?? [])
   return [
     cardStage(
       'todo',
       'Todo',
-      current.reviewRequests.filter((c) => !inReview(c)),
-      <EmptyState icon="check" title="Nothing to review" />
+      cards.filter((c) => !inReview(c)),
+      searching ? noMatch('check', 'open review requests') : <EmptyState icon="check" title="No open review requests" />
     ),
     cardStage(
       'in',
       'Reviewing',
-      current.reviewRequests.filter(inReview),
-      <EmptyState icon="folder" title="Nothing in review" />
+      startedFirst(cards.filter(inReview), read(justStarted)),
+      searching ? noMatch('folder', 'reviews in progress') : <EmptyState icon="folder" title="No reviews in progress" />
     ),
     {
       id: 'ended',
       title: 'Done',
       count: ended.length,
+      countLabel: String(ended.length),
       body:
-        ended.length === 0 ? <EmptyState icon="check" title="No done reviews" /> : (
-          <EndedList cards={ended} disabled={current.workspacesUnavailable !== undefined} received={received} />
-        )
+        ended.length === 0 ?
+          searching ? noMatch('check', 'completed reviews')
+          : <EmptyState icon="check" title="No completed reviews" />
+        : <EndedList cards={ended} disabled={current.workspacesUnavailable !== undefined} received={received} />
     }
   ]
 }
 
-/** A tab's name and its count, for example "Todo · 3"; just the name at 0. */
+/** The cards with the one whose review was just started first; the others keep their order. */
+function startedFirst(cards: ReviewRequestCard[], url: string | null): ReviewRequestCard[] {
+  const started = cards.find((c) => c.url === url)
+  return started === undefined ? cards : [started, ...cards.filter((c) => c !== started)]
+}
+
+/** Each tab's number of cards matching a search. */
+function matchCounts(current: ReviewRequestsSnapshot, query: string): Record<TabId, number> {
+  const counts = { todo: 0, in: 0, ended: 0 }
+  for (const stage of stagesOf(current, query)) counts[stage.id] = stage.count
+  return counts
+}
+
+/**
+ * Typing narrows the tabs. When the selected tab has no match but exactly one other tab does,
+ * that tab is selected, so a pasted link lands on its card wherever it is.
+ */
+function search(query: string): void {
+  set(searchQuery, query)
+  const current = read(snapshot)
+  if (current === null || normalizeQuery(query) === '') return
+  set(selectedTab, tabWithMatches(matchCounts(current, query), read(selectedTab)))
+}
+
+/** The search, full width above the tabs. A search input: Orca draws its own clear button. */
+function SearchInput() {
+  return (
+    <Input
+      type="search"
+      label="Search Review Requests"
+      labelHidden
+      placeholder="Search title or URL"
+      value={read(searchQuery)}
+      onChange={search}
+    />
+  )
+}
+
+/** A tab's name and its count, for example "Todo · 3" or "Todo · 2 | 3!"; just the name at 0. */
 function labelOf(stage: Stage): string {
-  return stage.count === 0 ? stage.title : `${stage.title} · ${stage.count}`
+  return stage.count === 0 ? stage.title : `${stage.title} · ${stage.countLabel}`
 }
 
 function StageTabs({ snapshot: current }: { snapshot: ReviewRequestsSnapshot }) {
@@ -423,12 +518,13 @@ function StageTabs({ snapshot: current }: { snapshot: ReviewRequestsSnapshot }) 
 }
 
 function StageTabsOnly({ snapshot: current }: { snapshot: ReviewRequestsSnapshot }) {
-  const stages = stagesOf(current)
+  const stages = stagesOf(current, read(searchQuery))
 
   // `Table` taught us the catalog can list what this Orca doesn't draw (#10): check first.
   if (!ui.has('Tabs')) {
     return (
       <Stack gap="md">
+        <SearchInput />
         {stages.map((stage) => (
           <Stack key={stage.id} gap="sm">
             <Heading level={3}>{labelOf(stage)}</Heading>
@@ -439,13 +535,16 @@ function StageTabsOnly({ snapshot: current }: { snapshot: ReviewRequestsSnapshot
     )
   }
   return (
-    <Tabs label="Stage" value={read(selectedTab)} onChange={(value) => set(selectedTab, value as TabId)}>
-      {stages.map((stage) => (
-        <Tab key={stage.id} value={stage.id} label={labelOf(stage)}>
-          {stage.body}
-        </Tab>
-      ))}
-    </Tabs>
+    <Stack gap="sm">
+      <SearchInput />
+      <Tabs label="Stage" value={read(selectedTab)} onChange={(value) => set(selectedTab, value as TabId)}>
+        {stages.map((stage) => (
+          <Tab key={stage.id} value={stage.id} label={labelOf(stage)}>
+            {stage.body}
+          </Tab>
+        ))}
+      </Tabs>
+    </Stack>
   )
 }
 
@@ -456,37 +555,46 @@ function When({ at }: { at: number }) {
 
 /**
  * A Reviewing card's ways into its Review Workspace (#6): open it, its changed files and the
- * merge request summary. Their own row, above the actions; nothing on a Todo card.
+ * merge request summary, then what holds the merge request up. Their own row, above the actions;
+ * nothing on a Todo card.
  */
 function WorkspaceNavigation({ card }: { card: ReviewRequestCard }) {
   if (card.workspace == null) return null
   const busy = read(busyCards)[card.url] === true
+  // Two groups, further apart than the buttons within them.
   return (
-    <Row gap="xs" align="center">
-      <IconButton
-        icon="folder"
-        label="Open workspace"
-        variant="ghost"
-        size="xs"
-        disabled={busy}
-        onPress={() => openWorkspace(card.url)}
-      />
-      <IconButton
-        icon="branch"
-        label="View changes"
-        variant="ghost"
-        size="xs"
-        disabled={busy}
-        onPress={() => showChanges(card.url)}
-      />
-      <IconButton
-        icon="file-text"
-        label="View MR summary"
-        variant="ghost"
-        size="xs"
-        disabled={busy}
-        onPress={() => openCoverPage(card.url)}
-      />
+    <Row gap="md" align="center" wrap>
+      <Row gap="xs" align="center">
+        <IconButton
+          icon="folder"
+          label="Open workspace"
+          variant="ghost"
+          size="xs"
+          disabled={busy}
+          onPress={() => openWorkspace(card.url)}
+        />
+        <IconButton
+          icon="branch"
+          label="View changes"
+          variant="ghost"
+          size="xs"
+          disabled={busy}
+          onPress={() => showChanges(card.url)}
+        />
+        <IconButton
+          icon="file-text"
+          label="View MR summary"
+          variant="ghost"
+          size="xs"
+          disabled={busy}
+          onPress={() => openCoverPage(card.url)}
+        />
+      </Row>
+      {blockers(card).length > 0 && (
+        <Row gap="xs" align="center">
+          <Blockers card={card} />
+        </Row>
+      )}
     </Row>
   )
 }
@@ -512,16 +620,22 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
             Update Workspace
           </Button>
         )}
-        {hasReviewPrompt() && (
-          <IconButton
-            icon="agent"
-            label="Run Agent Review"
-            tooltip="Start another agent review"
-            variant="ghost"
-            size="xs"
-            disabled={busy}
-            onPress={() => runAgentReview(card.url)}
-          />
+        {/* While an Agent Review works, a spinner takes the agent button's place. Orca gives a
+            Spinner no tooltip and a Button only text, so its label is for screen readers only. */}
+        {card.agentReview?.state === 'running' ? (
+          <Spinner label="Agent Review in progress" labelHidden />
+        ) : (
+          hasReviewPrompt() && (
+            <IconButton
+              icon="agent"
+              label="Run Agent Review"
+              tooltip="Start an agent review"
+              variant="ghost"
+              size="xs"
+              disabled={busy}
+              onPress={() => runAgentReview(card.url)}
+            />
+          )
         )}
         {(card.toPost ?? 0) > 0 && (
           <Button
@@ -568,22 +682,25 @@ const CI_BLOCKERS: Record<CiStatus, string | null> = {
 }
 
 /** What holds the review up: CI still running or failed, then open comments; empty when nothing does. */
-function blockers(card: ReviewRequestCard): string[] {
+function blockers(card: ReviewRequestCard): { text: string; url: string }[] {
   const ci = card.ci == null ? null : CI_BLOCKERS[card.ci]
   const comments = card.comments ?? 0
   return [
-    ...(ci === null ? [] : [ci]),
-    ...(comments === 0 ? [] : [comments === 1 ? '1 open comment' : `${comments} open comments`])
+    ...(ci === null ? [] : [{ text: ci, url: `${card.url}/pipelines` }]),
+    ...(comments === 0
+      ? []
+      : [{ text: comments === 1 ? '1 open comment' : `${comments} open comments`, url: card.url }])
   ]
 }
 
 /**
  * What holds the merge request up, mid-dot separated ("CI failed · 1 open comment"), after the
- * card's buttons; nothing when nothing does. Each piece is its own Text so the Row's gap spaces
+ * card's buttons; nothing when nothing does. Each is a link: CI to the MR's pipelines, open
+ * comments to the MR, where its threads are. Each piece is its own node so the Row's gap spaces
  * the dots evenly.
  */
 function Blockers({ card }: { card: ReviewRequestCard }) {
-  return blockers(card).flatMap((reason, index) => [
+  return blockers(card).flatMap((blocker, index) => [
     ...(index > 0
       ? [
           <Text key={`dot-${index}`} muted size="xs">
@@ -591,9 +708,9 @@ function Blockers({ card }: { card: ReviewRequestCard }) {
           </Text>
         ]
       : []),
-    <Text key={reason} muted size="xs">
-      {reason}
-    </Text>
+    <Link key={blocker.text} onPress={() => openInGitLab(blocker.url)}>
+      {blocker.text}
+    </Link>
   ])
 }
 
@@ -607,22 +724,11 @@ function Approvals({ card }: { card: ReviewRequestCard }) {
   )
 }
 
-/** "Agent Review running", or "Agent Review done · N comments ready" (#10). */
-function agentReviewLine(card: ReviewRequestCard): string | null {
-  const review = card.agentReview
-  if (card.workspace == null || review == null) return null
-  if (review.state === 'running') return 'Agent Review running'
-  const ready = review.commentsReady
-  if (ready === 0) return 'Agent Review done'
-  return `Agent Review done · ${ready === 1 ? '1 comment' : `${ready} comments`} ready`
-}
-
 function Card({ card }: { card: ReviewRequestCard }) {
   const error = read(cardErrors)[card.url]
   const blocked = card.workspace == null ? (card.startBlocked ?? null) : null
   // Overdue takes precedence over New (#10).
   const isNew = card.isNew === true && !card.overdue
-  const agentLine = agentReviewLine(card)
   return (
     <Box border={isNew ? 'accent' : true} radius="md" padding="sm" direction="column" gap="xs">
       <Row justify="between" align="start">
@@ -641,12 +747,6 @@ function Card({ card }: { card: ReviewRequestCard }) {
         {card.mergeRequestUpdated === true && <Badge tone="warning">Merge request updated</Badge>}
       </Row>
       <Approvals card={card} />
-      {agentLine !== null && (
-        <Row gap="xs" align="center">
-          {card.agentReview?.state === 'running' && <Spinner label="Agent Review running" labelHidden />}
-          <Text size="xs">{agentLine}</Text>
-        </Row>
-      )}
       <WorkspaceNavigation card={card} />
       {/* The age, short and muted like Orca's workspace list ("40m", "2h"), red once overdue, stays
           right on one line, centred on the buttons' row: the buttons wrap before it does. */}
@@ -654,7 +754,8 @@ function Card({ card }: { card: ReviewRequestCard }) {
         <Box grow>
           <Row gap="sm" align="center" wrap>
             <WorkspaceActions card={card} />
-            <Blockers card={card} />
+            {/* A Reviewing card shows them after its navigation buttons instead. */}
+            {card.workspace == null && <Blockers card={card} />}
           </Row>
         </Box>
         <Box shrink={false}>

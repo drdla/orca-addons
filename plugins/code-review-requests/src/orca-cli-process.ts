@@ -62,6 +62,9 @@ export function createOrcaCli(run: RunOrca): OrcaCli {
       if (!result?.worktree) throw new OrcaCliError('unexpected_output', 'orca worktree create returned no worktree')
       return result.worktree
     },
+    async setDisplayName(selector, name) {
+      await call(['worktree', 'set', '--worktree', selector, '--display-name', name])
+    },
     async removeWorktree(selector, options = {}) {
       await call(['worktree', 'rm', '--worktree', selector, ...(options.force ? ['--force'] : []),
         ...(options.deleteBranch ? ['--delete-branch'] : [])])

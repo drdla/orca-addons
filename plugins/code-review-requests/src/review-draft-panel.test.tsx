@@ -2,6 +2,7 @@
 // notes (read-only) and Agent Findings (editable) with a checkbox each. The worker is stubbed.
 import { assert, hostError, mockHost, mount, test } from 'orca/testing'
 import * as panel from './panel'
+import { VISIBILITY_CHECK_MS } from './review-draft-view'
 import type { ReviewCommentView, ReviewDraftView, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
 
 const NOW = Date.UTC(2026, 10, 16, 9, 0)
@@ -174,30 +175,7 @@ test('posted comments are marked and locked; warnings and empty sections are exp
   await view.unmount()
 })
 
-test('Cover page reopens the review cover page, and says why when it cannot', async () => {
-  const asked: unknown[] = []
-  let fail = false
-  const { view } = await openDraft({
-    'rr.draft': draft([]),
-    'rr.openCoverPage': (input: unknown) => {
-      asked.push(input)
-      if (fail) throw hostError('action_failed', 'Orca is not showing a window.')
-      return { opened: true }
-    }
-  })
-
-  await view.press(view.find({ type: 'Button', text: 'Cover page' })!)
-  assert.deepEqual(asked, [{ url: URL }])
-  assert.equal(view.find({ text: /not showing a window/ }), null)
-
-  fail = true
-  await view.press(view.find({ type: 'Button', text: 'Cover page' })!)
-  assert.ok(view.find({ text: /Can't open the Review Cover Page: .*not showing a window/ }))
-  assert.deepEqual(view.errors, [])
-  await view.unmount()
-})
-
-test('says so when the Review Draft cannot be loaded, and Import again retries', async () => {
+test('says so when the Review Draft cannot be loaded, and Try Again retries', async () => {
   let calls = 0
   const { view } = await openDraft({
     'rr.draft': () => {
@@ -208,8 +186,39 @@ test('says so when the Review Draft cannot be loaded, and Import again retries',
   })
   assert.ok(view.find({ text: /worker stopped/ }))
 
-  await view.press(view.find({ type: 'IconButton', label: 'Import again' })!)
+  await view.press(view.find({ type: 'Button', text: 'Try Again' })!)
   assert.equal(calls, 2)
   assert.ok(view.find({ text: /No diff-view notes/ }))
+  await view.unmount()
+})
+
+test('the header has only Back and the title: no Cover page or Import again', async () => {
+  const { view } = await openDraft({ 'rr.draft': draft([]) })
+  assert.equal(view.find({ type: 'Button', text: 'Cover page' }), null)
+  assert.equal(view.find({ type: 'IconButton', label: 'Import again' }), null)
+  await view.unmount()
+})
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+test('an open Review Draft imports again when the panel comes back into view, not while hidden', async () => {
+  let calls = 0
+  const { view } = await openDraft({
+    'rr.draft': () => {
+      calls += 1
+      return draft(calls === 1 ? [] : [comment('note:n1', { body: 'Added in the diff view.' })])
+    }
+  })
+  assert.equal(calls, 1)
+
+  await view.setVisible(false)
+  await wait(VISIBILITY_CHECK_MS * 1.5)
+  assert.equal(calls, 1, 'no import while hidden')
+
+  await view.setVisible(true)
+  await wait(VISIBILITY_CHECK_MS * 1.5)
+  await view.settled()
+  assert.equal(calls, 2)
+  assert.ok(view.find({ text: 'Added in the diff view.' }))
   await view.unmount()
 })

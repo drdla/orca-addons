@@ -1,8 +1,9 @@
 // The Review Draft drill-in view (#29). "Review draft" on an In review card opens it in place of
-// the tabs; ← Back returns. Opening (and Import again) asks the worker to import the diff-view
-// notes and Agent Findings (`rr.draft`). Diff-view notes are read-only here (edit them in Orca);
-// Agent Findings get an editor. Every comment has a checkbox: checked ones are what #30 posts.
-// "Cover page" reopens the Review Workspace's Review Cover Page (#55) in Orca's main view.
+// the tabs; ← Back returns. Opening asks the worker to import the diff-view notes and Agent
+// Findings (`rr.draft`), and so does every AUTO_IMPORT_MS while the panel is visible, and coming
+// back into view: notes added in Orca's diff view show up without a button. Diff-view notes are
+// read-only here (edit them in Orca); Agent Findings get an editor. Every comment has a checkbox:
+// checked ones are what #30 posts.
 // After the workspace moved to newer commits (#58), comments on changed lines say "May be
 // outdated" and Agent Findings for an older commit "Stale"; both stay curatable.
 import {
@@ -12,22 +13,21 @@ import {
   Callout,
   Checkbox,
   Heading,
-  IconButton,
   plugin,
   read,
   Row,
   set,
   Skeleton,
-  Spinner,
   Stack,
   Text,
   Textarea,
   update,
+  type PanelContext
 } from 'orca'
 import { Button } from './button'
 import { BackButton } from './back-button'
 import type { ReviewCommentView, ReviewDraftView } from './protocol'
-import { openConfirm, PostSection, resetPosting, setupPosting } from './review-post-view'
+import { isPostingNow, openConfirm, PostSection, resetPosting, setupPosting } from './review-post-view'
 import { messageOf } from './errors'
 import { plural } from './plural'
 
@@ -37,8 +37,8 @@ const draftUrl = atom<string | null>('rr.draftUrl', null, { persist: 'plugin' })
 const draft = atom<ReviewDraftView | null>(null)
 const draftFailure = atom<string | null>(null)
 const importing = atom(false)
-/** Why the Review Cover Page (#55) didn't open, or null. */
-const coverPageFailure = atom<string | null>(null)
+/** When the last import started (ms). */
+let lastImportAt = 0
 /** Unsaved Agent Finding text, by comment id. */
 const edits = atom<Record<string, string>>({})
 /** Per-comment errors, by comment id. */
@@ -49,8 +49,25 @@ export function isReviewDraftOpen(): boolean {
   return read(draftUrl) !== null
 }
 
-/** For the panel's setup: reload the draft that was open before a reload. */
-export function setupReviewDraft(): void {
+/** How often an open, visible Review Draft imports again. */
+export const AUTO_IMPORT_MS = 10_000
+/** How often the panel looks whether it came back into view. */
+export const VISIBILITY_CHECK_MS = 1_000
+
+/**
+ * For the panel's setup: the automatic re-import, and reloading the draft that was open before a
+ * reload. Imports are local (Orca's diff-view notes, the findings file, git), never GitLab.
+ */
+export function setupReviewDraft(ctx: PanelContext): void {
+  let wasVisible = read(ctx.visible)
+  const timer = setInterval(() => {
+    const visible = read(ctx.visible)
+    const cameBack = visible && !wasVisible
+    wasVisible = visible
+    if (!visible || read(draftUrl) === null || read(importing) || isPostingNow()) return
+    if (cameBack || Date.now() - lastImportAt >= AUTO_IMPORT_MS) importDraft()
+  }, VISIBILITY_CHECK_MS)
+  ctx.subscriptions.push({ dispose: () => clearInterval(timer) })
   if (read(draftUrl) === null) return
   setupPosting()
   importDraft()
@@ -73,7 +90,6 @@ export function openReviewDraftToPost(url: string): void {
 
 function closeReviewDraft(): void {
   resetPosting()
-  set(coverPageFailure, null)
   set(draftUrl, null)
   set(draft, null)
   set(draftFailure, null)
@@ -83,24 +99,17 @@ function importDraft(): void {
   const url = read(draftUrl)
   if (url === null) return
   set(importing, true)
+  lastImportAt = Date.now()
   plugin
     .request('rr.draft', { url }, { timeoutMs: 60_000 })
     .then((answer) => {
+      // The draft closed or another one opened meanwhile: this answer is for nobody.
+      if (read(draftUrl) !== url) return
       set(draft, answer)
       set(draftFailure, null)
     })
     .catch((error: unknown) => set(draftFailure, messageOf(error)))
     .finally(() => set(importing, false))
-}
-
-/** Opens the Review Cover Page in Orca's main view; the worker builds it first if missing. */
-function openCoverPage(): void {
-  const url = read(draftUrl)
-  if (url === null) return
-  set(coverPageFailure, null)
-  plugin
-    .request('rr.openCoverPage', { url }, { timeoutMs: 60_000 })
-    .catch((error: unknown) => set(coverPageFailure, messageOf(error)))
 }
 
 function setCommentError(id: string, message: string | null): void {
@@ -146,31 +155,23 @@ function locationOf(comment: ReviewCommentView): string {
 export function ReviewDraftScreen() {
   const current = read(draft)
   const failure = read(draftFailure)
-  const busy = read(importing)
   const checked = current?.comments.filter((c) => c.checked).length ?? 0
   return (
     <Stack gap="md">
-      <Row justify="between">
-        <Row gap="sm">
-          <BackButton onPress={closeReviewDraft} />
-          <Heading level={2}>Review Draft</Heading>
-        </Row>
-        <Row gap="sm">
-          <Button size="xs" variant="ghost" onPress={openCoverPage}>
-            Cover page
-          </Button>
-          {busy && <Spinner label="Importing" labelHidden />}
-          <IconButton icon="refresh" label="Import again" variant="ghost" size="sm" disabled={busy} onPress={importDraft} />
-        </Row>
+      <Row gap="sm">
+        <BackButton onPress={closeReviewDraft} />
+        <Heading level={2}>Review Draft</Heading>
       </Row>
-      {read(coverPageFailure) !== null && (
-        <Text tone="danger" size="sm">
-          {`Can't open the Review Cover Page: ${read(coverPageFailure)}`}
-        </Text>
-      )}
       {failure !== null && (
         <Callout tone="warning" icon="warning" title="Can't load the Review Draft">
-          {failure}
+          <Stack gap="sm">
+            <Text size="sm">{failure}</Text>
+            <Row>
+              <Button size="xs" variant="ghost" disabled={read(importing)} onPress={importDraft}>
+                Try Again
+              </Button>
+            </Row>
+          </Stack>
         </Callout>
       )}
       {current === null ? (
@@ -196,7 +197,7 @@ export function ReviewDraftScreen() {
           <MovedOn comments={current.comments} />
           <Section
             title="Diff-view notes"
-            empty="No diff-view notes. Add them in Orca's diff view, then import again."
+            empty="No diff-view notes. Add them in Orca's diff view; they show up here."
             comments={current.comments.filter((c) => c.origin === 'diff-note')}
           />
           <Section

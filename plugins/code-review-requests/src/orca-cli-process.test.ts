@@ -93,3 +93,9 @@ test('removes a worktree with the flags asked for', async () => {
   await cli.removeWorktree('id:r::/p', { force: true, deleteBranch: true })
   assert.deepEqual(calls, [['worktree', 'rm', '--worktree', 'id:r::/p', '--force', '--delete-branch', '--json']])
 })
+
+test("sets a worktree's display name only", async () => {
+  const { calls, cli } = runner(ok({ id: '1', ok: true, result: {} }))
+  await cli.setDisplayName('id:r::/p', 'REVIEW Add login')
+  assert.deepEqual(calls, [['worktree', 'set', '--worktree', 'id:r::/p', '--display-name', 'REVIEW Add login', '--json']])
+})
