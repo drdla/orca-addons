@@ -1,18 +1,23 @@
 // Importing into a Review Draft (#29) and curating it. An import reads the Review Workspace's
 // diff-view notes (`orca worktree show --json` → diffComments, read-only, #12) and the Agent
 // Review's findings.json, and merges them into the stored draft:
-//   - Diff-view notes follow Orca: an edited note takes the new text (and the current HEAD as its
-//     commit), a deleted one leaves the draft, a new one joins checked. Markdown-preview notes are
-//     not diff comments and are left out; notes on uncommitted changes are skipped with a warning.
+//   - Diff-view notes follow Orca: an edited note takes the new text (keeping its commit while it
+//     stays on the same lines, else taking the current HEAD), a deleted one leaves the draft, a new
+//     one joins checked, with the current HEAD as its commit (or, after Update workspace, the
+//     commit the workspace moved away from, #58). Markdown-preview notes are not diff comments and
+//     are left out; notes on uncommitted changes are skipped with a warning.
 //   - Agent Findings are the plugin's own once imported: they join unchecked, keep the person's
 //     edits, and are never removed by an import. A finding already imported (same text) isn't added again.
-// A failure to read either source keeps what the draft had and becomes a warning.
+// A failure to read either source keeps what the draft had and becomes a warning. Each import then
+// works out which Review Comments may be outdated and which Agent Findings are stale against the
+// workspace's HEAD (#58, outdated.ts).
 import type { ReviewCommentView, ReviewDraftView, ReviewWorkspaceView } from '../protocol'
 import type { Clock } from '../seams/clock'
 import type { Files } from '../seams/files'
 import type { Git } from '../seams/git'
 import type { DiffComment, OrcaCli } from '../seams/orca-cli'
 import { FINDINGS_FILE, parseFindings, type AgentFinding } from './findings'
+import { isOutdated, isStale, outdatedOf, type Outdated } from './outdated'
 import { isPosted, type FailedDraft, type ReviewComment, type ReviewDraft, type ReviewDrafts } from './review-drafts'
 import { messageOf } from '../errors'
 
@@ -66,7 +71,11 @@ export function createDraftImport(options: {
   }
 
   return {
-    /** Imports into the draft (when there is a workspace) and answers it. */
+    /**
+     * Imports into the draft (when there is a workspace) and answers it. What joins the draft was
+     * written against the workspace's HEAD, or, after Update workspace moved it (#58), against the
+     * commit it moved away from (drafts.writtenAt), which this import then clears.
+     */
     async open(target: DraftTarget): Promise<ReviewDraftView> {
       const now = clock.now()
       if (target.workspace === null) {
@@ -75,8 +84,17 @@ export function createDraftImport(options: {
         const draft = await drafts.update(target.url, (d) => ({ ...d, warnings: [warning] }))
         return viewOf(draft, target)
       }
+      const pending = await drafts.writtenAt(target.url)
       const sources = await readSources(target.workspace)
-      const draft = await drafts.update(target.url, (d) => merge(d, sources, now))
+      const writtenAt = pending ?? sources.headSha
+      const merged = await drafts.update(target.url, (d) => merge(d, { ...sources, writtenAt }, now))
+      // Kept while the notes couldn't be read: they would have needed it.
+      if (pending !== null && sources.notes !== null) await drafts.clearWrittenAt(target.url)
+      if (sources.headSha === null) return viewOf(merged, target)
+      // #58: against the HEAD just read. A comment's edits between the two writes don't matter:
+      // whether it is outdated depends on its file, lines and commit, which only an import changes.
+      const { outdated, warnings } = await outdatedOf(git, target.workspace.path, sources.headSha, merged.comments)
+      const draft = await drafts.update(target.url, (d) => ({ ...d, outdated, warnings: [...d.warnings, ...warnings] }))
       return viewOf(draft, target)
     },
 
@@ -105,7 +123,10 @@ export function createDraftImport(options: {
 }
 
 type Sources = {
+  /** The workspace's HEAD: the commit of a note moved to other lines. */
   headSha: string | null
+  /** The commit what joins the draft was written against (HEAD, unless Update workspace moved it). */
+  writtenAt: string | null
   notes: DiffComment[] | null
   findings: AgentFinding[]
   findingsSha: string | null
@@ -128,7 +149,7 @@ function merge(draft: ReviewDraft, sources: Sources, now: number): ReviewDraft {
     }
     notes = diffNotes
       .filter((n) => !uncommitted.includes(n))
-      .map((n) => fromNote(n, previous.get(`note:${n.id}`), sources.headSha))
+      .map((n) => fromNote(n, previous.get(`note:${n.id}`), sources))
   }
 
   const findings = draft.comments.filter((c) => c.origin === 'agent-finding')
@@ -145,18 +166,30 @@ function merge(draft: ReviewDraft, sources: Sources, now: number): ReviewDraft {
       ...(finding.startLine === undefined ? {} : { startLine: finding.startLine }),
       body: finding.body,
       checked: false,
-      sha: sources.findingsSha ?? sources.headSha,
+      sha: sources.findingsSha ?? sources.writtenAt,
       updatedAt: now,
       posted: null
     })
   }
-  return { ...draft, comments: [...notes, ...findings], warnings, importedAt: now }
+  // Dropped here: open() works it out again for the merged comments once they are stored.
+  const { outdated: _workedOutAgain, ...rest } = draft
+  return { ...rest, comments: [...notes, ...findings], warnings, importedAt: now }
 }
 
-function fromNote(note: DiffComment, before: ReviewComment | undefined, headSha: string | null): ReviewComment {
+function fromNote(
+  note: DiffComment,
+  before: ReviewComment | undefined,
+  { headSha, writtenAt }: Pick<Sources, 'headSha' | 'writtenAt'>
+): ReviewComment {
   const updatedAt = note.updatedAt ?? note.createdAt
   if (before && before.updatedAt === updatedAt) return before
   const startLine = note.startLine !== undefined && note.startLine < note.lineNumber ? note.startLine : undefined
+  // Reworded in place, a note still points at the lines of the commit it was written on (#58).
+  const samePlace =
+    before !== undefined &&
+    before.filePath === note.filePath &&
+    before.line === note.lineNumber &&
+    before.startLine === startLine
   return {
     id: `note:${note.id}`,
     origin: 'diff-note',
@@ -166,7 +199,8 @@ function fromNote(note: DiffComment, before: ReviewComment | undefined, headSha:
     ...(startLine === undefined ? {} : { startLine }),
     body: note.body,
     checked: before?.checked ?? true,
-    sha: headSha,
+    // New to the draft: written at writtenAt; moved to other lines: at HEAD.
+    sha: before === undefined ? writtenAt : samePlace ? before.sha : headSha,
     updatedAt,
     posted: before?.posted ?? null
   }
@@ -189,16 +223,24 @@ export function viewOf(draft: ReviewDraft, target: DraftTarget): ReviewDraftView
     url: target.url,
     title: target.title,
     workspace: target.workspace,
-    comments: draft.comments.map((c) => commentView(c, draft.failedDrafts?.find((f) => f.commentId === c.id))),
+    comments: draft.comments.map((c) =>
+      commentView(c, draft.failedDrafts?.find((f) => f.commentId === c.id), draft.outdated)
+    ),
     warnings: draft.warnings,
     importedAt: draft.importedAt
   }
 }
 
-function commentView(comment: ReviewComment, failed: FailedDraft | undefined): ReviewCommentView {
+function commentView(
+  comment: ReviewComment,
+  failed: FailedDraft | undefined,
+  outdated: Outdated | undefined
+): ReviewCommentView {
   const posted = isPosted(comment)
   return {
     ...(failed === undefined || posted ? {} : { failure: failed.message }),
+    ...(isOutdated(comment, outdated) ? { outdated: true } : {}),
+    ...(isStale(comment, outdated) ? { stale: true } : {}),
     id: comment.id,
     origin: comment.origin,
     filePath: comment.filePath,

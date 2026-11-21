@@ -14,6 +14,11 @@ export type ReviewRequestView = {
   /** The MR's branches, for the Review Prompt (#27); absent in views stored before #27. */
   sourceBranch?: string
   targetBranch?: string
+  /**
+   * The MR's head commit on GitLab (`diffRefs.headSha`), compared with its Review Workspace's HEAD
+   * for the "Merge request updated" notice (#57); null when GitLab has none, absent before #57.
+   */
+  mergeRequestHead?: string | null
   /** The CI badge (#10): the head pipeline's outcome, or null without one (or canceled, skipped…). */
   ci?: CiStatus | null
   /** The approvals badge, `given/required`; null when the MR requires none. */
@@ -75,6 +80,11 @@ export type ReviewRequestCard = ReviewRequestView & {
   agentReview?: AgentReviewView | null
   /** Checked, unposted Review Comments in its Review Draft: "Post N to GitLab" on the card (#10). */
   toPost?: number
+  /**
+   * New commits were pushed since its Review Workspace was checked out (#57): the "Merge request
+   * updated" badge and Update workspace. False without a Review Workspace.
+   */
+  mergeRequestUpdated?: boolean
 }
 
 export type ReviewRequestsSnapshot = {
@@ -149,6 +159,13 @@ export type ReviewCommentView = {
   posted: boolean
   /** Why the last post couldn't publish it (its draft is left on GitLab), if it failed (#30). */
   failure?: string
+  /**
+   * May be outdated (#58): the Review Workspace has moved on from `sha`, and its lines (or its
+   * file) changed since. Set only when true; it can still be edited, posted or dropped.
+   */
+  outdated?: boolean
+  /** An Agent Finding reported for an older commit than the Review Workspace's (#58). Set only when true. */
+  stale?: boolean
 }
 
 /** How the review is submitted (#14, #30): its reviewer state. */
@@ -250,6 +267,13 @@ declare module 'orca' {
      * Workspace in Orca's main view, building it first if the workspace has none (#55).
      */
     'rr.openCoverPage': { input: { url: string }; output: { opened: true } }
+    /**
+     * "Update workspace" (#57): moves a clean Review Workspace to the merge request's new head
+     * (`baseRef` untouched, the target branch fetched fresh), rebuilds its Review Cover Page and
+     * shows it. Rejects, changing nothing, when the workspace has uncommitted changes or commits
+     * that aren't in the merge request, or while Start review runs for it. Answers the new snapshot.
+     */
+    'rr.updateWorkspace': { input: { url: string }; output: ReviewRequestsSnapshot }
     /** Starts an Agent Review in a Review Request's existing Review Workspace. */
     'rr.runAgentReview': { input: { url: string }; output: { started: true } }
     /** What removing an Ended Review Request's Review Workspace would lose (#28). */

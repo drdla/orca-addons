@@ -368,7 +368,102 @@ test('Start review leaves a Review Workspace at the MR head alone', async () => 
   await worker.request('rr.startReview', { url: MR_URL, withAgent: true })
 
   assert.deepEqual(fakes.git.resets, [])
-  assert.deepEqual(fakes.git.fetches, [])
+  assert.deepEqual(fakes.git.fetches, [{ repoPath: '/wt/review-api-7', branch: 'main' }], 'only the base, fresh')
   assert.equal(host.callsOf('agent.launch').length, 1)
+  await worker.deactivate()
+})
+
+/** The worker on an existing Review Workspace, recording the fetches made before each agent launch. */
+async function existingWorkspace(fakes: Fakes, targetBranch = 'main') {
+  fakes.gitlab.addMergeRequest({
+    projectPath: 'acme/api',
+    iid: 7,
+    title: 'Add login',
+    author: 'ada',
+    sourceBranch: 'feature/login',
+    targetBranch
+  })
+  fakes.cli.addRepo(REPO)
+  fakes.cli.addWorktree({ name: 'review-api-7', repoId: REPO.repoId, path: '/wt/review-api-7', references: [MR_URL] })
+  const fetchesAtLaunch: unknown[][] = []
+  const settings = { ...CONFIGURED }
+  const host = mockHost({
+    settings,
+    results: {
+      'workspace.list': workspaceList('/wt/review-api-7'),
+      'agent.launch': () => {
+        fetchesAtLaunch.push([...fakes.git.fetches])
+        return { terminalId: 'term-agent' }
+      },
+      'editor.open': { opened: true }
+    }
+  })
+  const { worker } = await startHarness(fakes, settings, host)
+  return { host, worker, fetchesAtLaunch }
+}
+
+test('an Agent Review on an existing workspace fetches the target branch fresh first: its base (#56)', async () => {
+  const fakes = fakeDeps()
+  const { worker, fetchesAtLaunch } = await existingWorkspace(fakes)
+
+  await worker.request('rr.startReview', { url: MR_URL, withAgent: true })
+  await worker.request('rr.runAgentReview', { url: MR_URL })
+
+  const base = { repoPath: '/wt/review-api-7', branch: 'main' }
+  assert.deepEqual(fetchesAtLaunch, [[base], [base, base]])
+  await worker.deactivate()
+})
+
+test('Start review without an Agent Review on an existing workspace fetches nothing', async () => {
+  const fakes = fakeDeps()
+  const { worker } = await existingWorkspace(fakes)
+
+  await worker.request('rr.startReview', { url: MR_URL, withAgent: false })
+
+  assert.deepEqual(fakes.git.fetches, [])
+  await worker.deactivate()
+})
+
+test("a failed fetch of the target branch doesn't hold the Agent Review back when the base is there (#56)", async () => {
+  const fakes = fakeDeps()
+  fakes.git.setRef('/wt/review-api-7', 'refs/remotes/origin/main', 'target-sha')
+  const { host, worker } = await existingWorkspace(fakes)
+  fakes.git.failNextOf('fetchBranch', new Error('git fetch of the target branch main failed: offline'))
+
+  assert.deepEqual(await worker.request('rr.runAgentReview', { url: MR_URL }), { started: true })
+
+  assert.equal(host.callsOf('agent.launch').length, 1)
+  await worker.deactivate()
+})
+
+test('when the fetch fails and there is no base to diff against, the Agent Review says why (#56)', async () => {
+  const fakes = fakeDeps()
+  const { host, worker } = await existingWorkspace(fakes)
+
+  fakes.git.failNextOf('fetchBranch', new Error('git fetch of the target branch main failed: offline'))
+  await assert.rejects(worker.request('rr.runAgentReview', { url: MR_URL }), (error) =>
+    /target branch main failed: offline/.test(String(error))
+  )
+  fakes.git.failNextOf('fetchBranch', new Error('git fetch of the target branch main failed: offline'))
+  await assert.rejects(worker.request('rr.startReview', { url: MR_URL, withAgent: true }), (error) =>
+    /Review Workspace is ready, but the Agent Review didn't start: .*target branch main failed: offline/.test(
+      String(error)
+    )
+  )
+  assert.equal(host.callsOf('agent.launch').length, 0)
+  await worker.deactivate()
+})
+
+test('an Agent Review refuses a Review Request without a target branch: its diff would be empty (#56)', async () => {
+  const fakes = fakeDeps()
+  const { host, worker } = await existingWorkspace(fakes, '')
+
+  await assert.rejects(worker.request('rr.runAgentReview', { url: MR_URL }), (error) =>
+    /This Review Request has no target branch yet\. Refresh and try again\./.test(String(error))
+  )
+  await assert.rejects(worker.request('rr.startReview', { url: MR_URL, withAgent: true }), (error) =>
+    /the Agent Review didn't start: This Review Request has no target branch yet/.test(String(error))
+  )
+  assert.equal(host.callsOf('agent.launch').length, 0)
   await worker.deactivate()
 })

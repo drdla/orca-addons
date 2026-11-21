@@ -138,3 +138,47 @@ test('an In review card with nothing to post has no Post button', async () => {
   assert.equal(view.find({ type: 'Button', text: /^Post \d+ to GitLab$/ }), null)
   await view.unmount()
 })
+
+test('an In review card whose merge request moved on shows "Merge request updated" and Update workspace', async () => {
+  const url = card(7).url
+  const other = card(8, { workspace: { ...WORKSPACE, id: 'w8' } })
+  const updates: string[] = []
+  const view = await mountWith(
+    {
+      'rr.snapshot': snapshot(card(7, { workspace: WORKSPACE, mergeRequestUpdated: true }), other),
+      'rr.updateWorkspace': ({ url: asked }: { url: string }) => {
+        updates.push(asked)
+        return snapshot(card(7, { workspace: WORKSPACE, mergeRequestUpdated: false }), other)
+      }
+    },
+    { 'rr.tab': 'in' }
+  )
+
+  assert.equal(view.findAll({ type: 'Badge', text: 'Merge request updated' }).length, 1)
+  assert.equal(view.findAll({ type: 'Button', text: 'Update workspace' }).length, 1)
+  await view.press(view.find({ type: 'Button', text: 'Update workspace' })!)
+
+  assert.deepEqual(updates, [url])
+  assert.equal(view.find({ type: 'Badge', text: 'Merge request updated' }), null)
+  assert.equal(view.find({ type: 'Button', text: 'Update workspace' }), null)
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('a refused Update workspace shows why on the card and keeps the notice', async () => {
+  const view = await mountWith(
+    {
+      'rr.snapshot': snapshot(card(7, { workspace: WORKSPACE, mergeRequestUpdated: true })),
+      'rr.updateWorkspace': () => {
+        throw new Error('The Review Workspace review-api-7 has 1 uncommitted change: commit or stash them first. Nothing was changed.')
+      }
+    },
+    { 'rr.tab': 'in' }
+  )
+
+  await view.press(view.find({ type: 'Button', text: 'Update workspace' })!)
+
+  assert.ok(view.find({ text: /^Couldn't update the workspace: .*commit or stash them first/ }))
+  assert.ok(view.find({ type: 'Badge', text: 'Merge request updated' }))
+  await view.unmount()
+})

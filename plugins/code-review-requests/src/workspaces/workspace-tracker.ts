@@ -6,6 +6,7 @@
 import { messageOf } from '../errors'
 import type { AgentReviewView, ReviewRequestCard, ReviewRequestsSnapshot } from '../protocol'
 import type { OrcaCli, WorktreeAgent } from '../seams/orca-cli'
+import type { WorkspaceHeads } from './workspace-heads'
 import {
   findRepo,
   findReviewWorkspace,
@@ -70,21 +71,30 @@ export function hasWorkspace(state: WorkspaceState, mr: MergeRequestRef): boolea
 /** A Review Draft's counts (#29, #30): unposted Review Comments, and the checked ones that post. */
 export type DraftCounts = { unposted: number; toPost: number }
 
-/** The snapshot with each card's Review Workspace, Agent Review and Start review hint filled in. */
+/**
+ * The snapshot with each card's Review Workspace, Agent Review, Start review hint and "Merge
+ * request updated" notice (#57) filled in.
+ */
 export function withWorkspaces(
   snapshot: ReviewRequestsSnapshot,
   state: WorkspaceState,
-  drafts: (url: string) => DraftCounts = () => ({ unposted: 0, toPost: 0 })
+  drafts: (url: string) => DraftCounts = () => ({ unposted: 0, toPost: 0 }),
+  /** Is the Review Workspace at this path behind the merge request's head (#57)? */
+  isBehind: WorkspaceHeads['isBehind'] = () => false
 ): ReviewRequestsSnapshot {
-  return { ...snapshot, reviewRequests: snapshot.reviewRequests.map((card) => decorate(card, state, drafts)) }
+  return {
+    ...snapshot,
+    reviewRequests: snapshot.reviewRequests.map((card) => decorate(card, state, drafts, isBehind))
+  }
 }
 
 function decorate(
   card: ReviewRequestCard,
   state: WorkspaceState,
-  drafts: (url: string) => DraftCounts
+  drafts: (url: string) => DraftCounts,
+  isBehind: WorkspaceHeads['isBehind']
 ): ReviewRequestCard {
-  const none = { workspace: null, agentReview: null, toPost: 0 }
+  const none = { workspace: null, agentReview: null, toPost: 0, mergeRequestUpdated: false }
   if (state.kind === 'unknown') return { ...card, ...none, startBlocked: null }
   if (state.kind === 'unavailable') {
     return { ...card, ...none, startBlocked: `Workspaces are unavailable: ${state.reason}` }
@@ -98,7 +108,8 @@ function decorate(
     workspace: { id: worktree.id, name: worktree.displayName, path: worktree.path },
     startBlocked,
     agentReview: agentReviewOf(state.agents.get(worktree.id) ?? [], counts.unposted),
-    toPost: counts.toPost
+    toPost: counts.toPost,
+    mergeRequestUpdated: isBehind(worktree.path, card.mergeRequestHead)
   }
 }
 

@@ -26,11 +26,25 @@ test('fills every placeholder of the Review Prompt and leaves unknown ones alone
   )
 })
 
+test("{baseRef} is the Review Workspace's base, the fetched target branch", () => {
+  assert.equal(reviewPromptFor('git diff {baseRef}...HEAD', RR), 'git diff origin/main...HEAD')
+  assert.equal(
+    reviewCommandFor('review.sh {baseRef} {prompt}', 'x', { ...RR, targetBranch: "it's" }),
+    `review.sh 'origin/it'\\''s' 'x'`
+  )
+})
+
 test('the default Review Prompt names the MR and where the findings go', () => {
   const prompt = reviewPromptFor(DEFAULT_SETTINGS.reviewPrompt, RR)
   assert.match(prompt, /merge_requests\/7/)
   assert.match(prompt, /\.orca-review\/findings\.json/)
   assert.equal(/\{\w+\}/.test(prompt), false)
+})
+
+test('the default Review Prompt points to the Review Cover Page and gives the exact diff command (#56)', () => {
+  const prompt = reviewPromptFor(DEFAULT_SETTINGS.reviewPrompt, RR)
+  assert.ok(prompt.includes('.orca-review/merge-request.md'), prompt)
+  assert.ok(prompt.includes('`git diff origin/main...HEAD`'), prompt)
 })
 
 test('the default Review Prompt shows a findings.json example the import accepts (#29)', () => {
