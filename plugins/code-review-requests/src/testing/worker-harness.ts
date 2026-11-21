@@ -19,8 +19,12 @@ export type StatusBarUpdate = {
   tooltip?: string
 }
 
-export function lastStatusBar(host: ReturnType<typeof mockHost>): StatusBarUpdate | undefined {
-  return host.callsOf('statusBar.update').at(-1) as StatusBarUpdate | undefined
+/** The bell's latest update; pass `id` for another item, such as the red overdue count. */
+export function lastStatusBar(
+  host: ReturnType<typeof mockHost>,
+  id = 'review-requests'
+): StatusBarUpdate | undefined {
+  return (host.callsOf('statusBar.update') as StatusBarUpdate[]).filter((call) => call.id === id).at(-1)
 }
 
 export function reviewRequestPolls(fakes: Fakes): number {

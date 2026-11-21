@@ -17,15 +17,17 @@ export function cardsOf(state: PollState, context: OverdueContext): ReviewReques
     .sort((a, b) => a.requestedAt - b.requestedAt)
 }
 
-/** Danger tone and "N overdue" in the tooltip while any Review Request is overdue (#10). */
+/**
+ * Splits the bell into "in time | overdue" while any Review Request is overdue (#10): "2 |" in
+ * the bell, "3" in red beside it. Only overdue: just the red count in the bell, no "0 |".
+ */
 export function overdueRefiner(context: OverdueContext): StatusBarRefiner {
   return (look, state) => {
     const overdue = cardsOf(state, context).filter((card) => card.overdue).length
     if (overdue === 0) return look
-    return {
-      ...look,
-      tone: 'danger',
-      tooltip: look.tooltip.replace(/\. Click to open\.$/, `, ${overdue} overdue. Click to open.`)
-    }
+    const inTime = state.reviewRequests.length - overdue
+    const tooltip = look.tooltip.replace(/\. Click to open\.$/, `, ${overdue} overdue. Click to open.`)
+    if (inTime === 0) return { ...look, tone: 'danger', tooltip }
+    return { ...look, text: `${inTime} |`, tooltip, overdue }
   }
 }

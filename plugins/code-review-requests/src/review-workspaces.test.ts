@@ -4,7 +4,7 @@
 import { assert, mockHost, test } from 'orca/testing'
 import { fakeDeps, type Fakes } from './fakes'
 import { OrcaCliError } from './seams/orca-cli'
-import { CONFIGURED, MINUTE, startWorker as startHarness } from './testing/worker-harness'
+import { CONFIGURED, lastStatusBar, MINUTE, startWorker as startHarness } from './testing/worker-harness'
 const MR_URL = 'https://gitlab.example.com/acme/api/-/merge_requests/7'
 const REPO = { repoId: 'repo-api', projectId: 'git:gitlab.example.com/acme/api', path: '/src/api' }
 
@@ -87,7 +87,7 @@ test('a filtered-out Review Request with a Review Workspace stays listed, under 
   const cards = (await worker.request('rr.snapshot')).reviewRequests
   assert.deepEqual(cards.map((c) => c.title), ['Add login'])
   assert.equal(cards[0]!.workspace?.name, 'by-hand')
-  assert.equal((host.callsOf('statusBar.update').at(-1) as { text?: string }).text, '1')
+  assert.equal(lastStatusBar(host)?.text, '1')
   await worker.deactivate()
 })
 
@@ -113,7 +113,7 @@ test('a broken orca CLI disables only the workspace features; the Review Request
   assert.equal(card!.title, 'Add login')
   assert.equal(card!.workspace, null)
   assert.match(card!.startBlocked ?? '', /orca CLI not found/)
-  const bar = host.callsOf('statusBar.update').at(-1) as { text?: string }
+  const bar = lastStatusBar(host)!
   assert.equal(bar.text, '1')
   await worker.deactivate()
 })
