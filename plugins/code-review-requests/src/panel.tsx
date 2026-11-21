@@ -149,7 +149,10 @@ function openWorkspace(url: string): void {
   cardAction(url, "Couldn't open the workspace", () => plugin.request('rr.openWorkspace', { url }))
 }
 
-/** "Update workspace" (#57): fetches, hard-resets the clean workspace and rebuilds its cover page. */
+/**
+ * "Update workspace" (#57): fetches, hard-resets the clean workspace and rebuilds its Review Cover
+ * Page. A refusal (uncommitted changes, commits of the reviewer's own) shows on the card.
+ */
 function updateWorkspace(url: string): void {
   cardAction(url, "Couldn't update the workspace", () =>
     plugin.request('rr.updateWorkspace', { url }, { timeoutMs: START_TIMEOUT_MS }).then(received)
@@ -420,7 +423,7 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
             variant="outline"
             icon="refresh"
             disabled={busy}
-            tooltip="Move the workspace to the merge request's new commits and rebuild its cover page"
+            tooltip="Move the workspace to the merge request's new commits and rebuild its Review Cover Page"
             onPress={() => updateWorkspace(card.url)}
           >
             Update workspace
@@ -520,7 +523,7 @@ function Card({ card }: { card: ReviewRequestCard }) {
         <Text weight="semibold">{card.title}</Text>
         {card.overdue && <Badge tone="danger">Overdue</Badge>}
         {isNew && <Badge tone="accent">New</Badge>}
-        {card.workspace != null && card.mergeRequestUpdated === true && <Badge tone="warning">Merge request updated</Badge>}
+        {card.mergeRequestUpdated === true && <Badge tone="warning">Merge request updated</Badge>}
       </Row>
       <Text muted size="xs">
         <Link onPress={() => openInGitLab(card.url)}>{`${card.projectPath} !${card.iid}`}</Link>

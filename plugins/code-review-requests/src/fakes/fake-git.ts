@@ -1,8 +1,8 @@
 // A Git that only records: which branches and MR heads were fetched where (in order) and which
 // worktrees were reset to what; answers `git status` from setStatus(), `rev-parse HEAD` from
-// setHead() and other refs from setRef(). failNext() makes the next call fail; failNextOf() the
-// next call of one method only.
-import type { Git } from '../seams/git'
+// setHead() and other refs from setRef(), ancestry from addAncestor(). failNext() makes the next
+// call fail; failNextOf() the next call of one method only; onNextOf() runs something as it starts.
+import { mergeRequestHeadRef, type Git } from '../seams/git'
 
 type Method = 'fetchMergeRequestHead' | 'fetchBranch' | 'resetBranch' | 'statusPorcelain' | 'headSha'
 
@@ -16,6 +16,10 @@ export class FakeGit implements Git {
   #status = new Map<string, string[]>()
   #heads = new Map<string, string>()
   #refs = new Map<string, string>()
+  #remoteHeads = new Map<number, string>()
+  #ancestors = new Set<string>()
+  #hooks = new Map<Method, (() => void)[]>()
+  #failAfterReset: Error[] = []
 
   /** The uncommitted changes `git status --porcelain` reports at `path` (default: none). */
   setStatus(path: string, lines: string[]): void {
@@ -32,6 +36,26 @@ export class FakeGit implements Git {
     this.#refs.set(`${path}\n${ref}`, sha)
   }
 
+  /** What fetching MR `iid`'s head brings: its remote-tracking ref then names `sha` there. */
+  setRemoteMergeRequestHead(iid: number, sha: string): void {
+    this.#remoteHeads.set(iid, sha)
+  }
+
+  /** `ancestor` is an ancestor of `descendant` (every commit is its own ancestor anyway). */
+  addAncestor(ancestor: string, descendant: string): void {
+    this.#ancestors.add(`${ancestor}>${descendant}`)
+  }
+
+  /** Runs `hook` when `method` is next called, before it does anything. */
+  onNextOf(method: Method, hook: () => void): void {
+    this.#hooks.set(method, [...(this.#hooks.get(method) ?? []), hook])
+  }
+
+  /** The next reset moves the branch, then rejects (like a failing `--unset-upstream`). */
+  failAfterNextReset(error: Error): void {
+    this.#failAfterReset.push(error)
+  }
+
   failNext(...errors: Error[]): void {
     this.#failures.push(...errors)
   }
@@ -42,6 +66,7 @@ export class FakeGit implements Git {
   }
 
   #fail(method: Method): void {
+    this.#hooks.get(method)?.shift()?.()
     const failure = this.#failuresOf.get(method)?.shift() ?? this.#failures.shift()
     if (failure) throw failure
   }
@@ -54,7 +79,9 @@ export class FakeGit implements Git {
   async fetchMergeRequestHead(repoPath: string, iid: number): Promise<string> {
     this.fetches.push({ repoPath, iid })
     this.#fail('fetchMergeRequestHead')
-    return `refs/remotes/origin/merge-requests/${iid}`
+    const remote = this.#remoteHeads.get(iid)
+    if (remote !== undefined) this.setRef(repoPath, mergeRequestHeadRef(iid), remote)
+    return mergeRequestHeadRef(iid)
   }
 
   async fetchBranch(repoPath: string, branch: string): Promise<string> {
@@ -70,6 +97,12 @@ export class FakeGit implements Git {
     const sha = this.#refs.get(`${worktreePath}\n${ref}`)
     if (sha === undefined) this.#heads.delete(worktreePath)
     else this.#heads.set(worktreePath, sha)
+    const after = this.#failAfterReset.shift()
+    if (after) throw after
+  }
+
+  async isAncestor(_path: string, ancestor: string, descendant: string): Promise<boolean> {
+    return ancestor === descendant || this.#ancestors.has(`${ancestor}>${descendant}`)
   }
 
   async resolveRef(path: string, ref: string): Promise<string | null> {

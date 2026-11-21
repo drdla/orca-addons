@@ -6,6 +6,7 @@
 import { messageOf } from '../errors'
 import type { AgentReviewView, ReviewRequestCard, ReviewRequestsSnapshot } from '../protocol'
 import type { OrcaCli, WorktreeAgent } from '../seams/orca-cli'
+import type { WorkspaceHeads } from './workspace-heads'
 import {
   findRepo,
   findReviewWorkspace,
@@ -79,7 +80,7 @@ export function withWorkspaces(
   state: WorkspaceState,
   drafts: (url: string) => DraftCounts = () => ({ unposted: 0, toPost: 0 }),
   /** Is the Review Workspace at this path behind the merge request's head (#57)? */
-  isBehind: (worktreePath: string, mergeRequestHead: string | null | undefined) => boolean = () => false
+  isBehind: WorkspaceHeads['isBehind'] = () => false
 ): ReviewRequestsSnapshot {
   return {
     ...snapshot,
@@ -91,7 +92,7 @@ function decorate(
   card: ReviewRequestCard,
   state: WorkspaceState,
   drafts: (url: string) => DraftCounts,
-  isBehind: (worktreePath: string, mergeRequestHead: string | null | undefined) => boolean
+  isBehind: WorkspaceHeads['isBehind']
 ): ReviewRequestCard {
   const none = { workspace: null, agentReview: null, toPost: 0, mergeRequestUpdated: false }
   if (state.kind === 'unknown') return { ...card, ...none, startBlocked: null }
@@ -108,7 +109,7 @@ function decorate(
     startBlocked,
     agentReview: agentReviewOf(state.agents.get(worktree.id) ?? [], counts.unposted),
     toPost: counts.toPost,
-    mergeRequestUpdated: isBehind(worktree.path, card.headSha)
+    mergeRequestUpdated: isBehind(worktree.path, card.mergeRequestHead)
   }
 }
 

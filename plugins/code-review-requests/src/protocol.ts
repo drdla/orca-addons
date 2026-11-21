@@ -18,7 +18,7 @@ export type ReviewRequestView = {
    * The MR's head commit on GitLab (`diffRefs.headSha`), compared with its Review Workspace's HEAD
    * for the "Merge request updated" notice (#57); null when GitLab has none, absent before #57.
    */
-  headSha?: string | null
+  mergeRequestHead?: string | null
   /** The CI badge (#10): the head pipeline's outcome, or null without one (or canceled, skipped…). */
   ci?: CiStatus | null
   /** The approvals badge, `given/required`; null when the MR requires none. */
@@ -262,8 +262,9 @@ declare module 'orca' {
     'rr.openCoverPage': { input: { url: string }; output: { opened: true } }
     /**
      * "Update workspace" (#57): moves a clean Review Workspace to the merge request's new head
-     * (`baseRef` untouched) and rebuilds its Review Cover Page. Rejects, changing nothing, when the
-     * workspace has uncommitted changes. Answers the new snapshot.
+     * (`baseRef` untouched, the target branch fetched fresh), rebuilds its Review Cover Page and
+     * shows it. Rejects, changing nothing, when the workspace has uncommitted changes or commits
+     * that aren't in the merge request, or while Start review runs for it. Answers the new snapshot.
      */
     'rr.updateWorkspace': { input: { url: string }; output: ReviewRequestsSnapshot }
     /** Starts an Agent Review in a Review Request's existing Review Workspace. */

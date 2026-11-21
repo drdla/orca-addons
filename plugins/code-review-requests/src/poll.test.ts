@@ -126,7 +126,7 @@ test('the panel snapshot lists the Review Requests from the last poll', async ()
         requestedAt: fakes.clock.now(),
         sourceBranch: 'feature-1',
         targetBranch: 'main',
-        headSha: mr.diffRefs.headSha,
+        mergeRequestHead: mr.diffRefs.headSha,
         ci: null,
         approvals: null,
         comments: 0,

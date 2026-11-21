@@ -2,7 +2,7 @@
 // Nothing here runs on load: `orca plugin check` imports the real worker.
 import { execFile } from 'node:child_process'
 import { gitEnv } from './git-env'
-import type { Git } from './seams/git'
+import { mergeRequestHeadRef, type Git } from './seams/git'
 
 const TIMEOUT_MS = 120_000
 
@@ -48,6 +48,27 @@ export function unsetUpstreamArgs(worktreePath: string): string[] {
   return ['-C', worktreePath, 'branch', '--unset-upstream']
 }
 
+/** The arguments that ask whether `ancestor` is an ancestor of `descendant` (exit 0 yes, 1 no). */
+export function isAncestorArgs(path: string, ancestor: string, descendant: string): string[] {
+  return ['-C', path, 'merge-base', '--is-ancestor', ancestor, descendant]
+}
+
+/**
+ * `git status --porcelain -z` as one `XY path` entry per change. Paths come unquoted; a rename or
+ * copy is followed by its original path, which belongs to the same entry and is dropped here.
+ */
+export function parsePorcelainZ(stdout: string): string[] {
+  const fields = stdout.split('\0')
+  const entries: string[] = []
+  for (let i = 0; i < fields.length; i++) {
+    const field = fields[i]!
+    if (field === '') continue
+    entries.push(field)
+    if (field[0] === 'R' || field[0] === 'C') i++
+  }
+  return entries
+}
+
 /** Runs `git <args>` and answers its stdout; rejects with `<what> failed: <stderr>`. */
 async function run(args: string[], what: string): Promise<string> {
   const gitEnvironment = await env()
@@ -60,12 +81,22 @@ async function run(args: string[], what: string): Promise<string> {
 
 export const systemGit: Git = {
   async statusPorcelain(path) {
-    const stdout = await run(['-C', path, 'status', '--porcelain'], 'git status')
-    return stdout.split('\n').filter((line) => line.trim() !== '')
+    return parsePorcelainZ(await run(['-C', path, 'status', '--porcelain', '-z'], 'git status'))
   },
   async fetchMergeRequestHead(repoPath, iid) {
     await run(fetchMergeRequestHeadArgs(repoPath, iid), 'git fetch of the MR')
-    return `refs/remotes/origin/merge-requests/${iid}`
+    return mergeRequestHeadRef(iid)
+  },
+  async isAncestor(path, ancestor, descendant) {
+    // Exit 1 means "no", so this can't go through run(), which rejects on any non-zero exit.
+    const options = { timeout: TIMEOUT_MS, env: await env(), encoding: 'utf8' as const }
+    return new Promise((resolve, reject) =>
+      execFile('git', isAncestorArgs(path, ancestor, descendant), options, (error, _stdout, stderr) => {
+        if (!error) resolve(true)
+        else if (error.code === 1) resolve(false)
+        else reject(new Error(`git merge-base --is-ancestor failed: ${(stderr || error.message).trim()}`))
+      })
+    )
   },
   async fetchBranch(repoPath, branch) {
     await run(fetchBranchArgs(repoPath, branch), `git fetch of the target branch ${branch}`)

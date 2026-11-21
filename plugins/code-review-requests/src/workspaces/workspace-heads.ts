@@ -26,6 +26,12 @@ export type WorkspaceHeads = {
 export function createWorkspaceHeads(git: Git, log: (message: string) => void): WorkspaceHeads {
   /** By worktree path: its HEAD, and the merge request head it was read against. */
   const known = new Map<string, { head: string; readAgainst: string }>()
+  /**
+   * By worktree path: bumped by every record(). A poll's read that started before a record() is
+   * older than what was recorded, so it is dropped rather than bring the notice back.
+   */
+  const generations = new Map<string, number>()
+  const generationOf = (path: string) => generations.get(path) ?? 0
 
   return {
     async check(reviewRequests, state) {
@@ -33,14 +39,17 @@ export function createWorkspaceHeads(git: Git, log: (message: string) => void): 
       const present = new Set<string>()
       for (const rr of reviewRequests) {
         const worktree = findReviewWorkspace(state.index, rr)
-        if (!worktree || !rr.headSha) continue
+        if (!worktree || !rr.mergeRequestHead) continue
         present.add(worktree.path)
         const entry = known.get(worktree.path)
-        if (entry && entry.readAgainst === rr.headSha && entry.head === rr.headSha) continue
+        if (entry && entry.readAgainst === rr.mergeRequestHead && entry.head === rr.mergeRequestHead) continue
+        const generation = generationOf(worktree.path)
         try {
-          known.set(worktree.path, { head: await git.headSha(worktree.path), readAgainst: rr.headSha })
+          const head = await git.headSha(worktree.path)
+          if (generationOf(worktree.path) !== generation) continue
+          known.set(worktree.path, { head, readAgainst: rr.mergeRequestHead })
         } catch (error) {
-          known.delete(worktree.path)
+          if (generationOf(worktree.path) === generation) known.delete(worktree.path)
           log(`git rev-parse HEAD failed in ${worktree.path}: ${messageOf(error)}`)
         }
       }
@@ -51,6 +60,7 @@ export function createWorkspaceHeads(git: Git, log: (message: string) => void): 
       return entry !== undefined && !!mergeRequestHead && entry.head !== mergeRequestHead
     },
     record(worktreePath, head) {
+      generations.set(worktreePath, generationOf(worktreePath) + 1)
       known.set(worktreePath, { head, readAgainst: head })
     }
   }

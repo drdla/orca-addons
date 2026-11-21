@@ -1,7 +1,9 @@
 // Building, writing and opening a Review Workspace's Review Cover Page (#55). The page is a
 // snapshot of the checked-out commit: it is built once (on Start review, or by Open workspace or
-// the Review Draft's "Cover page" when it is missing) from GitLab REST, never by the poll, and not
-// rebuilt on open. Update workspace (#57) rebuilds it for the new head.
+// the Review Draft's "Cover page" when it is missing) from GitLab REST, never by the poll. Opening
+// rebuilds it only when it was built for another commit than the workspace's HEAD; Update
+// workspace (#57) rebuilds it for the new head. Opened while the merge request has newer commits,
+// it starts with a "Merge request updated" callout.
 //
 // It lives at `.orca-review/merge-request.md` in the worktree, beside the Agent Review's
 // findings.json. `.orca-review/` goes into the exclude file git reads for the worktree (for a
@@ -14,8 +16,10 @@ import type { Git } from '../seams/git'
 import type { GitLabAccess, GitLabTransport } from '../seams/gitlab'
 import type { LinkedItem } from '../seams/orca-cli'
 import { hostWorkspaceIdOf } from '../workspaces/host-workspace'
+import { REVIEW_FOLDER } from '../workspaces/review-folder'
 import {
   renderCoverPage,
+  coverPageHeadOf,
   withUpdatedCallout,
   type CoverPageSource,
   type LinearLink,
@@ -25,8 +29,8 @@ import {
 } from './render'
 
 /** Where the page lives, relative to the worktree. */
-const COVER_PAGE_PATH = '.orca-review/merge-request.md'
-const EXCLUDE_LINE = '.orca-review/'
+const COVER_PAGE_PATH = `${REVIEW_FOLDER}/merge-request.md`
+const EXCLUDE_LINE = `${REVIEW_FOLDER}/`
 const DIFFS_PER_PAGE = 100
 /** GitLab's diff limits keep an MR far below this; past it the page says the list is cut short. */
 const MAX_DIFF_PAGES = 50
@@ -43,7 +47,7 @@ export type CoverPageTarget = {
 
 /** The target for a merge request's Review Workspace; Orca's linked items give its Linear link. */
 export function coverPageTargetOf(
-  mr: { projectPath: string; iid: number; headSha?: string | null },
+  mr: { projectPath: string; iid: number; mergeRequestHead?: string | null },
   workspace: { name: string; path: string; linkedItems?: LinkedItem[] }
 ): CoverPageTarget {
   const item = workspace.linkedItems?.find((i) => i.provider === 'linear' && i.identifier !== undefined)
@@ -52,23 +56,25 @@ export function coverPageTargetOf(
     iid: mr.iid,
     workspace: { name: workspace.name, path: workspace.path },
     linear: item === undefined ? null : { identifier: item.identifier!, url: item.url },
-    mergeRequestHead: mr.headSha ?? null
+    mergeRequestHead: mr.mergeRequestHead ?? null
   }
 }
 
 export type CoverPages = {
-  /** Builds the page unless the workspace has one; true when it built it now. */
+  /**
+   * Builds the page when the workspace has none, or one for another commit than its HEAD (a
+   * rebuild after Update workspace that failed, #57); true when it built it now. A page it keeps
+   * gets the "Merge request updated" callout while the workspace is behind the merge request's
+   * head, and loses it after. Every path that opens or reveals the page goes through here.
+   */
   ensure(target: CoverPageTarget): Promise<boolean>
   /** Builds the page afresh, replacing the one there (after Update workspace, #57). */
   rebuild(target: CoverPageTarget): Promise<void>
   /** Shows the page in an editor tab in Orca's main view. */
   reveal(target: CoverPageTarget): Promise<void>
-  /**
-   * Builds the page if missing, then shows it. An existing page gets the "Merge request updated"
-   * callout while the workspace is behind the merge request's head (#57), and loses it after.
-   */
+  /** ensure(), then shows the page. */
   open(target: CoverPageTarget): Promise<void>
-  /** After Open workspace: builds and shows the page only when the workspace has none. */
+  /** After Open workspace: ensure(), and shows the page only when it built it now. */
   openIfMissing(target: CoverPageTarget): Promise<void>
 }
 
@@ -81,15 +87,20 @@ export function createCoverPages(deps: {
   const pagePath = (target: CoverPageTarget) => `${target.workspace.path}/${COVER_PAGE_PATH}`
 
   async function ensure(target: CoverPageTarget): Promise<boolean> {
-    if ((await deps.files.readText(pagePath(target))) !== null) return false
-    await build(target)
-    return true
+    const page = await deps.files.readText(pagePath(target))
+    const headSha = await deps.git.headSha(target.workspace.path)
+    if (page === null || coverPageHeadOf(page) !== headSha) {
+      await build(target, headSha)
+      return true
+    }
+    await markUpdated(target, page)
+    return false
   }
 
-  async function build(target: CoverPageTarget): Promise<void> {
+  async function build(target: CoverPageTarget, checkedOut?: string): Promise<void> {
     const { transport, token } = await deps.gitLab()
     const [headSha, gitLab] = await Promise.all([
-      deps.git.headSha(target.workspace.path),
+      checkedOut ?? deps.git.headSha(target.workspace.path),
       fetchFromGitLab(transport, target).catch((error: unknown) => {
         throw redactError(error, token)
       })
@@ -100,10 +111,8 @@ export function createCoverPages(deps: {
   }
 
   /** The callout on an existing page, from the polled head: no GitLab read, no rebuild. */
-  async function markUpdated(target: CoverPageTarget): Promise<void> {
+  async function markUpdated(target: CoverPageTarget, page: string): Promise<void> {
     if (target.mergeRequestHead === null) return
-    const page = await deps.files.readText(pagePath(target))
-    if (page === null) return
     const marked = withUpdatedCallout(page, target.mergeRequestHead)
     if (marked !== page) await deps.files.writeText(pagePath(target), marked)
   }
@@ -126,7 +135,7 @@ export function createCoverPages(deps: {
     rebuild: build,
     reveal,
     async open(target) {
-      if (!(await ensure(target))) await markUpdated(target)
+      await ensure(target)
       await reveal(target)
     },
     async openIfMissing(target) {

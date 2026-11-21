@@ -1,5 +1,6 @@
 // The Review Workspace panel requests (#27, #28): Start review, Open workspace, Run Agent Review,
-// Update workspace (#57), and the Ended tab's removal check and Remove workspace, plus Orca's `workspace.removed` event.
+// Update workspace (#57), and the Ended tab's removal check and Remove workspace, plus Orca's
+// `workspace.removed` event.
 // worker.ts calls registerWorkspaceRequests once in activate.
 import type { OrcaWorkerApi } from 'orca/worker'
 import { coverPageTargetOf, createCoverPages } from '../cover-page/cover-pages'
