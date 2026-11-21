@@ -1,5 +1,5 @@
 // The Files seam: files on this machine, here an Agent Review's findings.json in a Review
-// Workspace (#29) and its review cover page (#55). Real: src/files-process.ts. Fake:
+// Workspace (#29) and its Review Cover Page (#55). Real: src/files-process.ts. Fake:
 // src/fakes/fake-files.ts.
 
 export interface Files {

@@ -21,7 +21,7 @@ An Orca workspace linked to the merge request of a Review Request. A Review Work
 _Avoid_: MR worktree, review branch
 
 **Review Cover Page**:
-A read-only Markdown snapshot of a Review Workspace's merge request (title, description, metadata, changed-file list), built from GitLab when the review starts and opened in Orca's main view. It records the head commit it was built from and is not rebuilt on open.
+A read-only Markdown snapshot of a Review Workspace's merge request (title, description, metadata, changed-file list), opened in Orca's main view. It is built once from GitLab: when the review starts, or when the workspace is first opened without one. It records the commit checked out in the workspace and is not rebuilt on open.
 _Avoid_: MR summary, overview page, readme
 
 **Review Prompt**:

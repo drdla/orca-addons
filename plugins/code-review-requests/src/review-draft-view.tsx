@@ -2,7 +2,7 @@
 // the tabs; Back returns. Opening (and Import again) asks the worker to import the diff-view
 // notes and Agent Findings (`rr.draft`). Diff-view notes are read-only here (edit them in Orca);
 // Agent Findings get an editor. Every comment has a checkbox: checked ones are what #30 posts.
-// "Cover page" reopens the Review Workspace's review cover page (#55) in Orca's main view.
+// "Cover page" reopens the Review Workspace's Review Cover Page (#55) in Orca's main view.
 import {
   atom,
   Badge,
@@ -33,7 +33,7 @@ const draftUrl = atom<string | null>('rr.draftUrl', null, { persist: 'plugin' })
 const draft = atom<ReviewDraftView | null>(null)
 const draftFailure = atom<string | null>(null)
 const importing = atom(false)
-/** Why the review cover page (#55) didn't open, or null. */
+/** Why the Review Cover Page (#55) didn't open, or null. */
 const coverPageFailure = atom<string | null>(null)
 /** Unsaved Agent Finding text, by comment id. */
 const edits = atom<Record<string, string>>({})
@@ -89,7 +89,7 @@ function importDraft(): void {
     .finally(() => set(importing, false))
 }
 
-/** Opens the review cover page in Orca's main view; the worker builds it first if missing. */
+/** Opens the Review Cover Page in Orca's main view; the worker builds it first if missing. */
 function openCoverPage(): void {
   const url = read(draftUrl)
   if (url === null) return
@@ -163,7 +163,7 @@ export function ReviewDraftScreen() {
       </Row>
       {read(coverPageFailure) !== null && (
         <Text tone="danger" size="sm">
-          {`Can't open the cover page: ${read(coverPageFailure)}`}
+          {`Can't open the Review Cover Page: ${read(coverPageFailure)}`}
         </Text>
       )}
       {failure !== null && (

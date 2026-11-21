@@ -246,7 +246,7 @@ declare module 'orca' {
     /** Shows a Review Request's (or an Ended Review Request's) Review Workspace in Orca. */
     'rr.openWorkspace': { input: { url: string }; output: { opened: true } }
     /**
-     * Opens the review cover page of a Review Request's (or an Ended Review Request's) Review
+     * Opens the Review Cover Page of a Review Request's (or an Ended Review Request's) Review
      * Workspace in Orca's main view, building it first if the workspace has none (#55).
      */
     'rr.openCoverPage': { input: { url: string }; output: { opened: true } }

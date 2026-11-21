@@ -1,4 +1,4 @@
-// The review cover page end to end through the worker (#55): Start review builds it from GitLab
+// The Review Cover Page end to end through the worker (#55): Start review builds it from GitLab
 // and opens it in Orca's main view, Open workspace builds it when missing, and the Review Draft
 // reopens it. GitLab, the orca CLI, git, files and the clock are fakes; Orca's host is the kit's
 // mock host.
@@ -68,6 +68,45 @@ test('Start review builds the cover page from GitLab, keeps it out of Source Con
   await worker.deactivate()
 })
 
+test('with an Agent Review, the agent launches without waiting for the page, and the page opens last, in front', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  const { host, worker } = await startWorker(fakes)
+
+  await worker.request('rr.startReview', { url: MR_URL, withAgent: true })
+
+  const order = host.calls.map((c) => c.method).filter((m) => m === 'agent.launch' || m === 'editor.open')
+  assert.deepEqual(order, ['agent.launch', 'editor.open'])
+  assert.match(fakes.files.peek(PAGE) ?? '', /^# Add login\n/)
+  await worker.deactivate()
+})
+
+test("the page records the workspace's checked-out commit and the workspace's own Linear link", async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  fakes.cli.addWorktree({
+    name: 'review-api-7',
+    repoId: REPO.repoId,
+    path: WORKTREE,
+    references: [MR_URL],
+    linearIssue: { identifier: 'OEO-9', url: 'https://linear.app/acme/issue/OEO-9/login' }
+  })
+  const checkedOut = 'c0ffee0000000000000000000000000000000000'
+  fakes.git.setHead(WORKTREE, checkedOut)
+  fakes.gitlab.push('acme/api', 7)
+  const { worker } = await startWorker(fakes)
+
+  await worker.request('rr.openCoverPage', { url: MR_URL })
+
+  const page = fakes.files.peek(PAGE) ?? ''
+  assert.ok(page.includes(`<!-- orca-review-cover-page head=${checkedOut} -->`), page)
+  assert.match(page, /The merge request has moved on since this workspace was checked out/)
+  assert.ok(page.includes('| Linear ticket | [OEO-9](https://linear.app/acme/issue/OEO-9/login) |'), page)
+  await worker.deactivate()
+})
+
 test('the page is a snapshot: opening it again neither rebuilds it nor duplicates the exclude line', async () => {
   const fakes = fakeDeps()
   addReviewRequest(fakes)
@@ -121,6 +160,23 @@ test("the Review Draft's Cover page also opens an Ended Review Request's page, b
   await worker.deactivate()
 })
 
+test("Open workspace on an Ended Review Request builds its missing page too", async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  fakes.cli.addWorktree({ name: 'review-api-7', repoId: REPO.repoId, path: WORKTREE, references: [MR_URL] })
+  const { host, worker } = await startWorker(fakes)
+  fakes.gitlab.approve('acme/api', 7)
+  await worker.request('rr.refresh')
+
+  await worker.request('rr.openWorkspace', { url: MR_URL })
+
+  assert.deepEqual(host.callsOf('workspace.open'), [{ workspaceId: 'ws-1' }])
+  assert.match(fakes.files.peek(PAGE) ?? '', /^# Add login\n/)
+  assert.equal(host.callsOf('editor.open').length, 1)
+  await worker.deactivate()
+})
+
 test("when GitLab can't give the page, the Agent Review still starts and Start review says what failed", async () => {
   const fakes = fakeDeps()
   addReviewRequest(fakes)
@@ -129,7 +185,7 @@ test("when GitLab can't give the page, the Agent Review still starts and Start r
   fakes.gitlab.failNext(new GitLabError('rejected', '404 Not Found', { status: 404 }))
 
   await assert.rejects(worker.request('rr.startReview', { url: MR_URL, withAgent: true }), (error) =>
-    /Review Workspace is ready, but the review cover page didn't open: .*404/.test(String(error))
+    /Review Workspace is ready, but the Review Cover Page didn't open: .*404/.test(String(error))
   )
   assert.equal(host.callsOf('agent.launch').length, 1)
   assert.equal(fakes.files.peek(PAGE), null)

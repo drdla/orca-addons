@@ -22,6 +22,8 @@ export type WorktreeSeed = {
   branch?: string | null
   /** MR web URLs linked to the worktree. */
   references?: string[]
+  /** A Linear issue linked to the worktree, listed after the references. */
+  linearIssue?: { identifier: string; url: string }
   baseRef?: string
   /** Uncommitted changes: removal without force is refused. */
   dirty?: boolean
@@ -59,7 +61,10 @@ export class FakeOrcaCli implements OrcaCli {
       branch: fullRef(seed.branch === undefined ? seed.name : seed.branch),
       displayName: seed.name,
       linkedGitLabMR: seed.legacyGitLabMR ?? mrIid(seed.references?.[0]),
-      linkedItems: (seed.references ?? []).map((url) => linkedItem(url)),
+      linkedItems: [
+        ...(seed.references ?? []).map((url) => linkedItem(url)),
+        ...(seed.linearIssue ? [{ provider: 'linear', type: 'issue', ...seed.linearIssue }] : [])
+      ],
       ...(seed.baseRef ? { baseRef: seed.baseRef } : {}),
       diffComments: [],
       dirty: seed.dirty ?? false

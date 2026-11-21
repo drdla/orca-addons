@@ -166,7 +166,7 @@ test('Cover page reopens the review cover page, and says why when it cannot', as
 
   fail = true
   await view.press(view.find({ type: 'Button', text: 'Cover page' })!)
-  assert.ok(view.find({ text: /Can't open the cover page: .*not showing a window/ }))
+  assert.ok(view.find({ text: /Can't open the Review Cover Page: .*not showing a window/ }))
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })

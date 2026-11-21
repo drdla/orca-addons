@@ -33,7 +33,8 @@ function hostWith(status: () => WorkspaceStatus, settings: Record<string, string
         ],
         truncated: false
       }),
-      'workspace.open': { opened: true }
+      'workspace.open': { opened: true },
+      'editor.open': { opened: true }
     }
   })
 }

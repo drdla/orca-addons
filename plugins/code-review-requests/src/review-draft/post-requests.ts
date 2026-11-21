@@ -3,7 +3,8 @@
 import type { OrcaWorkerApi } from 'orca/worker'
 import type { ReviewRequestCard } from '../protocol'
 import { DraftChangeError, viewOf } from './draft-import'
-import { createReviewPoster, type PostConnection } from './post-review'
+import type { GitLabAccess } from '../seams/gitlab'
+import { createReviewPoster } from './post-review'
 import { emptyDraft, type ReviewDrafts } from './review-drafts'
 
 export function registerPostRequests(
@@ -12,7 +13,7 @@ export function registerPostRequests(
     drafts: ReviewDrafts
     /** The cards a Review Draft can belong to (Review Requests and Ended ones). */
     cards: () => ReviewRequestCard[]
-    connection: () => Promise<PostConnection>
+    connection: () => Promise<GitLabAccess>
     /** After posting or deleting failed drafts changed a Review Draft. */
     onChanged?: () => Promise<void>
   }

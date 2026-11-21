@@ -20,6 +20,12 @@ export interface GitLabTransport {
   rest<T>(method: HttpMethod, path: string, body?: Json): Promise<T>
 }
 
+/**
+ * The transport for the configured connection, with its token (to redact from errors), or null
+ * for glab. What posting a review (#30) and building a Review Cover Page (#55) reach GitLab with.
+ */
+export type GitLabAccess = { transport: GitLabTransport; token: string | null }
+
 /** Which GitLab instance to reach, and with what. A stored token means token mode (#8). */
 export type GitLabConnection = {
   /** Host name only, for example `gitlab.com`; the value passed to `glab --hostname`. */
