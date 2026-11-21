@@ -23,7 +23,7 @@ export type ReviewRequestView = {
   ci?: CiStatus | null
   /** The approvals badge, `given/required`; null when the MR requires none. */
   approvals?: { given: number; required: number } | null
-  /** The comments badge: comments by people on the MR. */
+  /** The comments badge: unresolved threads on the MR. */
   comments?: number
 }
 
@@ -246,7 +246,7 @@ declare module 'orca' {
     /** Puts any text on the clipboard, such as the setup checklist's glab login command (#8). */
     'rr.copyText': { input: { text: string }; output: { copied: true } }
     /**
-     * The panel was opened (#10): its Review Requests count as seen for the bell's "M new", and
+     * The panel was opened (#10): its Review Requests count as seen for the status bar item's "M new", and
      * at the next opening they lose the New badge.
      */
     'rr.markSeen': { output: { seen: true } }
@@ -267,6 +267,11 @@ declare module 'orca' {
      * Workspace in Orca's main view, building it first if the workspace has none (#55).
      */
     'rr.openCoverPage': { input: { url: string }; output: { opened: true } }
+    /**
+     * Shows a Review Request's Review Workspace and toggles Orca's Source Control sidebar there,
+     * for its changed files. Orca only offers a toggle: when Source Control already shows, it closes.
+     */
+    'rr.showChanges': { input: { url: string }; output: { opened: true } }
     /**
      * "Update workspace" (#57): moves a clean Review Workspace to the merge request's new head
      * (`baseRef` untouched, the target branch fetched fresh), rebuilds its Review Cover Page and

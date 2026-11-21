@@ -2,7 +2,8 @@
 // stopped; "Check again" asks the worker to retry. Self-contained so the panel renders it in place
 // of the list (and the tabs) while GitLab needs setting up. While glab is the problem, a token
 // is the second path; a rejected token can be replaced or removed here (#25).
-import { atom, Button, Callout, Code, Collapsible, IconButton, plugin, read, Row, set, Stack, Text } from 'orca'
+import { atom, Callout, Code, Collapsible, IconButton, plugin, read, Row, set, Stack, Text } from 'orca'
+import { Button } from './button'
 import { TokenEntry } from './connection-section'
 import { messageOf } from './errors'
 import type { GitLabProblemView, ReviewRequestsSnapshot } from './protocol'

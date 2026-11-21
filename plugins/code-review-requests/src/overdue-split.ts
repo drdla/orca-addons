@@ -1,5 +1,5 @@
 // How many Review Requests are not yet overdue and how many are Overdue Review Requests (#53).
-// Shared by both sides: the worker's bell (to-review.ts) and the panel heading (panel.tsx) count
+// Shared by both sides: the worker's status bar item (to-review.ts) and the panel heading (panel.tsx) count
 // with it, from cards the worker marked overdue, so the two always agree.
 import type { ReviewRequestCard } from './protocol'
 

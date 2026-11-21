@@ -1,6 +1,6 @@
-// The card look of #10 (variant D): the New badge and accent border, the CI, approvals and
-// comments badges, the Agent Review line and "Post N to GitLab" on In review cards. The worker
-// is stubbed.
+// The card look of #10 (variant D): the New badge and accent border, what holds the merge
+// request up (CI, open comments) after the buttons, approvals, the Agent Review line and
+// "Post N to GitLab" on In review cards. The worker is stubbed.
 import { assert, mockHost, mount, test } from 'orca/testing'
 import * as panel from './panel'
 import type { PostPreview, ReviewDraftView, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
@@ -31,22 +31,6 @@ async function mountWith(requests: Record<string, unknown>, persisted?: Record<s
   return mount(panel, { host, ...(persisted ? { persisted: { plugin: persisted } } : {}) })
 }
 
-test('a New card has the New badge and an accent border; Overdue wins over New', async () => {
-  const view = await mountWith({
-    'rr.snapshot': snapshot(card(1, { isNew: true }), card(2, { isNew: true, overdue: true }), card(3))
-  })
-
-  const borders = view
-    .findAll({ type: 'Box' })
-    .filter((b) => b.props.radius === 'md')
-    .map((b) => b.props.border)
-  assert.deepEqual(borders.sort(), ['accent', 'danger', true].sort())
-  assert.equal(view.findAll({ type: 'Badge', text: 'New' }).length, 1)
-  assert.equal(view.findAll({ type: 'Badge', text: 'Overdue' }).length, 1)
-  assert.deepEqual(view.errors, [])
-  await view.unmount()
-})
-
 test('opening the panel tells the worker its Review Requests are seen', async () => {
   let marked = 0
   const view = await mountWith({
@@ -61,22 +45,28 @@ test('opening the panel tells the worker its Review Requests are seen', async ()
   await view.unmount()
 })
 
-test('cards show CI, approvals and comment badges, and nothing for what is unknown', async () => {
+test('a card held up by CI or open comments shows the reasons mid-dot separated after its buttons, with no label', async () => {
   const view = await mountWith({
     'rr.snapshot': snapshot(
       card(1, { ci: 'failed', approvals: { given: 1, required: 2 }, comments: 3 }),
       card(2, { ci: 'passed', comments: 1 }),
-      card(3, { ci: 'running', comments: 0, approvals: null })
+      card(3, { ci: 'running', comments: 0, approvals: null }),
+      card(4, { ci: 'passed', comments: 0 })
     )
   })
 
-  assert.equal(view.find({ type: 'Badge', text: 'CI failed' })?.props.tone, 'danger')
-  assert.equal(view.find({ type: 'Badge', text: 'CI passed' })?.props.tone, 'success')
-  assert.ok(view.find({ type: 'Badge', text: 'CI running' }))
+  assert.equal(view.find({ text: /mergeable|Blocked/ }), null, 'no label in front of the reasons')
+  const tree = JSON.stringify(view.tree())
+  assert.ok(tree.indexOf('Start Review') < tree.indexOf('CI failed'), 'the reasons follow the button')
+  assert.equal(view.find({ type: 'Text', text: 'CI failed' })?.props.muted, true)
+  assert.ok(view.find({ type: 'Text', text: 'CI running' }))
+  assert.equal(view.find({ text: /CI passed/ }), null, 'a passed pipeline holds nothing up')
+  assert.ok(view.find({ type: 'Text', text: '3 open comments' }))
+  assert.ok(view.find({ type: 'Text', text: '1 open comment' }))
+  assert.equal(view.find({ text: '0 open comments' }), null)
+  assert.equal(view.findAll({ type: 'Text', text: '·' }).length, 1, 'only card 1 has two reasons')
+  assert.equal(view.find({ type: 'Badge', text: /CI|open comment/ }), null, 'the reasons are plain text')
   assert.ok(view.find({ type: 'Badge', text: '1/2 approvals' }))
-  assert.ok(view.find({ type: 'Badge', text: '3 comments' }))
-  assert.ok(view.find({ type: 'Badge', text: '1 comment' }))
-  assert.equal(view.find({ type: 'Badge', text: '0 comments' }), null)
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })
@@ -155,12 +145,12 @@ test('an In review card whose merge request moved on shows "Merge request update
   )
 
   assert.equal(view.findAll({ type: 'Badge', text: 'Merge request updated' }).length, 1)
-  assert.equal(view.findAll({ type: 'Button', text: 'Update workspace' }).length, 1)
-  await view.press(view.find({ type: 'Button', text: 'Update workspace' })!)
+  assert.equal(view.findAll({ type: 'Button', text: 'Update Workspace' }).length, 1)
+  await view.press(view.find({ type: 'Button', text: 'Update Workspace' })!)
 
   assert.deepEqual(updates, [url])
   assert.equal(view.find({ type: 'Badge', text: 'Merge request updated' }), null)
-  assert.equal(view.find({ type: 'Button', text: 'Update workspace' }), null)
+  assert.equal(view.find({ type: 'Button', text: 'Update Workspace' }), null)
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })
@@ -176,7 +166,7 @@ test('a refused Update workspace shows why on the card and keeps the notice', as
     { 'rr.tab': 'in' }
   )
 
-  await view.press(view.find({ type: 'Button', text: 'Update workspace' })!)
+  await view.press(view.find({ type: 'Button', text: 'Update Workspace' })!)
 
   assert.ok(view.find({ text: /^Couldn't update the workspace: .*commit or stash them first/ }))
   assert.ok(view.find({ type: 'Badge', text: 'Merge request updated' }))

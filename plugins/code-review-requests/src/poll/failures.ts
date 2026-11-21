@@ -131,7 +131,7 @@ export function createFailureHandling(options: FailureHandlingOptions) {
       }
     },
 
-    /** "GitLab: set up" / "GitLab: offline" in place of the bell. */
+    /** "GitLab: set up" / "GitLab: offline" in place of the status bar item. */
     refineStatusBar: ((look, state) => {
       if (needsYou !== null) {
         return {

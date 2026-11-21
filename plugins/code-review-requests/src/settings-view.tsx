@@ -6,7 +6,6 @@
 // kept current when the person changes them there.
 import {
   atom,
-  Button,
   Field,
   Heading,
   Input,
@@ -20,12 +19,14 @@ import {
   Text,
   Textarea,
   update,
-  type PanelContext
+  type PanelContext,
 } from 'orca'
+import { Button } from './button'
+import { BackButton } from './back-button'
 import { ConnectionDetails } from './connection-section'
 import { messageOf } from './errors'
 import type { ReviewRequestsSnapshot } from './protocol'
-import { parseSettingInput, readSettings, SETTING_FIELDS, type SettingField, type Settings } from './settings'
+import { DEFAULT_SETTINGS, parseSettingInput, readSettings, SETTING_FIELDS, type SettingField, type Settings } from './settings'
 import { SetupChecklist, type NeedsYouView } from './setup-checklist'
 
 type Key = keyof Settings
@@ -41,6 +42,14 @@ const fieldErrors = atom<Partial<Record<Key, string>>>({})
 
 /** The filter settings: the snapshot's ignored entries are shown below them (#26). */
 const FILTER_KEYS: readonly Key[] = ['pathAllowlist', 'pathBlocklist', 'authorBlocklist']
+
+/**
+ * Whether a Review Prompt is set: Start review then always starts an Agent Review, and Reviewing
+ * cards offer another one. Until the settings are read, the default (a prompt) counts.
+ */
+export function hasReviewPrompt(): boolean {
+  return (read(stored)?.reviewPrompt ?? DEFAULT_SETTINGS.reviewPrompt).trim() !== ''
+}
 
 export function isSettingsOpen(): boolean {
   return read(settingsOpen)
@@ -120,9 +129,7 @@ export function SettingsScreen(props: {
   return (
     <Stack gap="md">
       <Row gap="sm">
-        <Button size="xs" variant="ghost" tooltip="Back to Review Requests" onPress={closeSettings}>
-          ← Back
-        </Button>
+        <BackButton onPress={closeSettings} />
         <Heading level={2}>Settings</Heading>
       </Row>
       <Stack gap="sm">

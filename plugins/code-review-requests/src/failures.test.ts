@@ -26,7 +26,7 @@ test('a transient failure is retried after 1, 2 and 4 minutes, then at the poll 
   await worker.deactivate()
 })
 
-test('while transient failures last, the bell keeps the count until the last good poll is older than 2× the interval', async () => {
+test('while transient failures last, the status bar item keeps the count until the last good poll is older than 2× the interval', async () => {
   const fakes = fakeDeps()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api' })
   const { host, worker } = await startWorker(fakes)
@@ -136,7 +136,7 @@ test('a 429 waits for Retry-After, and Refresh says so instead of polling until 
 const loggedOut = () =>
   new GitLabError('needs-you', 'gitlab.example.com: 401 Unauthorized', { status: 401, reason: 'logged-out' })
 
-test('Needs you stops polling and shows "GitLab: set up" in place of the bell', async () => {
+test('Needs you stops polling and shows "GitLab: set up" in place of the status bar item', async () => {
   const fakes = fakeDeps()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api' })
   fakes.gitlab.failNext(loggedOut())

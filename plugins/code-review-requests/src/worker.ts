@@ -8,7 +8,7 @@
 // isConfigured). So a check scenario must never seed `instanceUrl`.
 //
 // Wiring only: the poll schedule lives in poll/poller.ts, what polls learn in poll/poll-state.ts
-// (with its listener extension points), the bell in status-bar.ts, and each group of panel
+// (with its listener extension points), the status bar item in status-bar.ts, and each group of panel
 // requests in its feature's register… module.
 import type { OrcaWorkerApi } from 'orca/worker'
 import { connectionFor } from './connection'
@@ -135,7 +135,7 @@ export function createWorker(deps: Deps) {
         await state.record({ ok: true, at, host: connection.host, reviewRequests: visible, hidden })
       } catch (caught) {
         glabHosts = await otherGlabHosts(caught, connection)
-        // A token GitLab or the network echoes back must not reach logs, the panel or the bell.
+        // A token GitLab or the network echoes back must not reach logs, the panel or the status bar item.
         const error = redactError(caught, connection?.token)
         log(`poll failed: ${messageOf(error)}`)
         await state.record({ ok: false, at, error })
@@ -161,7 +161,7 @@ export function createWorker(deps: Deps) {
       storage: orca.storage,
       notify: (notification) => orca.host.call('notifications.show', notification)
     })
-    // What the panel has shown, per host: the cards' New mark and the bell's "M new" (#10).
+    // What the panel has shown, per host: the cards' New mark and the status bar item's "M new" (#10).
     const seen = createSeenTracker(orca.storage)
     // The problem states replace the whole look, so they come last.
     const statusBar = createStatusBar(orca, [seenRefiner(seen), overdueRefiner(overdue), failures.refineStatusBar])
@@ -184,8 +184,8 @@ export function createWorker(deps: Deps) {
 
     // Features hang off the poll state here, one listener each (see poll/poll-state.ts):
     // failure handling (#24) on onFailed with `poller` for backoff, diffing for notifications
-    // (#23), Ended (#28) and seen (#10) on onSucceeded, the bell and panel posts (#22) on
-    // onChange. onChange listeners run after every onSucceeded/onFailed one, so the bell always
+    // (#23), Ended (#28) and seen (#10) on onSucceeded, the status bar item and panel posts (#22) on
+    // onChange. onChange listeners run after every onSucceeded/onFailed one, so the status bar item always
     // draws a fully handled outcome.
     state.onFailed(failures.onFailed)
     state.onSucceeded(failures.onSucceeded)
@@ -228,7 +228,7 @@ export function createWorker(deps: Deps) {
         poller.start()
         if (options.pollAtOnce) await poller.pollNow()
       } else if (key !== connectionKey || (filtersChanged && failures.rateLimitedUntil() === null)) {
-        // A changed filter polls too (unless rate-limited), so the list and the bell follow it at once.
+        // A changed filter polls too (unless rate-limited), so the list and the status bar item follow it at once.
         connectionKey = key
         await poller.pollNow()
       }
@@ -288,7 +288,7 @@ export function createWorker(deps: Deps) {
       if ((await isConfigured(orca)) && failures.rateLimitedUntil() === null) await poller.pollNow()
       return snapshot()
     })
-    // The panel opened (#10): what it lists is seen; the bell drops it from "M new" at once.
+    // The panel opened (#10): what it lists is seen; the status bar item drops it from "M new" at once.
     orca.panels.handle('rr.markSeen', async () => {
       const current = state.current()
       if (current.host !== null) await seen.markSeen(current.host, current.reviewRequests)

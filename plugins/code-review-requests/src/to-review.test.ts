@@ -1,5 +1,5 @@
 // The worker side of the To review tab (#22): what rr.snapshot tells the panel about waiting
-// time, order and overdue, and the overdue bell, through the worker's public surface.
+// time, order and overdue, and the overdue statusBar, through the worker's public surface.
 import { assert, mockHost, mount, test } from 'orca/testing'
 import { fakeDeps } from './fakes'
 import * as panel from './panel'
@@ -97,7 +97,7 @@ test('falls back to when the merge request was opened if GitLab cannot say, and 
   await second.worker.deactivate()
 })
 
-test('overdue Review Requests split the bell into "in time | overdue!", in one neutral item', async () => {
+test('overdue Review Requests split the status bar item into "in time | overdue!", in one neutral item', async () => {
   const fakes = fakeDeps()
   const now = fakes.clock.now()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', requestedAt: now - 6 * DAY })
@@ -113,7 +113,7 @@ test('overdue Review Requests split the bell into "in time | overdue!", in one n
   await worker.deactivate()
 })
 
-test('the panel heading counts in time and overdue the same as the bell (#53)', async () => {
+test('the panel heading counts in time and overdue the same as the status bar item (#53)', async () => {
   const fakes = fakeDeps()
   const now = fakes.clock.now()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', requestedAt: now - 6 * DAY })
@@ -126,14 +126,14 @@ test('the panel heading counts in time and overdue the same as the bell (#53)', 
 
   assert.equal(lastStatusBar(host)?.text, '1 | 2!')
   assert.deepEqual(headingCounts(view), [
-    ['1', 'neutral'],
-    ['2', 'danger']
+    ['1', 'dim'],
+    ['2', 'strong']
   ])
   await view.unmount()
   await worker.deactivate()
 })
 
-test('only overdue Review Requests: the bell shows that count alone, "2!" with no "0 |"', async () => {
+test('only overdue Review Requests: the status bar item shows that count alone, "2!" with no "0 |"', async () => {
   const fakes = fakeDeps()
   const now = fakes.clock.now()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', requestedAt: now - 6 * DAY })
@@ -147,7 +147,7 @@ test('only overdue Review Requests: the bell shows that count alone, "2!" with n
   await worker.deactivate()
 })
 
-test('nothing overdue: the bell shows the count in the neutral tone', async () => {
+test('nothing overdue: the status bar item shows the count in the neutral tone', async () => {
   const fakes = fakeDeps()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', requestedAt: fakes.clock.now() - HOUR })
 
@@ -186,7 +186,7 @@ test('the panel can ask for a refresh and gets the new snapshot back', async () 
   await worker.deactivate()
 })
 
-test('pressing the bell opens the Review Requests panel', async () => {
+test('pressing the status bar item opens the Review Requests panel', async () => {
   const fakes = fakeDeps()
   const { worker } = await startWorker(fakes)
 

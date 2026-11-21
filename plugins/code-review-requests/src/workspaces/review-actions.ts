@@ -48,6 +48,8 @@ export type ReviewActions = {
   runAgentReview(url: string): Promise<void>
   /** Opens the Review Cover Page, building it first if the workspace has none (#55). */
   openCoverPage(url: string): Promise<void>
+  /** Shows the Review Workspace and toggles Orca's Source Control sidebar (its changed files). */
+  showChanges(url: string): Promise<void>
   /**
    * Moves a clean Review Workspace to the merge request's current head and rebuilds its Review
    * Cover Page (#57). Rejects, changing nothing, when it has uncommitted changes.
@@ -166,6 +168,11 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     await deps.git.resetBranch(worktree.path, await deps.git.fetchMergeRequestHead(worktree.path, rr.iid))
   }
 
+  /** Switches Orca to the workspace. */
+  async function openIn(worktree: Worktree): Promise<void> {
+    await deps.host.call('workspace.open', { workspaceId: await hostWorkspaceId(worktree) })
+  }
+
   async function startReview(rr: ReviewRequestView, withAgent: boolean): Promise<void> {
     const index = listed(await deps.workspaces.refresh())
     let worktree = findReviewWorkspace(index, rr)
@@ -177,12 +184,15 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
       if (!repo) throw new Error(`Add ${rr.projectPath} to Orca to review here.`)
       worktree = await createReviewWorkspace(rr, repo.path, repo.repoId)
     }
+    // The workspace opens right away, so the reviewer lands in it while the page builds.
+    const opened = await settle(openIn(worktree))
     // The Review Cover Page (#55) is built first, because the Agent Review reads it (#56); a page
     // that fails doesn't hold the agent back. The page opens last: the tab in front.
     const target = coverPageTarget(worktree, rr)
     const page = await settle(deps.coverPages.ensure(target))
     const agent = withAgent ? await settle(agentReview(worktree, rr, existed)) : null
     const problems: string[] = []
+    if (opened !== null) problems.push(`it didn't open: ${messageOf(opened)}`)
     if (agent !== null) problems.push(`the Agent Review didn't start: ${messageOf(agent)}`)
     const shown = page ?? (await settle(deps.coverPages.reveal(target)))
     if (shown !== null) problems.push(`the Review Cover Page didn't open: ${messageOf(shown)}`)
@@ -308,22 +318,33 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
   return {
     async startReview(url, withAgent) {
       const rr = reviewRequestOf(url)
-      return exclusive(rr, 'Start review', () => startReview(rr, withAgent))
+      return exclusive(rr, 'Start Review', () => startReview(rr, withAgent))
     },
     async openWorkspace(url) {
       const rr = reviewRequestOf(url)
       const worktree = await existingWorkspace(rr)
-      await deps.host.call('workspace.open', { workspaceId: await hostWorkspaceId(worktree) })
+      await openIn(worktree)
       // A Review Workspace from before #55 (or made by hand) gets its Review Cover Page now.
       await deps.coverPages.openIfMissing(coverPageTarget(worktree, rr))
     },
     async openCoverPage(url) {
       const rr = reviewRequestOf(url)
-      await deps.coverPages.open(coverPageTarget(await existingWorkspace(rr), rr))
+      const worktree = await existingWorkspace(rr)
+      // The page opens in the workspace's editor: switch to it first, or it opens out of sight.
+      await openIn(worktree)
+      await deps.coverPages.open(coverPageTarget(worktree, rr))
+    },
+    async showChanges(url) {
+      const rr = reviewRequestOf(url)
+      const worktree = await existingWorkspace(rr)
+      await openIn(worktree)
+      await deps.host.call('commands.run', { action: 'sidebar.sourceControl.toggle' })
     },
     async runAgentReview(url) {
       const rr = reviewRequestOf(url)
       const worktree = await existingWorkspace(rr)
+      // The agent runs in the workspace: switch to it, so the Agent Review is in view.
+      await openIn(worktree)
       // The Agent Review reads the Review Cover Page (#56): a workspace without one gets it first.
       // Best effort: without the page, the Review Prompt sends the agent to GitLab for the description.
       await settle(deps.coverPages.ensure(coverPageTarget(worktree, rr)))
@@ -331,7 +352,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     },
     async updateWorkspace(url) {
       const rr = reviewRequestOf(url)
-      return exclusive(rr, 'Update workspace', () => updateWorkspace(rr))
+      return exclusive(rr, 'Update Workspace', () => updateWorkspace(rr))
     }
   }
 }
@@ -345,7 +366,7 @@ function settle(work: Promise<unknown>): Promise<unknown> {
 }
 
 /** The workspace changes that never run at once for one merge request. */
-type WorkspaceChange = 'Start review' | 'Update workspace'
+type WorkspaceChange = 'Start Review' | 'Update Workspace'
 
 /**
  * An untracked entry of `git status --porcelain -z` in the plugin's own folder (when the exclude

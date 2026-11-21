@@ -23,7 +23,7 @@ export const REVIEW_REQUESTS_QUERY = `query ReviewRequests($me: String!, $after:
         author { username name }
         labels { nodes { title } }
         reviewers { nodes { username mergeRequestInteraction { reviewState approved reviewed } } }
-        userNotesCount
+        resolvableDiscussionsCount resolvedDiscussionsCount
         headPipeline { status }
       }
     }
@@ -61,8 +61,9 @@ export type ReviewRequestNode = {
       mergeRequestInteraction: { reviewState: ReviewState; approved: boolean; reviewed: boolean } | null
     }[]
   }
-  /** Comments by people (system notes excluded), for the comments badge. */
-  userNotesCount: number | null
+  /** Threads that can be resolved, and those that are: the open ones make the comments badge. */
+  resolvableDiscussionsCount: number | null
+  resolvedDiscussionsCount: number | null
   /** The latest pipeline on the source branch, or null without CI. */
   headPipeline: { status: PipelineStatus } | null
 }
