@@ -14,9 +14,10 @@ shot() { # frame, css size, output name
     --screenshot="$out/$3.png" "file://$work/mock.html#$1" >/dev/null 2>&1
 }
 shot icon 256,256 icon
-shot cover 800,500 cover
+shot cover 800,500 cover-owl
+# images/cover.png stays as released in 0.6.2: the catalog pins every release's images by path and sha256.
 # The illustrated cover is ~1.7 MB as a truecolor PNG; Orca's limit is 1 MiB. A 256-color palette keeps it ~0.7 MB.
-python3 -c 'import sys; from PIL import Image; p=sys.argv[1]; Image.open(p).convert("RGB").quantize(256, dither=Image.Dither.FLOYDSTEINBERG).save(p, optimize=True)' "$out/cover.png"
+python3 -c 'import sys; from PIL import Image; p=sys.argv[1]; Image.open(p).convert("RGB").quantize(256, dither=Image.Dither.FLOYDSTEINBERG).save(p, optimize=True)' "$out/cover-owl.png"
 shot todo 1280,800 review-requests
 shot statusbar 1280,800 status-bar
 shot workspace 1280,800 review-workspace

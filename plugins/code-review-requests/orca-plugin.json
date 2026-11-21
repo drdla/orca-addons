@@ -9,7 +9,7 @@
   "license": "MIT",
   "icon": "images/icon.png",
   "cover": {
-    "path": "images/cover.png",
+    "path": "images/cover-owl.png",
     "alt": "A samurai owl in ukiyo-e style holding up a scroll with the Review Requests panel, under the title Code Review Requests"
   },
   "screenshots": [
