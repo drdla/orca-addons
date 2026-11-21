@@ -34,7 +34,8 @@ async function startWorker(
       'workspace.list': workspaceList(...(options.workspaces ?? [])),
       'agent.launch': { terminalId: 'term-agent' },
       'terminal.create': { terminalId: 'term-cmd' },
-      'workspace.open': { opened: true }
+      'workspace.open': { opened: true },
+      'editor.open': { opened: true }
     }
   })
   return startHarness(fakes, settings, host)
@@ -122,7 +123,7 @@ test('Start review fetches the MR head and creates a workspace linked to the MR,
   const fakes = fakeDeps()
   addReviewRequest(fakes)
   fakes.cli.addRepo(REPO)
-  const { host, worker } = await startWorker(fakes)
+  const { host, worker } = await startWorker(fakes, { workspaces: ['/src/api', '/worktrees/review-api-7'] })
 
   const answer = await worker.request('rr.startReview', { url: MR_URL, withAgent: false })
 

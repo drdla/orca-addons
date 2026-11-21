@@ -20,6 +20,10 @@ _Avoid_: late review, stale review, SLA breach
 An Orca workspace linked to the merge request of a Review Request. A Review Workspace is also a Linked Workspace when its branch names a Linear ticket.
 _Avoid_: MR worktree, review branch
 
+**Review Cover Page**:
+A read-only Markdown snapshot of a Review Workspace's merge request (title, description, metadata, changed-file list), built from GitLab when the review starts and opened in Orca's main view. It records the head commit it was built from and is not rebuilt on open.
+_Avoid_: MR summary, overview page, readme
+
 **Review Prompt**:
 The predefined, placeholder-bearing prompt that starts an Agent Review.
 _Avoid_: review template, system prompt

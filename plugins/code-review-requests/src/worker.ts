@@ -291,7 +291,12 @@ export function createWorker(deps: Deps) {
       settings,
       reviewRequest: (url) => state.current().reviewRequests.find((rr) => rr.url === url),
       snapshot,
-      postChanged
+      postChanged,
+      files: deps.files,
+      gitLab: async () => {
+        const connection = await currentConnection()
+        return { transport: deps.gitLab(connection), token: connection.token }
+      }
     })
     // The Review Draft (#29): import and curation, also for an Ended Review Request whose
     // workspace is still there; posting it (#30). The cards show its counts (#10), so open panels

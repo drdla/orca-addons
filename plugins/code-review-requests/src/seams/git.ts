@@ -17,4 +17,10 @@ export interface Git {
   statusPorcelain(path: string): Promise<string[]>
   /** The commit checked out in the worktree at `worktreePath` (`git rev-parse HEAD`), for #29. */
   headSha(worktreePath: string): Promise<string>
+  /**
+   * The absolute path of `name` in the worktree's git dir as git resolves it
+   * (`git rev-parse --path-format=absolute --git-path <name>`). In a linked worktree, `info/exclude`
+   * resolves to the shared one in the main repo's `.git`: git reads no per-worktree exclude file.
+   */
+  gitPath(worktreePath: string, name: string): Promise<string>
 }

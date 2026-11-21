@@ -41,6 +41,13 @@ export class FakeGit implements Git {
     if (failure) throw failure
     return this.#heads.get(worktreePath) ?? FAKE_HEAD_SHA
   }
+
+  /** Answers `<worktree>/.git/<name>`, as for a main worktree. */
+  async gitPath(worktreePath: string, name: string): Promise<string> {
+    const failure = this.#failures.shift()
+    if (failure) throw failure
+    return `${worktreePath}/.git/${name}`
+  }
 }
 
 export const FAKE_HEAD_SHA = '0000000000000000000000000000000000000000'

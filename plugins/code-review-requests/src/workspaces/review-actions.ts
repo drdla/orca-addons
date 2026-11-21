@@ -1,10 +1,12 @@
 // What the panel's workspace buttons do (#6, #27): Start review (create the Review Workspace
 // through the orca CLI, linked to the MR, optionally followed by an Agent Review), Open workspace
-// and Run Agent Review. Every failure rejects with a message the panel shows on the card.
+// and Run Agent Review. Start review and Open workspace also build and open the review cover page
+// (#55, src/cover-page). Every failure rejects with a message the panel shows on the card.
 //
 // The orca CLI and the host API name workspaces differently (`<repoId>::<path>` vs the id
 // `workspace.list` gives), so host calls map a worktree to its host id by path.
 import type { OrcaWorkerApi } from 'orca/worker'
+import type { CoverPages, CoverPageTarget } from '../cover-page/cover-pages'
 import type { ReviewRequestView } from '../protocol'
 import type { Worktree } from '../seams/orca-cli'
 import type { Settings } from '../settings'
@@ -18,6 +20,8 @@ export type ReviewActionsDeps = WorkspaceContext & {
   settings: () => Promise<Settings>
   /** The listed Review Request with this URL, if any. */
   reviewRequest: (url: string) => ReviewRequestView | undefined
+  /** The review cover page (#55), built and opened after the workspace exists. */
+  coverPages: CoverPages
 }
 
 export type ReviewActions = {
@@ -25,6 +29,8 @@ export type ReviewActions = {
   startReview(url: string, withAgent: boolean): Promise<void>
   openWorkspace(url: string): Promise<void>
   runAgentReview(url: string): Promise<void>
+  /** Opens the review cover page, building it first if the workspace has none (#55). */
+  openCoverPage(url: string): Promise<void>
 }
 
 /** The workspace name Start review gives, for example `review-api-7`. */
@@ -69,6 +75,12 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     }
   }
 
+  const coverPageTarget = (worktree: Worktree, rr: ReviewRequestView): CoverPageTarget => ({
+    projectPath: rr.projectPath,
+    iid: rr.iid,
+    workspace: { name: worktree.displayName, path: worktree.path }
+  })
+
   return {
     async startReview(url, withAgent) {
       const rr = reviewRequestOf(url)
@@ -87,16 +99,37 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
         })
         await deps.workspaces.refresh()
       }
-      if (!withAgent) return
-      try {
-        await agentReview(worktree, rr)
-      } catch (error) {
-        throw new Error(`The Review Workspace is ready, but the Agent Review didn't start: ${messageOf(error)}`)
+      // The review cover page (#55) opens first, so it is the tab in front.
+      const problems: string[] = []
+      const coverPage = await deps.coverPages.open(coverPageTarget(worktree, rr)).then(
+        () => null,
+        (error: unknown) => `the review cover page didn't open: ${messageOf(error)}`
+      )
+      if (withAgent) {
+        try {
+          await agentReview(worktree, rr)
+        } catch (error) {
+          problems.push(`the Agent Review didn't start: ${messageOf(error)}`)
+        }
       }
+      if (coverPage !== null) problems.push(coverPage)
+      if (problems.length > 0) throw new Error(`The Review Workspace is ready, but ${problems.join('; ')}`)
     },
     async openWorkspace(url) {
-      const worktree = await existingWorkspace(reviewRequestOf(url))
+      const rr = reviewRequestOf(url)
+      const worktree = await existingWorkspace(rr)
       await deps.host.call('workspace.open', { workspaceId: await hostWorkspaceId(worktree) })
+      // A Review Workspace from before #55 (or made by hand) gets its cover page now.
+      try {
+        const target = coverPageTarget(worktree, rr)
+        if (await deps.coverPages.ensure(target)) await deps.coverPages.open(target)
+      } catch (error) {
+        throw new Error(`The workspace is open, but its review cover page wasn't built: ${messageOf(error)}`)
+      }
+    },
+    async openCoverPage(url) {
+      const rr = reviewRequestOf(url)
+      await deps.coverPages.open(coverPageTarget(await existingWorkspace(rr), rr))
     },
     async runAgentReview(url) {
       const rr = reviewRequestOf(url)

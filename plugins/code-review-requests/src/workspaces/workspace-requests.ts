@@ -2,9 +2,12 @@
 // and the Ended tab's removal check and Remove workspace, plus Orca's `workspace.removed` event.
 // worker.ts calls registerWorkspaceRequests once in activate.
 import type { OrcaWorkerApi } from 'orca/worker'
+import { createCoverPages } from '../cover-page/cover-pages'
 import type { EndedWorkspaces } from '../ended/ended-workspaces'
 import type { ReviewRequestsSnapshot, ReviewRequestView } from '../protocol'
 import type { Disposable } from '../seams/clock'
+import type { Files } from '../seams/files'
+import type { GitLabTransport } from '../seams/gitlab'
 import type { Settings } from '../settings'
 import { createReviewActions, hostWorkspaceIdOf } from './review-actions'
 import type { WorkspaceContext } from './workspace-context'
@@ -20,13 +23,19 @@ export function registerWorkspaceRequests(
     snapshot: () => Promise<ReviewRequestsSnapshot>
     /** Tells open panels the snapshot changed. */
     postChanged: () => Promise<void>
+    /** Writing the review cover page (#55). */
+    files: Files
+    /** The transport for the configured connection, and its token (to redact). */
+    gitLab: () => Promise<{ transport: GitLabTransport; token: string | null }>
   }
 ): Disposable {
   const { context, ended } = options
+  const coverPages = createCoverPages({ git: context.git, files: options.files, host: context.host, gitLab: options.gitLab })
   const reviewActions = createReviewActions({
     ...context,
     settings: options.settings,
-    reviewRequest: options.reviewRequest
+    reviewRequest: options.reviewRequest,
+    coverPages
   })
 
   /** Runs a workspace change; open panels hear of it even when it fails. Answers the snapshot. */
@@ -49,6 +58,16 @@ export function registerWorkspaceRequests(
       await orca.host.call('workspace.open', { workspaceId })
     } else {
       await reviewActions.openWorkspace(url)
+    }
+    return { opened: true as const }
+  })
+  // The Review Draft's "Cover page" (#55), also for an Ended Review Request's workspace.
+  orca.panels.handle('rr.openCoverPage', async ({ url }) => {
+    if (ended.has(url)) {
+      const entry = ended.entry(url)
+      await coverPages.open({ projectPath: entry.projectPath, iid: entry.iid, workspace: entry.workspace })
+    } else {
+      await reviewActions.openCoverPage(url)
     }
     return { opened: true as const }
   })
