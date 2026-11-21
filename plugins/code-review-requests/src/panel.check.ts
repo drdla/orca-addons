@@ -298,7 +298,7 @@ export default defineCheck({
       }
     }
   },
-  /** The To review tab with cards, none overdue. */
+  /** The Todo tab with cards, none overdue. */
   toReview: { requests: { 'rr.snapshot': toReview } },
   /** An overdue card: danger border and badge, warning icon on the tab. */
   overdue: { requests: { 'rr.snapshot': withOverdue } },
@@ -307,7 +307,7 @@ export default defineCheck({
   inReviewTab: { requests: { 'rr.snapshot': toReview }, persisted: { plugin: { 'rr.tab': 'in' } } },
   /** In review: a card with a Review Workspace, Open workspace and Run Agent Review (#27). */
   inReview: { requests: { 'rr.snapshot': inReview }, persisted: { plugin: { 'rr.tab': 'in' } } },
-  /** To review next to an In review card: Start review and its Agent Review button (#27). */
+  /** Todo next to a Reviewing card: Start review and its Agent Review button (#27). */
   startReview: { requests: { 'rr.snapshot': inReview } },
   /** Card badges (#10): New with its accent border, CI, approvals and comments. */
   cardBadges: {

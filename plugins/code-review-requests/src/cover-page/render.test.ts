@@ -1,7 +1,7 @@
 // The Review Cover Page (#55): what a merge request's GitLab REST answers render to. The fixtures
-// follow GitLab's documented shapes for GET …/merge_requests/:iid, …/diffs and …/approvals.
+// follow GitLab's documented shapes for GET …/merge_requests/:iid and …/diffs.
 import { assert, test } from 'orca/testing'
-import { renderCoverPage, withUpdatedCallout, type CoverPageSource, type RestApprovals, type RestDiff } from './render'
+import { renderCoverPage, withUpdatedCallout, type CoverPageSource, type RestDiff } from './render'
 
 const HEAD = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 
@@ -12,19 +12,13 @@ function source(extra: SourceChanges = {}): CoverPageSource {
   return {
     projectPath: 'acme/api',
     headSha: HEAD,
-    linear: null,
     diffsTruncated: false,
     mr: {
       iid: 7,
       title: 'Add login',
       description: 'Adds a login form.\n\nSee the design doc.',
       web_url: 'https://gitlab.example.com/acme/api/-/merge_requests/7',
-      author: { username: 'ada', name: 'Ada Lovelace' },
-      source_branch: 'feature/login',
-      target_branch: 'main',
-      labels: ['backend', 'security'],
       sha: HEAD,
-      head_pipeline: { status: 'success' },
       references: { full: 'acme/api!7' },
       ...mr
     },
@@ -38,28 +32,15 @@ function source(extra: SourceChanges = {}): CoverPageSource {
         diff: '@@ -1,3 +1,4 @@\n import x\n-const a = 1\n+const a = 2\n+const b = 3\n context\n'
       }
     ],
-    approvals: { approvals_required: 2, approvals_left: 1, approved_by: [{ user: { username: 'bob', name: 'Bob' } }] },
     ...rest
   }
 }
 
-test('a merge request renders its title, metadata, description, changed files and head commit', () => {
+test('a merge request renders its title, description, changed files and head commit', () => {
   assert.equal(
     renderCoverPage(source()),
     [
       '# Add login',
-      '',
-      '[acme/api!7](https://gitlab.example.com/acme/api/-/merge_requests/7) by Ada Lovelace (@ada)',
-      '',
-      '| | |',
-      '| --- | --- |',
-      '| Branches | `feature/login` → `main` |',
-      '| Labels | backend, security |',
-      '| Linear ticket | none |',
-      '| Pipeline | passed |',
-      '| Approvals | 1 of 2 (Bob) |',
-      '',
-      '## Description',
       '',
       'Adds a login form.',
       '',
@@ -89,7 +70,7 @@ test('the page records the checked-out commit, and opens with a callout when the
 
   assert.ok(page.includes(`A snapshot of acme/api!7 at commit \`11111111\``), page)
   assert.ok(page.includes(`<!-- orca-review-cover-page head=${checkedOut} -->`), page)
-  assert.ok(page.startsWith(`# Add login\n\n${UPDATED_CALLOUT}\n\n[acme/api!7]`), page)
+  assert.ok(page.startsWith(`# Add login\n\n${UPDATED_CALLOUT}\n\nAdds a login form.`), page)
   assert.equal(renderCoverPage(source()).includes('Merge request updated'), false)
 })
 
@@ -103,7 +84,7 @@ test('an existing page gains the callout once the merge request moves on, and lo
   assert.equal(page.includes('Merge request updated'), false)
 
   const behind = withUpdatedCallout(page, HEAD)
-  assert.ok(behind.startsWith(`# Add login\n\n${UPDATED_CALLOUT}\n\n[acme/api!7]`), behind)
+  assert.ok(behind.startsWith(`# Add login\n\n${UPDATED_CALLOUT}\n\nAdds a login form.`), behind)
   assert.equal(withUpdatedCallout(behind, HEAD), behind)
   assert.equal(withUpdatedCallout(behind, checkedOut), page)
   assert.equal(withUpdatedCallout('# A page from elsewhere\n', HEAD), '# A page from elsewhere\n')
@@ -112,7 +93,7 @@ test('an existing page gains the callout once the merge request moves on, and lo
 test('an empty description says so instead of leaving the section blank', () => {
   for (const description of [null, '', '  \n ']) {
     const page = renderCoverPage(source({ mr: { description } }))
-    assert.match(page, /## Description\n\n_No description\._\n\n## Changed files/)
+    assert.match(page, /^# Add login\n\n_No description\._\n\n## Changed files/)
   }
 })
 
@@ -177,69 +158,16 @@ test('uploads resolve against a GitLab installed under a sub-path', () => {
   )
 })
 
-test("the Linear ticket is the workspace's own link, else a Linear link in the description, else the branch name", () => {
-  const description = 'Closes https://linear.app/acme/issue/OEO-123/add-login-form'
-  const own = renderCoverPage(
-    source({ linear: { identifier: 'OEO-9', url: 'https://linear.app/acme/issue/OEO-9/x' }, mr: { description } })
-  )
-  assert.ok(own.includes('| Linear ticket | [OEO-9](https://linear.app/acme/issue/OEO-9/x) |'), own)
-
-  const linked = renderCoverPage(source({ mr: { source_branch: 'ada/oeo-12-login', description } }))
-  assert.ok(linked.includes('| Linear ticket | [OEO-123](https://linear.app/acme/issue/OEO-123/add-login-form) |'), linked)
-
-  for (const [branch, expected] of [
-    ['ada/oeo-12-login', 'OEO-12'],
-    ['oeo-12-login', 'OEO-12'],
-    ['release-2026.11', 'none'],
-    ['fix/utf-8-decoding', 'none'],
-    ['fix/sha-256-hashes', 'none'],
-    ['feature-abc-12', 'none']
-  ] as const) {
-    const page = renderCoverPage(source({ mr: { source_branch: branch } }))
-    assert.ok(page.includes(`| Linear ticket | ${expected} |`), `${branch}: ${page}`)
-  }
-})
-
-test('approvals count who approved, out of the required number when GitLab requires any', () => {
-  const approver = (name: string) => ({ user: { username: name.toLowerCase(), name } })
-  const cases: [RestApprovals | null, string][] = [
-    [{ approvals_required: 2, approvals_left: 0, approved_by: [approver('Bob'), approver('Cy'), approver('Di')] }, '3 of 2 (Bob, Cy, Di)'],
-    [{ approvals_required: 0, approvals_left: 0, approved_by: [approver('Bob')] }, '1 (Bob)'],
-    [{ approved_by: [approver('Bob')] }, '1 (Bob)'],
-    [{ approvals_required: 0, approvals_left: 0, approved_by: [] }, 'none'],
-    [{ approvals_required: 1, approvals_left: 1, approved_by: [] }, '0 of 1'],
-    [null, 'unknown']
-  ]
-  for (const [approvals, expected] of cases) {
-    const page = renderCoverPage(source({ approvals }))
-    assert.ok(page.includes(`| Approvals | ${expected} |`), `${expected}: ${page}`)
-  }
-})
-
-test('metadata without labels or pipeline says so', () => {
-  const page = renderCoverPage(source({ mr: { labels: [], head_pipeline: null } }))
-  assert.ok(page.includes('| Labels | none |'), page)
-  assert.ok(page.includes('| Pipeline | none |'), page)
-  const failed = renderCoverPage(source({ mr: { head_pipeline: { status: 'failed' } } }))
-  assert.ok(failed.includes('| Pipeline | failed |'), failed)
-})
-
-test('Markdown in the title, author, labels and paths is escaped', () => {
+test('Markdown in the title and paths is escaped', () => {
   const page = renderCoverPage(
     source({
       mr: {
-        title: 'Fix *all* the <b>bugs</b> in [core] #1',
-        author: { username: 'ada_l', name: 'Ada_Love*' },
-        labels: ['needs_review', 'a|b'],
-        source_branch: 'feat/`tick`'
+        title: 'Fix *all* the <b>bugs</b> in [core] #1'
       },
       diffs: [diff('docs/``odd``.md', { diff: '@@ -1 +1 @@\n+x\n' })]
     })
   )
   assert.ok(page.startsWith('# Fix \\*all\\* the \\<b\\>bugs\\</b\\> in \\[core\\] \\#1\n'), page)
-  assert.ok(page.includes(') by Ada\\_Love\\* (@ada\\_l)\n'), page)
-  assert.ok(page.includes('| Labels | needs\\_review, a\\|b |'), page)
-  assert.ok(page.includes('| Branches | `` feat/`tick` `` → `main` |'), page)
   assert.ok(page.includes('| ``` docs/``odd``.md ``` | modified | +1 | -0 |'), page)
 })
 

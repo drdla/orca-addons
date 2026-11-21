@@ -1,8 +1,9 @@
 // GENERATED from real captures on 2026-11-16 (#20), then sanitized: names, emails, URLs,
 // paths, ids, SHAs and titles are placeholders; key sets, enums, booleans and counts are real.
 // Captured with `glab api --hostname gitlab.com` (read-only) against GitLab 19.6.0-pre.
-// The Review Requests nodes' `userNotesCount` and `headPipeline` were added from a read-only
-// capture on 2026-11-20 against GitLab 19.7.0-pre (#32); their values are placeholders.
+// The Review Requests nodes' `headPipeline` was added from a read-only capture on 2026-11-20
+// against GitLab 19.7.0-pre (#32), and `resolvableDiscussionsCount`/`resolvedDiscussionsCount`
+// from one on 2026-11-21; their values are placeholders.
 
 /** The HTTP body of the Review Requests GraphQL query (REVIEW_REQUESTS_QUERY). */
 export const reviewRequestsBody = {
@@ -61,7 +62,8 @@ export const reviewRequestsBody = {
                 }
               ]
             },
-            "userNotesCount": 3,
+            "resolvableDiscussionsCount": 3,
+            "resolvedDiscussionsCount": 0,
             "headPipeline": {
               "status": "SUCCESS"
             }
@@ -111,7 +113,8 @@ export const reviewRequestsBody = {
                 }
               ]
             },
-            "userNotesCount": 0,
+            "resolvableDiscussionsCount": 0,
+            "resolvedDiscussionsCount": 0,
             "headPipeline": {
               "status": "FAILED"
             }
@@ -164,7 +167,8 @@ export const reviewRequestsBody = {
                 }
               ]
             },
-            "userNotesCount": 12,
+            "resolvableDiscussionsCount": 12,
+            "resolvedDiscussionsCount": 0,
             "headPipeline": {
               "status": "SUCCESS"
             }
@@ -214,7 +218,8 @@ export const reviewRequestsBody = {
                 }
               ]
             },
-            "userNotesCount": 5,
+            "resolvableDiscussionsCount": 5,
+            "resolvedDiscussionsCount": 0,
             "headPipeline": {
               "status": "SUCCESS"
             }
@@ -264,7 +269,8 @@ export const reviewRequestsBody = {
                 }
               ]
             },
-            "userNotesCount": 1,
+            "resolvableDiscussionsCount": 1,
+            "resolvedDiscussionsCount": 0,
             "headPipeline": {
               "status": "FAILED"
             }
@@ -314,7 +320,8 @@ export const reviewRequestsBody = {
                 }
               ]
             },
-            "userNotesCount": 8,
+            "resolvableDiscussionsCount": 8,
+            "resolvedDiscussionsCount": 0,
             "headPipeline": {
               "status": "SUCCESS"
             }
@@ -364,7 +371,8 @@ export const reviewRequestsBody = {
                 }
               ]
             },
-            "userNotesCount": 2,
+            "resolvableDiscussionsCount": 2,
+            "resolvedDiscussionsCount": 0,
             "headPipeline": {
               "status": "SUCCESS"
             }

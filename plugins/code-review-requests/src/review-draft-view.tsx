@@ -1,5 +1,5 @@
 // The Review Draft drill-in view (#29). "Review draft" on an In review card opens it in place of
-// the tabs; Back returns. Opening (and Import again) asks the worker to import the diff-view
+// the tabs; ← Back returns. Opening (and Import again) asks the worker to import the diff-view
 // notes and Agent Findings (`rr.draft`). Diff-view notes are read-only here (edit them in Orca);
 // Agent Findings get an editor. Every comment has a checkbox: checked ones are what #30 posts.
 // "Cover page" reopens the Review Workspace's Review Cover Page (#55) in Orca's main view.
@@ -9,7 +9,6 @@ import {
   atom,
   Badge,
   Box,
-  Button,
   Callout,
   Checkbox,
   Heading,
@@ -23,8 +22,10 @@ import {
   Stack,
   Text,
   Textarea,
-  update
+  update,
 } from 'orca'
+import { Button } from './button'
+import { BackButton } from './back-button'
 import type { ReviewCommentView, ReviewDraftView } from './protocol'
 import { openConfirm, PostSection, resetPosting, setupPosting } from './review-post-view'
 import { messageOf } from './errors'
@@ -151,9 +152,7 @@ export function ReviewDraftScreen() {
     <Stack gap="md">
       <Row justify="between">
         <Row gap="sm">
-          <Button size="xs" variant="ghost" onPress={closeReviewDraft}>
-            Back
-          </Button>
+          <BackButton onPress={closeReviewDraft} />
           <Heading level={2}>Review Draft</Heading>
         </Row>
         <Row gap="sm">

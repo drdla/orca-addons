@@ -14,7 +14,6 @@ import { redactError } from '../gitlab/http-response'
 import type { Files } from '../seams/files'
 import type { Git } from '../seams/git'
 import type { GitLabAccess, GitLabTransport } from '../seams/gitlab'
-import type { LinkedItem } from '../seams/orca-cli'
 import { hostWorkspaceIdOf } from '../workspaces/host-workspace'
 import { REVIEW_FOLDER } from '../workspaces/review-folder'
 import {
@@ -22,8 +21,6 @@ import {
   coverPageHeadOf,
   withUpdatedCallout,
   type CoverPageSource,
-  type LinearLink,
-  type RestApprovals,
   type RestDiff,
   type RestMergeRequest
 } from './render'
@@ -35,27 +32,24 @@ const DIFFS_PER_PAGE = 100
 /** GitLab's diff limits keep an MR far below this; past it the page says the list is cut short. */
 const MAX_DIFF_PAGES = 50
 
-/** Which merge request, the Review Workspace it belongs to, and that workspace's Linear link. */
+/** Which merge request, and the Review Workspace it belongs to. */
 export type CoverPageTarget = {
   projectPath: string
   iid: number
   workspace: { name: string; path: string }
-  linear: LinearLink | null
   /** The merge request's head as the last poll saw it, or null: for the callout on reopen (#57). */
   mergeRequestHead: string | null
 }
 
-/** The target for a merge request's Review Workspace; Orca's linked items give its Linear link. */
+/** The target for a merge request's Review Workspace. */
 export function coverPageTargetOf(
   mr: { projectPath: string; iid: number; mergeRequestHead?: string | null },
-  workspace: { name: string; path: string; linkedItems?: LinkedItem[] }
+  workspace: { name: string; path: string }
 ): CoverPageTarget {
-  const item = workspace.linkedItems?.find((i) => i.provider === 'linear' && i.identifier !== undefined)
   return {
     projectPath: mr.projectPath,
     iid: mr.iid,
     workspace: { name: workspace.name, path: workspace.path },
-    linear: item === undefined ? null : { identifier: item.identifier!, url: item.url },
     mergeRequestHead: mr.mergeRequestHead ?? null
   }
 }
@@ -106,7 +100,7 @@ export function createCoverPages(deps: {
       })
     ])
     await excludeReviewFolder(target.workspace.path)
-    const source: CoverPageSource = { projectPath: target.projectPath, headSha, linear: target.linear, ...gitLab }
+    const source: CoverPageSource = { projectPath: target.projectPath, headSha, ...gitLab }
     await deps.files.writeText(pagePath(target), renderCoverPage(source))
   }
 
@@ -148,11 +142,11 @@ export function createCoverPages(deps: {
   }
 }
 
-/** The MR, its changed files and its approvals (null when GitLab won't say), via REST. */
+/** The MR and its changed files, via REST. */
 async function fetchFromGitLab(
   transport: GitLabTransport,
   target: { projectPath: string; iid: number }
-): Promise<Pick<CoverPageSource, 'mr' | 'diffs' | 'diffsTruncated' | 'approvals'>> {
+): Promise<Pick<CoverPageSource, 'mr' | 'diffs' | 'diffsTruncated'>> {
   const base = `/projects/${encodeURIComponent(target.projectPath)}/merge_requests/${target.iid}`
   const allDiffs = async (): Promise<{ diffs: RestDiff[]; truncated: boolean }> => {
     const diffs: RestDiff[] = []
@@ -163,10 +157,6 @@ async function fetchFromGitLab(
     }
     return { diffs, truncated: true }
   }
-  const [mr, { diffs, truncated }, approvals] = await Promise.all([
-    transport.rest<RestMergeRequest>('GET', base),
-    allDiffs(),
-    transport.rest<RestApprovals>('GET', `${base}/approvals`).catch(() => null)
-  ])
-  return { mr, diffs, diffsTruncated: truncated, approvals }
+  const [mr, { diffs, truncated }] = await Promise.all([transport.rest<RestMergeRequest>('GET', base), allDiffs()])
+  return { mr, diffs, diffsTruncated: truncated }
 }

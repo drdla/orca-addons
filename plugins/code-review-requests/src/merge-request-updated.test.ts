@@ -353,7 +353,7 @@ test('Update workspace while Start review runs for the same merge request is ref
   const { worker } = await behind(fakes)
 
   const starting = worker.request('rr.startReview', { url: MR_URL, withAgent: false })
-  await assert.rejects(worker.request('rr.updateWorkspace', { url: MR_URL }), /Start review is still running/)
+  await assert.rejects(worker.request('rr.updateWorkspace', { url: MR_URL }), /Start Review is still running/)
   await starting
   assert.deepEqual(fakes.git.resets, [])
   await worker.deactivate()

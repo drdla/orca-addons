@@ -1,7 +1,7 @@
 // Which Review Requests the user has seen in the panel (#10), per GitLab host, for the card's New
-// badge and the bell's "M new".
+// badge and the status bar item's "M new".
 //   - `seen` (stored as `seen:<host>`): the Review Requests listed when the panel was last opened.
-//     The bell counts the ones not in it as new.
+//     The status bar item counts the ones not in it as new.
 //   - Cards are New against what was seen before the current opening, so a New badge stays put
 //     while the panel is open and goes at the next opening.
 // The first good poll on a host counts as seen: nothing is New on a first run.
@@ -52,7 +52,7 @@ export function createSeenTracker(storage: Storage) {
       return state !== undefined && !state.before.has(url)
     },
 
-    /** The bell's "M new": not listed when the panel was last opened. */
+    /** The status bar item's "M new": not listed when the panel was last opened. */
     unseen(host: string | null, reviewRequests: ReviewRequestView[]): number {
       const state = host === null ? undefined : hosts.get(host)
       return state === undefined ? 0 : reviewRequests.filter((r) => !state.seen.has(r.url)).length
@@ -62,7 +62,7 @@ export function createSeenTracker(storage: Storage) {
 
 export type SeenTracker = ReturnType<typeof createSeenTracker>
 
-/** The bell's tooltip says how many are new: "5 Review Requests, 2 new. Click to open." (#10) */
+/** The status bar item's tooltip says how many are new: "5 Review Requests, 2 new. Click to open." (#10) */
 export function seenRefiner(seen: SeenTracker): StatusBarRefiner {
   return (look, state) => {
     const unseen = seen.unseen(state.host, state.reviewRequests)

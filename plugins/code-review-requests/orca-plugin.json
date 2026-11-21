@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "code-review-requests",
   "name": "Code Review Requests",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Your GitLab Review Requests in Orca: a count in the status bar, a panel, and review workspaces.",
   "author": { "name": "Dominik Rodler" },
   "repository": "https://github.com/drdla/orca-addons",
@@ -18,7 +18,7 @@
       {
         "id": "review-requests",
         "title": "Review Requests",
-        "icon": "bell",
+        "icon": "check",
         "entry": "src/panel.tsx",
         "ui": "components"
       }
@@ -30,7 +30,7 @@
     "statusBarItems": [
       {
         "id": "review-requests",
-        "icon": "bell",
+        "icon": "check",
         "tooltip": "Review Requests",
         "command": "code-review-requests.open"
       }

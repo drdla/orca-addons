@@ -41,8 +41,10 @@ export type MergeRequestSeed = {
   pipeline?: PipelineStatus
   /** Approvals the MR requires; 0 by default. */
   approvalsRequired?: number
-  /** Comments by people on the MR; 0 by default. */
-  userNotesCount?: number
+  /** Unresolved threads on the MR; 0 by default. */
+  openThreads?: number
+  /** Resolved threads on the MR; 0 by default. */
+  resolvedThreads?: number
   /** The MR description; empty by default. */
   description?: string
 }
@@ -84,7 +86,8 @@ export type FakeMergeRequest = {
   hidden: boolean
   pipeline: PipelineStatus | null
   approvalsRequired: number
-  userNotesCount: number
+  openThreads: number
+  resolvedThreads: number
   description: string
 }
 
@@ -181,7 +184,8 @@ export class FakeGitLab implements GitLabTransport {
       hidden: false,
       pipeline: seed.pipeline ?? null,
       approvalsRequired: seed.approvalsRequired ?? 0,
-      userNotesCount: seed.userNotesCount ?? 0,
+      openThreads: seed.openThreads ?? 0,
+      resolvedThreads: seed.resolvedThreads ?? 0,
       description: seed.description ?? ''
     }
     this.#addVersion(mr)
@@ -467,7 +471,8 @@ export class FakeGitLab implements GitLabTransport {
           }
         }))
       },
-      userNotesCount: mr.userNotesCount,
+      resolvableDiscussionsCount: mr.openThreads + mr.resolvedThreads,
+      resolvedDiscussionsCount: mr.resolvedThreads,
       headPipeline: mr.pipeline === null ? null : { status: mr.pipeline }
     }
   }

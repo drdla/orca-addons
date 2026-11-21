@@ -3,7 +3,8 @@
 // replace or remove a token. TokenEntry is also the setup checklist's
 // second path. The worker validates and stores tokens (rr.saveToken); the panel never keeps one
 // beyond the field it is typed into, and clears that once it is stored.
-import { atom, Button, Code, Collapsible, Input, Link, plugin, read, Row, set, Stack, Text } from 'orca'
+import { atom, Code, Collapsible, Input, Link, plugin, read, Row, set, Stack, Text } from 'orca'
+import { Button } from './button'
 import type { ConnectionView } from './protocol'
 import { messageOf } from './errors'
 

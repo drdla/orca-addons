@@ -1,7 +1,8 @@
 // The panel's transient-failure line (#15, #24): "Couldn't refresh · last updated 14m ago ·
 // retrying in 1m" with Retry, shown above the last good list. Retry is disabled while GitLab
 // rate-limits us. Self-contained so the panel header (#22) can place it where it fits.
-import { Button, Callout, Row, Stack, Text } from 'orca'
+import { Callout, Row, Stack, Text } from 'orca'
+import { Button } from './button'
 import { MinuteTime } from './minute-time'
 import type { GitLabProblemView } from './protocol'
 import { ErrorDetails } from './setup-checklist'

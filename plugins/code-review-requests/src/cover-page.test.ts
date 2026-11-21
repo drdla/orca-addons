@@ -48,7 +48,8 @@ async function startWorker(
       },
       'agent.launch': agentLaunch,
       'workspace.open': { opened: true },
-      'editor.open': { opened: true }
+      'editor.open': { opened: true },
+      'commands.run': { ran: true }
     }
   })
   return startHarness(fakes, CONFIGURED, host)
@@ -131,7 +132,7 @@ test("when GitLab can't give the page, Run Agent Review still launches the agent
   await worker.deactivate()
 })
 
-test("the page records the workspace's checked-out commit and the workspace's own Linear link", async () => {
+test("the page records the workspace's checked-out commit", async () => {
   const fakes = fakeDeps()
   addReviewRequest(fakes)
   fakes.cli.addRepo(REPO)
@@ -139,8 +140,7 @@ test("the page records the workspace's checked-out commit and the workspace's ow
     name: 'review-api-7',
     repoId: REPO.repoId,
     path: WORKTREE,
-    references: [MR_URL],
-    linearIssue: { identifier: 'OEO-9', url: 'https://linear.app/acme/issue/OEO-9/login' }
+    references: [MR_URL]
   })
   const checkedOut = 'c0ffee0000000000000000000000000000000000'
   fakes.git.setHead(WORKTREE, checkedOut)
@@ -152,7 +152,6 @@ test("the page records the workspace's checked-out commit and the workspace's ow
   const page = fakes.files.peek(PAGE) ?? ''
   assert.ok(page.includes(`<!-- orca-review-cover-page head=${checkedOut} -->`), page)
   assert.match(page, /^# Add login\n\n> \*\*Merge request updated\.\*\* New commits were pushed since this workspace was checked out/)
-  assert.ok(page.includes('| Linear ticket | [OEO-9](https://linear.app/acme/issue/OEO-9/login) |'), page)
   await worker.deactivate()
 })
 
@@ -168,9 +167,26 @@ test('the page is a snapshot: opening it again neither rebuilds it nor duplicate
   fakes.gitlab.push('acme/api', 7)
   await worker.request('rr.openCoverPage', { url: MR_URL })
 
+  // Start review switched to the workspace once; the summary button switches to it again first.
+  const order = host.calls.map((c) => c.method).filter((m) => m === 'workspace.open' || m === 'editor.open')
+  assert.deepEqual(order, ['workspace.open', 'editor.open', 'workspace.open', 'editor.open'])
   assert.equal(fakes.files.writes.filter((path) => path === PAGE).length, 1)
   assert.equal(fakes.files.peek(EXCLUDE), '# exclude patterns\n*.swp\n.orca-review/\n')
   assert.equal(host.callsOf('editor.open').length, 2)
+  await worker.deactivate()
+})
+
+test('Changed files shows the Review Workspace and toggles Source Control there', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  fakes.cli.addWorktree({ name: 'review-api-7', repoId: REPO.repoId, path: WORKTREE, references: [MR_URL] })
+  const { host, worker } = await startWorker(fakes)
+
+  assert.deepEqual(await worker.request('rr.showChanges', { url: MR_URL }), { opened: true })
+
+  assert.deepEqual(host.callsOf('workspace.open'), [{ workspaceId: 'ws-1' }])
+  assert.deepEqual(host.callsOf('commands.run'), [{ action: 'sidebar.sourceControl.toggle' }])
   await worker.deactivate()
 })
 

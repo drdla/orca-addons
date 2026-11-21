@@ -5,7 +5,7 @@ import { fakeDeps } from './fakes'
 import { GitLabError } from './seams/gitlab'
 import { CONFIGURED, lastStatusBar, MINUTE, reviewRequestPolls, startWorker } from './testing/worker-harness'
 
-test('a configured worker polls GitLab at once and shows the count on the bell', async () => {
+test('a configured worker polls GitLab at once and shows the count on the status bar item', async () => {
   const fakes = fakeDeps()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', title: 'Add login' })
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/web' })
@@ -15,14 +15,14 @@ test('a configured worker polls GitLab at once and shows the count on the bell',
   const bar = lastStatusBar(host)
   assert.equal(bar?.id, 'review-requests')
   assert.equal(bar?.text, '2')
-  assert.equal(bar?.icon, 'bell')
+  assert.equal(bar?.icon, 'check')
   assert.equal(bar?.visible, true)
   assert.match(bar?.tooltip ?? '', /2 Review Requests/)
   assert.deepEqual(worker.refusals, [])
   await worker.deactivate()
 })
 
-test('the bell is hidden while there is nothing to review', async () => {
+test('the status bar item is hidden while there is nothing to review', async () => {
   const fakes = fakeDeps()
   const { host, worker } = await startWorker(fakes)
 
@@ -92,7 +92,7 @@ test('the refresh command does nothing until GitLab is configured', async () => 
   await worker.deactivate()
 })
 
-test('a failed poll keeps the last list and the bell', async () => {
+test('a failed poll keeps the last list and the status bar item', async () => {
   const fakes = fakeDeps()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', title: 'Add login' })
   const { host, worker } = await startWorker(fakes)

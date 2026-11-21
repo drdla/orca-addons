@@ -251,7 +251,7 @@ test('an Ended card opens its Review Draft too', async () => {
   const host = mockHost({ requests: { 'rr.snapshot': ended, 'rr.draft': draft([comment('note:n1')]) } })
   const view = await mount(panel, { host, persisted: { plugin: { 'rr.tab': 'ended' } } })
 
-  await view.press(view.find({ type: 'Button', text: 'Review draft' })!)
+  await view.press(view.find({ type: 'Button', text: 'Review Draft' })!)
 
   assert.ok(view.find({ type: 'Heading', text: 'Review Draft' }))
   await view.unmount()
