@@ -5,6 +5,19 @@
 // is the target branch and Source Control shows the MR's changes), then reset to the MR head.
 // Real: src/git-process.ts. Fake: src/fakes/fake-git.ts.
 
+/**
+ * The remote-tracking name of a target branch, `origin/<branch>`: the Review Workspace's base
+ * (#54) and the Review Prompt's `{baseRef}` (#56).
+ */
+export function targetBranchRef(branch: string): string {
+  return `origin/${branch}`
+}
+
+/** The same ref in full, `refs/remotes/origin/<branch>`, which no local branch name can shadow. */
+export function targetBranchFullRef(branch: string): string {
+  return `refs/remotes/${targetBranchRef(branch)}`
+}
+
 export interface Git {
   /**
    * Fetches the MR's head (`refs/merge-requests/<iid>/head`, which GitLab keeps on the target

@@ -2,7 +2,7 @@
 // Nothing here runs on load: `orca plugin check` imports the real worker.
 import { execFile } from 'node:child_process'
 import { gitEnv } from './git-env'
-import type { Git } from './seams/git'
+import { targetBranchFullRef, targetBranchRef, type Git } from './seams/git'
 
 const TIMEOUT_MS = 120_000
 
@@ -35,7 +35,7 @@ export function fetchMergeRequestHeadArgs(repoPath: string, iid: number): string
 
 /** The arguments that fetch `branch` fresh into `refs/remotes/origin/<branch>` (#54). */
 export function fetchBranchArgs(repoPath: string, branch: string): string[] {
-  return ['-C', repoPath, 'fetch', '--no-tags', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`]
+  return ['-C', repoPath, 'fetch', '--no-tags', 'origin', `+refs/heads/${branch}:${targetBranchFullRef(branch)}`]
 }
 
 /** The arguments that move a worktree's branch to `ref` (a full ref, so no branch shadows it). */
@@ -69,7 +69,7 @@ export const systemGit: Git = {
   },
   async fetchBranch(repoPath, branch) {
     await run(fetchBranchArgs(repoPath, branch), `git fetch of the target branch ${branch}`)
-    return `origin/${branch}`
+    return targetBranchRef(branch)
   },
   async resetBranch(worktreePath, ref) {
     await run(resetBranchArgs(worktreePath, ref), `git reset to ${ref}`)
