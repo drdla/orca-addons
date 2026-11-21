@@ -1,7 +1,7 @@
 // The Review Cover Page end to end through the worker (#55): Start review builds it from GitLab
 // and opens it in Orca's main view, Open workspace builds it when missing, and the Review Draft
-// reopens it. An Agent Review reads it, so it is built before the agent launches (#56). GitLab, the orca CLI, git, files and the clock are fakes; Orca's host is the kit's
-// mock host.
+// reopens it. An Agent Review reads it, so it is built before the agent launches (#56). GitLab,
+// the orca CLI, git, files and the clock are fakes; Orca's host is the kit's mock host.
 import { assert, mockHost, test } from 'orca/testing'
 import { fakeDeps, type Fakes } from './fakes'
 import { GitLabError } from './seams/gitlab'
@@ -27,8 +27,10 @@ function pageAtLaunch(fakes: Fakes): { seen: boolean[]; result: () => { terminal
 
 async function startWorker(
   fakes: Fakes,
-  workspaces: string[] = ['/src/api', WORKTREE],
-  agentLaunch: unknown = { terminalId: 'term-agent' }
+  {
+    workspaces = ['/src/api', WORKTREE],
+    agentLaunch = { terminalId: 'term-agent' }
+  }: { workspaces?: string[]; agentLaunch?: unknown } = {}
 ) {
   const host = mockHost({
     settings: CONFIGURED,
@@ -89,7 +91,7 @@ test('with an Agent Review, the page is built before the agent launches, and ope
   addReviewRequest(fakes)
   fakes.cli.addRepo(REPO)
   const launch = pageAtLaunch(fakes)
-  const { host, worker } = await startWorker(fakes, undefined, launch.result)
+  const { host, worker } = await startWorker(fakes, { agentLaunch: launch.result })
 
   await worker.request('rr.startReview', { url: MR_URL, withAgent: true })
 
@@ -106,7 +108,7 @@ test('Run Agent Review builds a missing cover page before the agent launches, wi
   fakes.cli.addRepo(REPO)
   fakes.cli.addWorktree({ name: 'review-api-7', repoId: REPO.repoId, path: WORKTREE, references: [MR_URL] })
   const launch = pageAtLaunch(fakes)
-  const { host, worker } = await startWorker(fakes, undefined, launch.result)
+  const { host, worker } = await startWorker(fakes, { agentLaunch: launch.result })
 
   assert.deepEqual(await worker.request('rr.runAgentReview', { url: MR_URL }), { started: true })
 

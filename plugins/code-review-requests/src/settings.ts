@@ -21,8 +21,8 @@ export const DEFAULT_SETTINGS = {
   /**
    * The Review Prompt (#27). Placeholders: {mrUrl}, {title}, {project}, {sourceBranch},
    * {targetBranch}, {baseRef}, {author} (workspaces/review-prompt.ts). The default points the agent
-   * at the Review Cover Page and the MR's diff against the Review Workspace's base (#56). The findings.json format it asks for is
-   * the import's contract (review-draft/findings.ts, #29).
+   * at the Review Cover Page and the MR's diff against the Review Workspace's base (#56). The
+   * findings.json format it asks for is the import's contract (review-draft/findings.ts, #29).
    */
   reviewPrompt:
     "Review the GitLab merge request {mrUrl} (\"{title}\" by {author}, {sourceBranch} into {targetBranch}) in {project}. The workspace has the MR's head checked out. Read .orca-review/merge-request.md for the MR's description and context; if that file is missing, read the description on GitLab. Review the MR's changes as `git diff {baseRef}...HEAD`. Don't post anything to GitLab. Write your findings to .orca-review/findings.json as JSON like `{\"headSha\": \"<output of git rev-parse HEAD>\", \"findings\": [{\"path\": \"src/file.ts\", \"line\": 42, \"body\": \"What is wrong and how to fix it.\"}, {\"body\": \"A comment on the merge request as a whole.\"}]}`. \"line\" is the line in the new version of the file; add \"startLine\" for a range of lines.",

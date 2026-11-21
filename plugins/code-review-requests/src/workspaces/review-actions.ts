@@ -5,6 +5,7 @@
 // Every failure rejects with a message the panel shows on the card.
 import { coverPageTargetOf, type CoverPages } from '../cover-page/cover-pages'
 import type { ReviewRequestView } from '../protocol'
+import { targetBranchFullRef } from '../seams/git'
 import type { Worktree } from '../seams/orca-cli'
 import type { Settings } from '../settings'
 import { reviewCommandFor, reviewPromptFor } from './review-prompt'
@@ -61,7 +62,19 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
   const hostWorkspaceId = (worktree: Worktree) =>
     hostWorkspaceIdOf(deps.host, { name: worktree.displayName, path: worktree.path })
 
-  async function agentReview(worktree: Worktree, rr: ReviewRequestView): Promise<void> {
+  /**
+   * Starts an Agent Review. It diffs against `{baseRef}`, the target branch, so without one it
+   * refuses (the diff would be empty). `fetchBase` first refreshes that branch, for a workspace
+   * made earlier (#56): a failed fetch is fine while the ref is there, a missing ref is not.
+   */
+  async function agentReview(worktree: Worktree, rr: ReviewRequestView, fetchBase: boolean): Promise<void> {
+    const targetBranch = rr.targetBranch
+    if (!targetBranch) throw new Error('This Review Request has no target branch yet. Refresh and try again.')
+    if (fetchBase) {
+      await deps.git.fetchBranch(worktree.path, targetBranch).catch(async (error: unknown) => {
+        if ((await deps.git.resolveRef(worktree.path, targetBranchFullRef(targetBranch))) === null) throw error
+      })
+    }
     const workspaceId = await hostWorkspaceId(worktree)
     const settings = await deps.settings()
     const prompt = reviewPromptFor(settings.reviewPrompt, rr)
@@ -120,7 +133,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
    */
   async function ensureAtMergeRequest(worktree: Worktree, rr: ReviewRequestView): Promise<void> {
     if (!rr.targetBranch) return
-    const target = await deps.git.resolveRef(worktree.path, `refs/remotes/origin/${rr.targetBranch}`)
+    const target = await deps.git.resolveRef(worktree.path, targetBranchFullRef(rr.targetBranch))
     if (target === null || (await deps.git.headSha(worktree.path)) !== target) return
     if ((await deps.git.statusPorcelain(worktree.path)).length > 0) {
       throw new Error(
@@ -133,6 +146,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
   async function startReview(rr: ReviewRequestView, withAgent: boolean): Promise<void> {
     const index = listed(await deps.workspaces.refresh())
     let worktree = findReviewWorkspace(index, rr)
+    const existed = worktree !== null
     if (worktree) {
       await ensureAtMergeRequest(worktree, rr)
     } else {
@@ -144,7 +158,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     // that fails doesn't hold the agent back. The page opens last: the tab in front.
     const target = coverPageTarget(worktree, rr)
     const page = await settle(deps.coverPages.ensure(target))
-    const agent = withAgent ? await settle(agentReview(worktree, rr)) : null
+    const agent = withAgent ? await settle(agentReview(worktree, rr, existed)) : null
     const problems: string[] = []
     if (agent !== null) problems.push(`the Agent Review didn't start: ${messageOf(agent)}`)
     const shown = page ?? (await settle(deps.coverPages.reveal(target)))
@@ -185,7 +199,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
       // The Agent Review reads the Review Cover Page (#56): a workspace without one gets it first.
       // Best effort: without the page, the Review Prompt sends the agent to GitLab for the description.
       await settle(deps.coverPages.ensure(coverPageTarget(worktree, rr)))
-      await agentReview(worktree, rr)
+      await agentReview(worktree, rr, true)
     }
   }
 }

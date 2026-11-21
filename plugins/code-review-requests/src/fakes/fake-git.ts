@@ -2,7 +2,7 @@
 // worktrees were reset to what; answers `git status` from setStatus(), `rev-parse HEAD` from
 // setHead() and other refs from setRef(). failNext() makes the next call fail; failNextOf() the
 // next call of one method only.
-import type { Git } from '../seams/git'
+import { targetBranchRef, type Git } from '../seams/git'
 
 type Method = 'fetchMergeRequestHead' | 'fetchBranch' | 'resetBranch' | 'statusPorcelain' | 'headSha'
 
@@ -58,7 +58,7 @@ export class FakeGit implements Git {
   async fetchBranch(repoPath: string, branch: string): Promise<string> {
     this.fetches.push({ repoPath, branch })
     this.#fail('fetchBranch')
-    return `origin/${branch}`
+    return targetBranchRef(branch)
   }
 
   async resetBranch(worktreePath: string, ref: string): Promise<void> {

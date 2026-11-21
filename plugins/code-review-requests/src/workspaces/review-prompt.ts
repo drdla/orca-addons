@@ -1,6 +1,7 @@
 // The Review Prompt and the custom review command (#6): placeholders filled from the Review
 // Request. Unknown placeholders are left as written.
 import type { ReviewRequestView } from '../protocol'
+import { targetBranchRef } from '../seams/git'
 
 /** The placeholders the Review Prompt and the custom command support. */
 export const PROMPT_PLACEHOLDERS = [
@@ -22,7 +23,7 @@ function valuesOf(rr: ReviewRequestView): Record<string, string> {
     targetBranch: rr.targetBranch ?? '',
     // The Review Workspace's base (#54, #56): the fetched target branch, so `git diff
     // {baseRef}...HEAD` is the merge request's diff.
-    baseRef: rr.targetBranch ? `origin/${rr.targetBranch}` : '',
+    baseRef: rr.targetBranch ? targetBranchRef(rr.targetBranch) : '',
     author: rr.author
   }
 }
