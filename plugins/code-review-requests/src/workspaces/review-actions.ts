@@ -69,6 +69,39 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     }
   }
 
+  /**
+   * Creates the Review Workspace (#54): based on the freshly fetched target branch, so Orca's
+   * `baseRef` is the target branch and Source Control's "Committed on Branch" lists the MR's
+   * changes, then reset to the MR head. A workspace whose reset failed is removed again.
+   */
+  async function createReviewWorkspace(rr: ReviewRequestView, repoPath: string, repoId: string): Promise<Worktree> {
+    if (!rr.targetBranch) throw new Error("This Review Request has no target branch yet. Refresh and try again.")
+    const baseBranch = await deps.git.fetchBranch(repoPath, rr.targetBranch)
+    const head = await deps.git.fetchMergeRequestHead(repoPath, rr.iid)
+    const worktree = await deps.cli().createWorktree({
+      name: reviewWorkspaceName(rr),
+      repo: `id:${repoId}`,
+      baseBranch,
+      gitlabMr: rr.url,
+      noParent: true
+    })
+    try {
+      await deps.git.resetHard(worktree.path, head)
+    } catch (error) {
+      const reason = `Couldn't check out the merge request in the new Review Workspace ${worktree.displayName}: ${messageOf(error)}`
+      try {
+        await deps.cli().removeWorktree(`id:${worktree.id}`, { force: true, deleteBranch: true })
+      } catch (removeError) {
+        throw new Error(`${reason}. Removing it failed too (${messageOf(removeError)}); remove it in Orca before you start the review again.`)
+      } finally {
+        await deps.workspaces.refresh()
+      }
+      throw new Error(`${reason}. The workspace was removed; start the review again.`)
+    }
+    await deps.workspaces.refresh()
+    return worktree
+  }
+
   return {
     async startReview(url, withAgent) {
       const rr = reviewRequestOf(url)
@@ -77,15 +110,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
       if (!worktree) {
         const repo = findRepo(index, rr)
         if (!repo) throw new Error(`Add ${rr.projectPath} to Orca to review here.`)
-        const baseBranch = await deps.git.fetchMergeRequestHead(repo.path, rr.iid)
-        worktree = await deps.cli().createWorktree({
-          name: reviewWorkspaceName(rr),
-          repo: `id:${repo.repoId}`,
-          baseBranch,
-          gitlabMr: rr.url,
-          noParent: true
-        })
-        await deps.workspaces.refresh()
+        worktree = await createReviewWorkspace(rr, repo.path, repo.repoId)
       }
       if (!withAgent) return
       try {

@@ -33,6 +33,21 @@ export function fetchMergeRequestHeadArgs(repoPath: string, iid: number): string
   ]
 }
 
+/** The arguments that fetch `branch` fresh into `refs/remotes/origin/<branch>` (#54). */
+export function fetchBranchArgs(repoPath: string, branch: string): string[] {
+  return ['-C', repoPath, 'fetch', '--no-tags', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`]
+}
+
+/** Runs `git <args>`; rejects with `<what> failed: <stderr>`. */
+async function run(args: string[], what: string): Promise<string> {
+  const gitEnvironment = await env()
+  return new Promise((resolve, reject) =>
+    execFile('git', args, { timeout: TIMEOUT_MS, env: gitEnvironment, encoding: 'utf8' }, (error, stdout, stderr) =>
+      error ? reject(new Error(`${what} failed: ${(stderr || error.message).trim()}`)) : resolve(stdout)
+    )
+  )
+}
+
 export const systemGit: Git = {
   async statusPorcelain(path) {
     const gitEnvironment = await env()
@@ -61,6 +76,13 @@ export const systemGit: Git = {
             : resolve(`origin/merge-requests/${iid}`)
       )
     )
+  },
+  async fetchBranch(repoPath, branch) {
+    await run(fetchBranchArgs(repoPath, branch), `git fetch of the target branch ${branch}`)
+    return `origin/${branch}`
+  },
+  async resetHard(worktreePath, ref) {
+    await run(['-C', worktreePath, 'reset', '--hard', ref, '--'], `git reset to ${ref}`)
   },
   async headSha(worktreePath) {
     const gitEnvironment = await env()

@@ -52,7 +52,8 @@ export type DiffComment = {
 export type WorktreeDetail = Worktree & { baseRef?: string; diffComments?: DiffComment[] }
 
 /**
- * `orca worktree create` flags. A Review Workspace uses `repo`, `baseBranch` (the fetched MR head),
+ * `orca worktree create` flags. A Review Workspace uses `repo`, `baseBranch` (the fetched target branch,
+ * which Orca keeps as the worktree's `baseRef`; #54),
  * `gitlabMr` (the MR web URL, as Orca's own "Start workspace from MR" links it) and `noParent`.
  * `references` and `gitlabMr` can't be combined.
  */
