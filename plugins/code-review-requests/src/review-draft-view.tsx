@@ -12,6 +12,7 @@ import {
   Box,
   Callout,
   Checkbox,
+  EmptyState,
   Heading,
   IconButton,
   plugin,
@@ -206,7 +207,6 @@ function locationOf(comment: ReviewCommentView): string {
 export function ReviewDraftScreen() {
   const current = read(draft)
   const failure = read(draftFailure)
-  const checked = current?.comments.filter((c) => c.checked).length ?? 0
   const url = read(draftUrl)
   const error = read(actionError)
   return (
@@ -231,10 +231,7 @@ export function ReviewDraftScreen() {
         failure === null && <Skeleton lines={4} label="Loading the Review Draft" />
       ) : (
         <Stack gap="md">
-          <Stack gap="xs">
-            <Text weight="semibold">{current.title}</Text>
-            <Text muted size="xs">{`${checked} of ${current.comments.length} checked`}</Text>
-          </Stack>
+          <Text weight="semibold">{current.title}</Text>
           <PostSection draft={current} onDraft={(answer) => set(draft, answer)} />
           {current.warnings.length > 0 && (
             <Callout tone="warning" icon="warning" title="Some things were not imported">
@@ -255,7 +252,7 @@ export function ReviewDraftScreen() {
           )}
           <Section
             title="Diff-view notes"
-            empty="No diff-view notes. Add them in Orca's diff view; they show up here."
+            empty={<EmptyState icon="branch" title="No diff-view notes" />}
             comments={current.comments.filter((c) => c.origin === 'diff-note')}
             action={
               url !== null && (
@@ -271,7 +268,7 @@ export function ReviewDraftScreen() {
           />
           <Section
             title="Agent Findings"
-            empty="No Agent Findings yet. Run an Agent Review, then import again."
+            empty={<EmptyState icon="agent" title="No Agent Findings" />}
             comments={current.comments.filter((c) => c.origin === 'agent-finding')}
             action={
               url !== null &&
@@ -343,7 +340,7 @@ function SectionButton(props: {
   )
 }
 
-function Section(props: { title: string; empty: string; comments: ReviewCommentView[]; action?: OrcaNode }) {
+function Section(props: { title: string; empty: OrcaNode; comments: ReviewCommentView[]; action?: OrcaNode }) {
   const { title, empty, comments, action } = props
   // paddingY: more room above each section than between the draft's other parts.
   return (
@@ -353,9 +350,7 @@ function Section(props: { title: string; empty: string; comments: ReviewCommentV
         {action}
       </Row>
       {comments.length === 0 ? (
-        <Text muted size="sm">
-          {empty}
-        </Text>
+        empty
       ) : (
         comments.map((c) => <CommentCard key={c.id} comment={c} />)
       )}

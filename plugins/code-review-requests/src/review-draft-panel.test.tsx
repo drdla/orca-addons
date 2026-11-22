@@ -71,7 +71,7 @@ test('an In review card opens its Review Draft; Back returns to the tabs', async
   assert.ok(view.find({ text: 'Why not reuse the helper?' }))
   assert.ok(view.find({ type: 'Checkbox', label: 'General comment' }))
   assert.equal(view.valueOf(view.find({ type: 'Textarea', label: 'Agent Finding' })!), 'Split this MR.')
-  assert.ok(view.find({ text: '1 of 2 checked' }))
+  assert.equal(view.find({ text: /checked/ }), null, 'no "N of M checked" line')
   assert.equal(view.find({ type: 'Tabs' }), null)
 
   await view.press(view.find({ type: 'Button', text: '← Back' })!)
@@ -172,7 +172,7 @@ test('posted comments are marked and locked; warnings and empty sections are exp
   assert.equal(view.find({ type: 'Checkbox', label: 'src/login.ts:10' })!.disabled, true)
   assert.ok(view.find({ type: 'Callout', label: 'Some things were not imported' }))
   assert.ok(view.find({ text: 'Agent Finding 3 skipped: no body.' }))
-  assert.ok(view.find({ text: /No Agent Findings yet/ }))
+  assert.ok(view.find({ type: 'EmptyState', text: 'No Agent Findings' }))
   await view.unmount()
 })
 
@@ -189,7 +189,7 @@ test('says so when the Review Draft cannot be loaded, and Try Again retries', as
 
   await view.press(view.find({ type: 'Button', text: 'Try Again' })!)
   assert.equal(calls, 2)
-  assert.ok(view.find({ text: /No diff-view notes/ }))
+  assert.ok(view.find({ type: 'EmptyState', text: 'No diff-view notes' }))
   await view.unmount()
 })
 
