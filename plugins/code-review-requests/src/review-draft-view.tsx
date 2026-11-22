@@ -391,6 +391,9 @@ function CommentButtons({ comment }: { comment: ReviewCommentView }) {
   )
 }
 
+/** Orca's Checkbox: a 16px box and an 8px gap before its label. */
+const CHECKBOX_INDENT = 24
+
 function CommentCard({ comment }: { comment: ReviewCommentView }) {
   const error = read(commentErrors)[comment.id]
   const edit = read(edits)[comment.id]
@@ -398,8 +401,12 @@ function CommentCard({ comment }: { comment: ReviewCommentView }) {
   return (
     <Box border radius="md" padding="sm" direction="column" gap="xs">
       <Row justify="between" align="start">
+        {/* The body is the label and the location its description, which Orca draws small and
+            muted in the same column: both start at one indent. An Agent Finding's body is the
+            Textarea below, so its label just names it. */}
         <Checkbox
-          label={locationOf(comment)}
+          label={comment.editable ? 'Agent Finding' : comment.body}
+          description={locationOf(comment)}
           checked={comment.checked}
           disabled={comment.posted}
           onChange={(checked) => changeComment(comment.id, { checked })}
@@ -411,36 +418,42 @@ function CommentCard({ comment }: { comment: ReviewCommentView }) {
           <CommentButtons comment={comment} />
         </Row>
       </Row>
-      {comment.editable ? (
-        <Stack gap="xs">
-          <Textarea
-            label="Agent Finding"
-            labelHidden
-            rows={3}
-            value={text}
-            onChange={(value) => setEdit(comment.id, value)}
-            onSubmit={(value) => changeComment(comment.id, { body: value })}
-          />
-          {edit !== undefined && edit !== comment.body && (
-            <Row gap="xs">
-              <Button size="xs" onPress={() => changeComment(comment.id, { body: edit })}>
-                Save
-              </Button>
-            </Row>
-          )}
-        </Stack>
-      ) : (
-        <Text size="sm">{comment.body}</Text>
-      )}
-      {comment.failure !== undefined && (
-        <Text tone="danger" size="xs">
-          {`Not posted: ${comment.failure}`}
-        </Text>
-      )}
-      {error !== undefined && (
-        <Text tone="danger" size="xs">
-          {error}
-        </Text>
+      {(comment.editable || comment.failure !== undefined || error !== undefined) && (
+        <Box direction="row">
+          {/* The checkbox's width and gap, so this lines up with its label. */}
+          <Box width={CHECKBOX_INDENT} shrink={false} />
+          <Box direction="column" gap="xs" grow>
+            {comment.editable && (
+              <Stack gap="xs">
+                <Textarea
+                  label="Agent Finding"
+                  labelHidden
+                  rows={3}
+                  value={text}
+                  onChange={(value) => setEdit(comment.id, value)}
+                  onSubmit={(value) => changeComment(comment.id, { body: value })}
+                />
+                {edit !== undefined && edit !== comment.body && (
+                  <Row gap="xs">
+                    <Button size="xs" onPress={() => changeComment(comment.id, { body: edit })}>
+                      Save
+                    </Button>
+                  </Row>
+                )}
+              </Stack>
+            )}
+            {comment.failure !== undefined && (
+              <Text tone="danger" size="xs">
+                {`Not posted: ${comment.failure}`}
+              </Text>
+            )}
+            {error !== undefined && (
+              <Text tone="danger" size="xs">
+                {error}
+              </Text>
+            )}
+          </Box>
+        </Box>
       )}
     </Box>
   )
