@@ -107,7 +107,7 @@ function posted(sent: unknown[]) {
 test('the page has the outcome, the summary and Post Review', async () => {
   const { view } = await openDraft({})
 
-  assert.equal(view.valueOf(view.find({ type: 'RadioGroup', label: 'Outcome' })!), 'comment')
+  assert.equal(view.valueOf(view.find({ type: 'RadioGroup', label: 'Outcome' })!), 'requested_changes')
   assert.ok(view.find({ type: 'Textarea', label: 'Summary' }))
   assert.equal(view.find(postReview)!.disabled, false)
   assert.deepEqual(view.errors, [])
@@ -132,15 +132,28 @@ test('Post Review sends the summary and outcome, then shows the review posted', 
   await view.unmount()
 })
 
-test('with nothing checked, Post Review waits for a summary or an outcome, then approves alone', async () => {
+test('the outcome follows the checked comments until I pick one: Approve with none, Request changes with some', async () => {
   const sent: unknown[] = []
-  const { view } = await openDraft({ 'rr.postReview': posted(sent) }, null, [comment('note:n1', { checked: false })])
-  assert.equal(view.find(postReview)!.disabled, true)
+  const { view } = await openDraft(
+    {
+      'rr.postReview': posted(sent),
+      'rr.updateDraftComment': (input: { checked?: boolean }) => draft([comment('note:n1', { checked: input.checked ?? false })])
+    },
+    null,
+    [comment('note:n1', { checked: false })]
+  )
+  const radios = () => view.find({ type: 'RadioGroup', label: 'Outcome' })!
+  assert.equal(view.valueOf(radios()), 'approve')
 
-  await view.select(view.find({ type: 'RadioGroup', label: 'Outcome' })!, 'approve')
-  assert.equal(view.find(postReview)!.disabled, false)
+  await view.toggle(view.find({ type: 'Checkbox' })!)
+  assert.equal(view.valueOf(radios()), 'requested_changes')
+  await view.select(radios(), 'comment')
+  await view.toggle(view.find({ type: 'Checkbox' })!)
+  assert.equal(view.valueOf(radios()), 'comment', 'a picked outcome stays')
+  assert.equal(view.find(postReview)!.disabled, true, 'nothing to post: no comments, no summary, Comment')
+
+  await view.select(radios(), 'approve')
   await view.press(view.find(postReview)!)
-
   assert.deepEqual(sent, [{ url: URL, summary: '', outcome: 'approve' }])
   await view.unmount()
 })

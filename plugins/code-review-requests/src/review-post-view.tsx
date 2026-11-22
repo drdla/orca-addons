@@ -37,7 +37,8 @@ const POST_TIMEOUT_MS = 120_000
 // `orca plugin check` scenarios can show each step.
 const step = atom<PostStep>('rr.postStep', { kind: 'idle' }, { persist: 'plugin' })
 const summary = atom('rr.postSummary', '', { persist: 'plugin' })
-const outcome = atom<ReviewOutcome>('rr.postOutcome', 'comment', { persist: 'plugin' })
+/** The outcome I picked; null follows the checked comments (outcomeFor). */
+const outcome = atom<ReviewOutcome | null>('rr.postOutcomeChoice', null, { persist: 'plugin' })
 /** Why checking, posting or deleting failed drafts didn't work. */
 const failure = atom<string | null>(null)
 const deleting = atom(false)
@@ -48,6 +49,13 @@ const OUTCOMES: { value: ReviewOutcome; label: string }[] = [
   { value: 'comment', label: 'Comment' }
 ]
 
+/** The outcome that posts: the one I picked, else Approve with no comments, Request changes with some. */
+function outcomeFor(draft: ReviewDraftView): ReviewOutcome {
+  const picked = read(outcome)
+  if (picked !== null) return picked
+  return draft.comments.some((c) => c.checked && !c.posted) ? 'requested_changes' : 'approve'
+}
+
 /** Where Review Drafts post to: the only source so far. */
 export const PROVIDER = 'GitLab'
 
@@ -57,7 +65,7 @@ export const API_SCOPE_HINT = 'Posting a review needs a token with the api scope
 export function resetPosting(): void {
   set(step, { kind: 'idle' })
   set(summary, '')
-  set(outcome, 'comment')
+  set(outcome, null)
   set(failure, null)
 }
 
@@ -92,7 +100,7 @@ function startPost(draft: ReviewDraftView, onDraft: (draft: ReviewDraftView) => 
   plugin
     .request('rr.postPreview', { url: draft.url }, { timeoutMs: 60_000 })
     .then((preview) => {
-      if (preview.warnings.length === 0 && preview.leftoverDrafts.length === 0) post(preview, onDraft)
+      if (preview.warnings.length === 0 && preview.leftoverDrafts.length === 0) post(preview, outcomeFor(draft), onDraft)
       else set(step, { kind: 'confirm', preview, postingSince: null })
     })
     .catch((error: unknown) => {
@@ -101,17 +109,17 @@ function startPost(draft: ReviewDraftView, onDraft: (draft: ReviewDraftView) => 
     })
 }
 
-function post(preview: PostPreview, onDraft: (draft: ReviewDraftView) => void): void {
+function post(preview: PostPreview, chosen: ReviewOutcome, onDraft: (draft: ReviewDraftView) => void): void {
   set(step, { kind: 'confirm', preview, postingSince: Date.now() })
   set(failure, null)
   plugin
-    .request('rr.postReview', { url: preview.url, summary: read(summary), outcome: read(outcome) }, { timeoutMs: POST_TIMEOUT_MS })
+    .request('rr.postReview', { url: preview.url, summary: read(summary), outcome: chosen }, { timeoutMs: POST_TIMEOUT_MS })
     .then(({ draft, ...result }) => {
       onDraft(draft)
       set(step, { kind: 'done', result })
       if (result.failed.length === 0) {
         set(summary, '')
-        set(outcome, 'comment')
+        set(outcome, null)
       }
     })
     .catch((error: unknown) => {
@@ -142,7 +150,7 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
   const busy = posting || current.kind === 'loading'
   const confirming = current.kind === 'confirm' && !posting
   const unposted = draft.comments.filter((c) => c.checked && !c.posted).length
-  const nothingToPost = unposted === 0 && read(summary).trim() === '' && read(outcome) === 'comment'
+  const nothingToPost = unposted === 0 && read(summary).trim() === '' && outcomeFor(draft) === 'comment'
   const blocked = canPostReviews() === false
   return (
     <Stack gap="sm">
@@ -152,7 +160,7 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
         labelHidden
         orientation="horizontal"
         options={OUTCOMES}
-        value={read(outcome)}
+        value={outcomeFor(draft)}
         disabled={busy}
         onChange={(value) => set(outcome, value as ReviewOutcome)}
       />
@@ -168,7 +176,7 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
       {current.kind === 'confirm' && <Warnings preview={current.preview} />}
       <Row gap="sm">
         {current.kind === 'confirm' && confirming ? (
-          <Button icon="upload" onPress={() => post(current.preview, onDraft)}>
+          <Button icon="upload" onPress={() => post(current.preview, outcomeFor(draft), onDraft)}>
             Post Anyway
           </Button>
         ) : (

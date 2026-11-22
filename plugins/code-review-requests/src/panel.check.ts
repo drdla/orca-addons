@@ -440,7 +440,7 @@ export default defineCheck({
     requests: { 'rr.snapshot': inReview, 'rr.draft': reviewDraft, 'rr.connection': connection() },
     persisted: postStep(
       { kind: 'confirm', preview: postPreview, postingSince: null },
-      { 'rr.postSummary': 'Nearly there: two things to fix.', 'rr.postOutcome': 'requested_changes' }
+      { 'rr.postSummary': 'Nearly there: two things to fix.', 'rr.postOutcomeChoice': 'requested_changes' }
     )
   },
   /** The worker is posting: the form locked with a spinner. */

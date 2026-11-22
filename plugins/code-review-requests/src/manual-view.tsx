@@ -41,7 +41,7 @@ export const MANUAL_SECTIONS: readonly { title?: string; paragraphs: readonly st
     title: 'Write and post the review',
     paragraphs: [
       'Comments you add in Orca\'s diff view and the agent\'s findings collect under "Finish Review".',
-      'Select, edit or drop them, pick the outcome (comment, approve or request changes), add a summary if you like, and press Post Review. They go to GitLab as one review. With nothing selected, Post Review only approves or requests changes.'
+      'Select, edit or drop them, add a summary if you like, and press Post Review. They go to GitLab as one review. The outcome is Request changes when comments are selected and Approve when none are; pick another one if you like.'
     ]
   },
   {
