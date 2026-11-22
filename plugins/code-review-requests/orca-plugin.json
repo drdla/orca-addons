@@ -9,8 +9,8 @@
   "license": "MIT",
   "icon": "images/icon.png",
   "cover": {
-    "path": "images/cover-tiger.jpg",
-    "alt": "A samurai tiger in armour kneeling in front of Mount Fuji, beside the title Code Review Requests and a Review Requests card"
+    "path": "images/cover.jpg",
+    "alt": "A samurai tiger in armour kneeling in front of Mount Fuji, beside the title Code Review Requests and four Review Request cards"
   },
   "screenshots": [
     {

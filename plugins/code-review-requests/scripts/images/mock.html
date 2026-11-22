@@ -265,6 +265,9 @@ svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width:
   </div>
 </section>
 
+<!-- ======================= CARDS (transparent, for the cover) ======================= -->
+<section class="frame" id="cards" style="width:412px;padding:1px"><div class="cards" id="cards-list"></div></section>
+
 <svg width="0" height="0" style="position:absolute"><defs>
   <g id="iconglyph">
     <g fill="none" stroke="#e9e9ec" stroke-width="13" stroke-linecap="round" stroke-linejoin="round">
@@ -344,6 +347,14 @@ document.getElementById('ws-panel').innerHTML =
   header('<span>Todo · 2 | 2!</span><span class="on">Reviewing · 1!</span><span>Done</span>') +
   `<div class="cards">${card(MRS[0], { reviewing: true })}</div>`;
 
+const CARDS = [
+  { iid: 2958, title: 'PAY-2214: Retry card payments that time out at the bank', by: 'Lena Brandt', late: true, meta: 'CI failed · 1 open comment', age: '9d' },
+  { iid: 3019, title: 'feat(catalog): bulk-edit prices from a CSV upload', by: 'Jonas Weber', late: false, meta: '', age: '2d' },
+  { iid: 3021, title: 'SHOP-1645: Remember the last used shipping address', by: 'Amira Haddad', late: false, meta: '2 open comments', age: '2d' },
+  { iid: 3048, title: 'refactor: one date formatter for the whole web app', by: 'Tomás Ruiz', late: false, meta: 'CI running', age: '7h' },
+];
+document.getElementById('cards-list').innerHTML = CARDS.map((m) => card(m)).join('');
+
 // Replace ALLCAPS icon tokens in static markup with SVGs.
 for (const el of document.querySelectorAll('.activity, .statusbar, .points .dot, .tabbar, .side, .btn, .sel-box, .chk .cb, .agent-tag')) {
   el.innerHTML = el.innerHTML.replace(/\b([A-Z]{2,8})\b/g, (w) => (P[w] ? ic(w) : w));
@@ -351,6 +362,7 @@ for (const el of document.querySelectorAll('.activity, .statusbar, .points .dot,
 
 const id = location.hash.slice(1) || 'todo';
 document.getElementById(id).classList.add('on');
+if (id === 'cards') document.documentElement.style.background = document.body.style.background = 'transparent';
 // Point each tooltip's arrow at the highlighted status bar item below it (layout px, so transforms don't matter).
 for (const tip of document.querySelectorAll('#' + id + ' .tip')) {
   const hot = tip.parentElement.querySelector('.hot');

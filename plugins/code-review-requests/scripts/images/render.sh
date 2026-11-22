@@ -1,5 +1,5 @@
 #!/bin/bash
-# Renders the catalog icon and screenshots (images/*.png; the cover, images/cover-tiger.jpg, is made by hand) from mock.html with headless Chrome.
+# Renders the catalog icon and screenshots (images/*.png; the cover, images/cover.jpg, is made by hand) from mock.html with headless Chrome.
 # The data in mock.html is made up; keep it that way. Needs Google Chrome, Orca (for the Geist font) and network (Google Fonts).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -18,4 +18,7 @@ shot todo 1280,800 review-requests
 shot statusbar 1280,800 status-bar
 shot workspace 1280,800 review-workspace
 shot draft 1280,800 review-draft
+shot cards 414,600 review-cards # four cards on transparent, the cards on the cover; kept next to the mock, trimmed below
+mv "$out/review-cards.png" "$here/review-cards.png"
+python3 -c 'import sys; from PIL import Image; p=sys.argv[1]; i=Image.open(p); i.crop(i.getbbox()).save(p, optimize=True)' "$here/review-cards.png"
 ls -l "$out"
