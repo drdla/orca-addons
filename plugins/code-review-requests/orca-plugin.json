@@ -14,12 +14,12 @@
   },
   "screenshots": [
     {
-      "path": "images/review-requests.png",
+      "path": "images/review-queue.png",
       "alt": "The Review Requests panel: merge requests with their CI status, open comments, age and a Late badge",
       "caption": "Every merge request waiting for your review"
     },
     {
-      "path": "images/status-bar.png",
+      "path": "images/status-count.png",
       "alt": "The status bar item showing 3 | 3! with the tooltip \"6 Review Requests, 3 overdue. Click to open.\"",
       "caption": "The count in the status bar"
     },
@@ -30,7 +30,7 @@
     },
     {
       "path": "images/finish-review.png",
-      "alt": "Finish Review: the Approve outcome, a summary and Post Review above diff-view notes and agent findings with checkboxes",
+      "alt": "Finish Review: the Request changes outcome, a summary and Post Review above review comments and agent findings with checkboxes",
       "caption": "Collect comments and agent findings, post them as one review"
     }
   ],
