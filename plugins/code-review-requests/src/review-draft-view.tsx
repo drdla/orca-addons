@@ -255,7 +255,7 @@ export function ReviewDraftScreen() {
                 <SectionButton
                   which="changes"
                   icon="branch"
-                  label="Open Diff View"
+                  label="View changes"
                   text
                   tooltip="Open Orca's diff view to add, edit or delete Review Comments"
                   onPress={() => showChanges(url)}

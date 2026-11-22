@@ -171,13 +171,13 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
           label="Summary"
           labelHidden
           rows={2}
-          placeholder="Optional: a note on the whole review"
+          placeholder="Optional review summary"
           value={read(summary)}
           disabled={busy}
           onChange={(value) => set(summary, value)}
         />
         <Text muted size="xs">
-          {unposted === 0 ? 'No Review Comments included' : `${plural(unposted, 'Review Comment')} included`}
+          {unposted === 0 ? 'No review comments included' : `${plural(unposted, 'review comment')} included`}
         </Text>
         {current.kind === 'confirm' && <Warnings preview={current.preview} />}
         <Row gap="sm">

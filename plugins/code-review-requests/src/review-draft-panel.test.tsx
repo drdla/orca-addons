@@ -269,7 +269,7 @@ test('the section headings go to the diff view and run an Agent Review', async (
     }
   })
 
-  await view.press(view.find({ type: 'Button', text: 'Open Diff View' })!)
+  await view.press(view.find({ type: 'Button', text: 'View changes' })!)
   await view.press(view.find({ type: 'IconButton', label: 'Run Agent Review' })!)
   assert.deepEqual(asked, ['showChanges', 'runAgentReview'])
   assert.deepEqual(view.errors, [])
