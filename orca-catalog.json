@@ -16,6 +16,79 @@
       "categories": ["productivity"],
       "releases": [
         {
+          "version": "0.6.7",
+          "commit": "66cc517d2b77011b54a607f737b7a021fac01451",
+          "contentHash": "03a061371fe680f50e81ef918829a3283acb5e107066fc1b6c823d3b5ad98e1c",
+          "execution": "trusted-worker",
+          "minimumOrca": "1.4.259",
+          "name": "Code Review Requests",
+          "contributes": [
+            { "kind": "panels", "name": "Review Requests" },
+            { "kind": "commands", "name": "Review Requests: Open panel" },
+            { "kind": "commands", "name": "Review Requests: Refresh" },
+            { "kind": "events", "name": "workspace.removed" },
+            { "kind": "statusBarItems", "name": "review-requests" }
+          ],
+          "capabilities": [
+            "storage:own",
+            "settings:own",
+            "secrets:own",
+            "notifications:show",
+            "workspace:read",
+            "workspace:write",
+            "workspace:create",
+            "agent:read",
+            "agent:launch",
+            "terminal:send"
+          ],
+          "images": {
+            "icon": {
+              "path": "plugins/code-review-requests/images/icon.png",
+              "alt": "Code Review Requests",
+              "sha256": "28771f8b1f23f9efad0913805fbb30f7599d44046db2c0de228545128441078b",
+              "width": 512,
+              "height": 512
+            },
+            "cover": {
+              "path": "plugins/code-review-requests/images/cover-tiger.jpg",
+              "alt": "A samurai tiger in armour kneeling in front of Mount Fuji, beside the title Code Review Requests and a Review Requests card",
+              "sha256": "7253f789bbf8b2518c1aade6829781001d0aeb212dd94e060f50f9bf3ba726c6",
+              "width": 1376,
+              "height": 768
+            },
+            "screenshots": [
+              {
+                "path": "plugins/code-review-requests/images/review-requests.png",
+                "alt": "The Review Requests panel: merge requests with their CI status, open comments, age and a Late badge",
+                "sha256": "4a55981d366bc87b0cddb0be9100f2fb51d1ef147a9c1bb4d5631414edfa01e8",
+                "width": 2560,
+                "height": 1600
+              },
+              {
+                "path": "plugins/code-review-requests/images/status-bar.png",
+                "alt": "The status bar item showing 3 | 3! with the tooltip \"6 Review Requests, 3 overdue. Click to open.\"",
+                "sha256": "02455c38b8801ce9d08bd2b48e6450c7d1edb3d32243b7eada9d46b633da76fc",
+                "width": 2560,
+                "height": 1600
+              },
+              {
+                "path": "plugins/code-review-requests/images/review-workspace.png",
+                "alt": "An Orca window with a review workspace, the merge request description, the review agent in a terminal and the Reviewing tab",
+                "sha256": "e75d91250947ff88fba6fa9b429d43abfb51bbea561daa7b49a48c8f216e850c",
+                "width": 2560,
+                "height": 1600
+              },
+              {
+                "path": "plugins/code-review-requests/images/review-draft.png",
+                "alt": "The Review Draft: diff-view notes and agent findings with checkboxes, a summary, the Approve outcome and Post review",
+                "sha256": "81900ebd8d1b31658decfb9a4ed839113c1810ad98b35150fc60a22ed9d584a1",
+                "width": 2560,
+                "height": 1600
+              }
+            ]
+          }
+        },
+        {
           "version": "0.6.6",
           "commit": "debc5c14c20ea808c1c824c236edbbd6511e2dad",
           "contentHash": "8490538b43e9b803cd79b3d739fe25641d4f71dd232016472a0a0770bf3793be",

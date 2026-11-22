@@ -1,6 +1,7 @@
 // The search above the tabs: it narrows all three tabs and their counts, a pasted merge request
 // link opens the one other tab that has its card, and an empty tab says nothing matches.
-import { assert, mockHost, mount, test } from 'orca/testing'
+import { assert, mockHost, test } from 'orca/testing'
+import { mount } from './testing/mount'
 import * as panel from './panel'
 import type { EndedCard, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
 

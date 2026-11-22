@@ -123,6 +123,7 @@ test('the panel snapshot lists the Review Requests from the last poll', async ()
         projectPath: 'acme/api',
         iid: 7,
         author: 'ada',
+        authorName: 'ada',
         requestedAt: fakes.clock.now(),
         sourceBranch: 'feature-1',
         targetBranch: 'main',

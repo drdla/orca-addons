@@ -1,6 +1,7 @@
 // What the panel says about the filter settings (#26): how many Review Requests they hide, and
 // which entries it ignores.
-import { assert, mockHost, mount, test } from 'orca/testing'
+import { assert, mockHost, test } from 'orca/testing'
+import { mount } from './testing/mount'
 import * as panel from './panel'
 import type { ReviewRequestsSnapshot } from './protocol'
 

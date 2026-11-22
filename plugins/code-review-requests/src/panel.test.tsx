@@ -1,4 +1,5 @@
-import { assert, hostError, mockHost, mount, test } from 'orca/testing'
+import { assert, hostError, mockHost, test } from 'orca/testing'
+import { mount } from './testing/mount'
 import * as panel from './panel'
 import { shortTitle, TITLE_MAX } from './short-title'
 import type { ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
@@ -78,6 +79,18 @@ test('draws a card per Review Request in the order the worker gives, longest wai
   assert.ok(view.find({ type: 'Text', text: 'by ada' }))
   assert.ok(view.find({ text: /^\d+[mhd]$/ }), 'the card shows its age')
   assert.equal(view.find({ type: 'Badge', text: 'Late' }), null)
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test("a card names the author by their GitLab display name, else their username", async () => {
+  const host = mockHost({
+    requests: { 'rr.snapshot': snapshot(card(7, { author: 'ada', authorName: 'Ada Lovelace' }), card(3, { author: 'bob' })) }
+  })
+  const view = await mount(panel, { host })
+
+  assert.ok(view.find({ type: 'Text', text: 'by Ada Lovelace' }))
+  assert.ok(view.find({ type: 'Text', text: 'by bob' }))
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })

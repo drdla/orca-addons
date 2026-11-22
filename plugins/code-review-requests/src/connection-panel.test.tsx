@@ -2,7 +2,8 @@
 // the signed-in user and what the scopes allow, and saving, replacing or removing a token, both
 // there and in the setup checklist's second path. While the connection is broken, the list shows a
 // warning that opens the Settings view. Tokens here are made-up strings.
-import { assert, mockHost, mount, test, type TestPanel } from 'orca/testing'
+import { assert, mockHost, test, type TestPanel } from 'orca/testing'
+import { mount } from './testing/mount'
 import * as panel from './panel'
 import type { ConnectionView, ReviewRequestsSnapshot } from './protocol'
 

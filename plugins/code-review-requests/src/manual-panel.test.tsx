@@ -1,5 +1,6 @@
 // The Manual view: the ⓘ in the footer, between Refresh and Settings, opens it, Back returns to the tabs.
-import { assert, mockHost, mount, test } from 'orca/testing'
+import { assert, mockHost, test } from 'orca/testing'
+import { mount } from './testing/mount'
 import { MANUAL_SECTIONS } from './manual-view'
 import * as panel from './panel'
 import type { ReviewRequestsSnapshot } from './protocol'

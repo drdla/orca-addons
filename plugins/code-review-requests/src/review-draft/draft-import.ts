@@ -7,7 +7,8 @@
 //     commit the workspace moved away from, #58). Markdown-preview notes are not diff comments and
 //     are left out; notes on uncommitted changes are skipped with a warning.
 //   - Agent Findings are the plugin's own once imported: they join unchecked, keep the person's
-//     edits, and are never removed by an import. A finding already imported (same text) isn't added again.
+//     edits, and are never removed by an import. A finding already imported (same text) isn't added
+//     again, nor is one the person deleted (drafts.deletedFindings).
 // A failure to read either source keeps what the draft had and becomes a warning. Each import then
 // works out which Review Comments may be outdated and which Agent Findings are stale against the
 // workspace's HEAD (#58, outdated.ts).
@@ -118,6 +119,27 @@ export function createDraftImport(options: {
         return { ...d, comments: d.comments.map((c) => (c.id === comment.id ? next : c)) }
       })
       return viewOf(draft, target)
+    },
+
+    /**
+     * Deletes an Agent Finding from the draft; imports skip it from then on. Diff-view notes are
+     * Orca's: the plugin can't delete them.
+     */
+    async remove(target: DraftTarget, id: string): Promise<ReviewDraftView> {
+      const draft = await drafts.update(target.url, (d) => {
+        const comment = d.comments.find((c) => c.id === id)
+        if (!comment) throw new DraftChangeError('That Review Comment is no longer in the Review Draft.')
+        if (comment.origin === 'diff-note') {
+          throw new DraftChangeError("This is a diff-view note: delete it in Orca's diff view; the Review Draft picks up the change.")
+        }
+        const deleted = d.deletedFindings ?? []
+        return {
+          ...d,
+          comments: d.comments.filter((c) => c.id !== id),
+          deletedFindings: deleted.includes(id) ? deleted : [...deleted, id]
+        }
+      })
+      return viewOf(draft, target)
     }
   }
 }
@@ -153,7 +175,7 @@ function merge(draft: ReviewDraft, sources: Sources, now: number): ReviewDraft {
   }
 
   const findings = draft.comments.filter((c) => c.origin === 'agent-finding')
-  const known = new Set(findings.map((c) => c.id))
+  const known = new Set([...findings.map((c) => c.id), ...(draft.deletedFindings ?? [])])
   for (const finding of sources.findings) {
     const id = findingId(finding)
     if (known.has(id)) continue

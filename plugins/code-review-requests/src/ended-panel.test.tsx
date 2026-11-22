@@ -1,6 +1,7 @@
 // The panel's Ended tab (#28): Ended cards, Remove workspace with its confirmation, and the
 // banner while the orca CLI is broken. The worker is stubbed through `requests`.
-import { assert, hostError, mockHost, mount, test } from 'orca/testing'
+import { assert, hostError, mockHost, test } from 'orca/testing'
+import { mount } from './testing/mount'
 import * as panel from './panel'
 import { headingCounts } from './testing/panel-heading'
 import type { EndedCard, RemovalCheck, ReviewRequestsSnapshot } from './protocol'

@@ -61,6 +61,11 @@ export type ReviewDraft = {
    * Workspace's HEAD (#58). Absent when HEAD couldn't be read (or before #58).
    */
   outdated?: Outdated
+  /**
+   * Ids of Agent Findings the reviewer deleted: an import doesn't bring them back while
+   * findings.json still has them. Absent means none.
+   */
+  deletedFindings?: string[]
 }
 
 /** A Review Comment whose GitLab draft didn't publish. */

@@ -106,7 +106,7 @@ test('posting creates line drafts against the matching MR version and publishes 
   ])
   assert.deepEqual(result.draft.comments.map((c) => c.posted), [true, true])
   assert.deepEqual(host.callsOf('notifications.show').slice(notesBefore), [
-    { title: 'Review posted', body: '2 comments on !7' }
+    { title: 'You reviewed Add login', body: '2 comments, changes requested · acme/api !7' }
   ])
   const preview = await worker.request('rr.postPreview', { url: MR_URL })
   assert.equal(preview.comments, 0)

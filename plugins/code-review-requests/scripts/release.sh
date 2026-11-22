@@ -63,10 +63,14 @@ npm ci --prefix "$tmp" --ignore-scripts --no-audit --no-fund --loglevel=error >/
 echo 'tsc: no errors'
 
 step 'orca plugin test'
-tests_ok=1
-orca plugin test . >"$tmp/test.log" 2>&1 || tests_ok=0
+# The suite takes seconds; one that runs longer hangs (a test left timers running), so stop it.
+TEST_TIMEOUT_S=180
+test_status=0
+perl -e 'alarm shift; exec @ARGV' "$TEST_TIMEOUT_S" orca plugin test . >"$tmp/test.log" 2>&1 || test_status=$?
 grep -E '^ℹ (tests|pass|fail)|^✖|test file' "$tmp/test.log" || true
-[ "$tests_ok" = 1 ] || fail 'orca plugin test failed; run `orca plugin test .` for the details'
+# 142: killed by the alarm (128 + SIGALRM).
+[ "$test_status" != 142 ] || fail "orca plugin test hung for ${TEST_TIMEOUT_S}s; run \`orca plugin test .\` to see which test file doesn't finish"
+[ "$test_status" = 0 ] || fail 'orca plugin test failed; run `orca plugin test .` for the details'
 
 step 'orca plugin check'
 orca plugin check . || fail 'orca plugin check failed'

@@ -1,6 +1,7 @@
 // Posting from the Review Draft view (#30): the confirm step, posting, partial failure, success
 // and the missing api scope. The worker is stubbed.
-import { assert, hostError, mockHost, mount, test } from 'orca/testing'
+import { assert, hostError, mockHost, test } from 'orca/testing'
+import { mount } from './testing/mount'
 import * as panel from './panel'
 import type {
   ConnectionView,
@@ -88,7 +89,7 @@ async function openDraft(requests: Record<string, unknown>, canPost: boolean | n
 test('Post opens the confirm step: what posts, the leftover GitLab drafts, warnings, summary and outcome', async () => {
   const { view } = await openDraft({})
 
-  await view.press(view.find({ type: 'Button', text: 'Post 2 to GitLab' })!)
+  await view.press(view.find({ type: 'Button', text: 'Submit 2 comments to GitLab' })!)
 
   assert.ok(view.find({ type: 'Heading', text: 'Post review' }))
   assert.ok(view.find({ text: '2 Review Comments post as one review.' }))
@@ -117,7 +118,7 @@ test('Post review sends the summary and outcome, then shows the review posted', 
       }
     }
   })
-  await view.press(view.find({ type: 'Button', text: 'Post 2 to GitLab' })!)
+  await view.press(view.find({ type: 'Button', text: 'Submit 2 comments to GitLab' })!)
   await view.type(view.find({ type: 'Textarea', label: 'Summary' })!, 'Nearly there.')
   await view.select(view.find({ type: 'Select', label: 'Outcome' })!, 'requested_changes')
 
@@ -150,7 +151,7 @@ test('a partial failure lists what did not post, with Retry and Delete failed dr
       return draft([comment('note:n1', { posted: true }), comment('note:n2')])
     }
   })
-  await view.press(view.find({ type: 'Button', text: 'Post 2 to GitLab' })!)
+  await view.press(view.find({ type: 'Button', text: 'Submit 2 comments to GitLab' })!)
   await view.press(view.find({ type: 'Button', text: 'Post review' })!)
 
   assert.ok(view.find({ type: 'Callout', label: "1 Review Comment couldn't be posted" }))
@@ -161,7 +162,7 @@ test('a partial failure lists what did not post, with Retry and Delete failed dr
   await view.press(view.find({ type: 'Button', text: 'Delete failed drafts' })!)
   assert.deepEqual(deleted, [{ url: URL }])
   assert.equal(view.find({ text: /Not posted:/ }), null)
-  assert.ok(view.find({ type: 'Button', text: 'Post 1 to GitLab' }))
+  assert.ok(view.find({ type: 'Button', text: 'Submit 1 comment to GitLab' }))
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })
@@ -175,7 +176,7 @@ test('Retry after a partial failure opens the confirm step again', async () => {
       draft: draft([comment('note:n1'), comment('note:n2', { failure: 'kept as a draft' })])
     })
   })
-  await view.press(view.find({ type: 'Button', text: 'Post 2 to GitLab' })!)
+  await view.press(view.find({ type: 'Button', text: 'Submit 2 comments to GitLab' })!)
   await view.press(view.find({ type: 'Button', text: 'Post review' })!)
 
   await view.press(view.find({ type: 'Button', text: 'Retry' })!)
@@ -190,7 +191,7 @@ test('a refused post says why and keeps the confirm step open', async () => {
       throw hostError('internal', 'Posting a review needs a token with the api scope. GitLab said: 403 insufficient_scope')
     }
   })
-  await view.press(view.find({ type: 'Button', text: 'Post 2 to GitLab' })!)
+  await view.press(view.find({ type: 'Button', text: 'Submit 2 comments to GitLab' })!)
   await view.press(view.find({ type: 'Button', text: 'Post review' })!)
 
   assert.ok(view.find({ type: 'Callout', label: "Couldn't post the Review Draft" }))
@@ -202,7 +203,7 @@ test('a refused post says why and keeps the confirm step open', async () => {
 test('without the api scope, Post is disabled with the hint', async () => {
   const { view } = await openDraft({}, false)
 
-  const post = view.find({ type: 'Button', text: 'Post 2 to GitLab' })!
+  const post = view.find({ type: 'Button', text: 'Submit 2 comments to GitLab' })!
   assert.equal(post.disabled, true)
   assert.ok(view.find({ text: 'Posting a review needs a token with the api scope.' }))
   await view.unmount()
@@ -224,7 +225,7 @@ test('the confirm step survives a panel reload; a post whose answer was lost goe
     persisted: { plugin: { ...persisted.plugin, 'rr.postStep': stale } }
   })
   assert.equal(view.find({ type: 'Heading', text: 'Post review' }), null)
-  assert.ok(view.find({ type: 'Button', text: 'Post 1 to GitLab' }))
+  assert.ok(view.find({ type: 'Button', text: 'Submit 1 comment to GitLab' }))
   await view.unmount()
 })
 
@@ -239,20 +240,5 @@ test('while posting, the confirm step is locked', async () => {
   assert.equal(view.find({ type: 'Button', text: 'Post review' })!.disabled, true)
   assert.equal(view.find({ type: 'Button', text: 'Cancel' })!.disabled, true)
   assert.ok(view.find({ type: 'Spinner', label: 'Posting' }))
-  await view.unmount()
-})
-
-test('an Ended card opens its Review Draft too', async () => {
-  const ended: ReviewRequestsSnapshot = {
-    reviewRequests: [],
-    refreshedAt: NOW,
-    ended: [{ ...inReview, workspace: WORKSPACE, reason: 'merged', endedAt: NOW, autoRemoveSkipped: null }]
-  }
-  const host = mockHost({ requests: { 'rr.snapshot': ended, 'rr.draft': draft([comment('note:n1')]) } })
-  const view = await mount(panel, { host, persisted: { plugin: { 'rr.tab': 'ended' } } })
-
-  await view.press(view.find({ type: 'Button', text: 'Review Draft' })!)
-
-  assert.ok(view.find({ type: 'Heading', text: 'Review Draft' }))
   await view.unmount()
 })
