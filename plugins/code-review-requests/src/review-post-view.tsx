@@ -157,6 +157,7 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
     <Stack gap="sm">
       {current.kind === 'done' && <Outcome result={current.result} draft={draft} onDraft={onDraft} />}
       <Box border radius="md" padding="sm" direction="column" gap="sm">
+        <Text weight="semibold">Your Review</Text>
         <RadioGroup
           label="Outcome"
           labelHidden
