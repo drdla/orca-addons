@@ -2,7 +2,6 @@
 <html>
 <head>
 <meta charset="utf-8">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Shippori+Mincho+B1:wght@700&display=block">
 <style>
 @font-face { font-family: Geist; src: url(Geist.woff2) format('woff2'); font-weight: 100 900; }
 :root {
@@ -118,13 +117,6 @@ svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width:
   background: radial-gradient(160px 160px at 75% 10%, rgba(255,140,120,.55), transparent 70%), linear-gradient(150deg, #2a2b31 0%, #141518 70%);
   box-shadow: inset 0 0 0 2px rgba(255,255,255,.08); }
 
-/* ---------- cover ---------- */
-.cv-title { position: absolute; left: 460px; top: 40px; font-family: "Kaushan Script", cursive; font-size: 55px; line-height: 1.0; color: #c63a2b; transform: rotate(-4deg); transform-origin: 0 50%; text-shadow: 0 0 1px rgba(150,40,30,.4); }
-.cv-scroll { position: absolute; left: 456px; top: 218px; width: 278px; height: 112px; }
-.cv-panel { zoom: .5; width: 556px; border-radius: 12px; box-shadow: 0 6px 18px rgba(60,40,20,.35); }
-.cv-panel .panel-in { gap: 11px; padding: 14px 16px 14px; }
-.cv-sub { position: absolute; left: 446px; top: 384px; width: 320px; }
-.cv-tag { font-family: "Shippori Mincho B1", serif; font-weight: 700; font-size: 13.5px; line-height: 1.55; color: #2c3a4a; }
 </style>
 </head>
 <body>
@@ -149,16 +141,6 @@ svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width:
       <circle cx="176" cy="178" r="50" fill="none" stroke="#141518" stroke-width="10"/>
       <path d="M154 179l15 15 29-31" fill="none" stroke="#1a0f0e" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
-  </div>
-</section>
-
-<!-- ======================= COVER (800x500 css @2x) ======================= -->
-<!-- cover-art.jpg is an AI-generated illustration with an empty scroll; the panel is laid onto the scroll. -->
-<section class="frame" id="cover" style="width:800px;height:500px;background:#f1e6cf url(cover-art.jpg) center/cover no-repeat">
-  <div class="cv-title">Code Review<br>Requests</div>
-  <div class="cv-scroll"><div class="panel cv-panel"><div class="panel-in" id="cover-panel"></div></div></div>
-  <div class="cv-sub">
-    <div class="cv-tag">Your GitLab review queue, inside Orca.<br>One click checks it out, an agent reviews first.</div>
   </div>
 </section>
 
@@ -357,10 +339,6 @@ document.getElementById('todo-panel').innerHTML =
   header('<span class="on">Todo · 3 | 3!</span><span>Reviewing</span><span>Done</span>') +
   `<div class="cards">${MRS.map((m) => card(m)).join('')}</div>` + foot('just now');
 
-document.getElementById('cover-panel').innerHTML =
-  `<div class="ph">Review Requests <span class="count-pill">3 | <b>3</b></span></div>` +
-  `<div class="tabs"><span class="on">Todo · 3 | 3!</span><span>Reviewing</span><span>Done</span></div>` +
-  `<div class="cards">${MRS.slice(0, 1).map((m) => card(m)).join('')}</div>`;
 
 document.getElementById('ws-panel').innerHTML =
   header('<span>Todo · 2 | 2!</span><span class="on">Reviewing · 1!</span><span>Done</span>') +
