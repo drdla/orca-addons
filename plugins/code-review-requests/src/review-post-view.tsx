@@ -8,9 +8,9 @@ import {
   atom,
   Callout,
   plugin,
+  RadioGroup,
   read,
   Row,
-  Select,
   set,
   Spinner,
   Stack,
@@ -147,8 +147,9 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
   return (
     <Stack gap="sm">
       {current.kind === 'done' && <Outcome result={current.result} draft={draft} onDraft={onDraft} />}
-      <Select
+      <RadioGroup
         label="Outcome"
+        orientation="horizontal"
         options={OUTCOMES}
         value={read(outcome)}
         disabled={busy}

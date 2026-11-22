@@ -107,7 +107,7 @@ function posted(sent: unknown[]) {
 test('the page has the outcome, the summary and Post Review', async () => {
   const { view } = await openDraft({})
 
-  assert.equal(view.valueOf(view.find({ type: 'Select', label: 'Outcome' })!), 'comment')
+  assert.equal(view.valueOf(view.find({ type: 'RadioGroup', label: 'Outcome' })!), 'comment')
   assert.ok(view.find({ type: 'Textarea', label: 'Summary' }))
   assert.equal(view.find(postReview)!.disabled, false)
   assert.deepEqual(view.errors, [])
@@ -118,7 +118,7 @@ test('Post Review sends the summary and outcome, then shows the review posted', 
   const sent: unknown[] = []
   const { view } = await openDraft({ 'rr.postReview': posted(sent) })
   await view.type(view.find({ type: 'Textarea', label: 'Summary' })!, 'Nearly there.')
-  await view.select(view.find({ type: 'Select', label: 'Outcome' })!, 'requested_changes')
+  await view.select(view.find({ type: 'RadioGroup', label: 'Outcome' })!, 'requested_changes')
 
   await view.press(view.find(postReview)!)
 
@@ -137,7 +137,7 @@ test('with nothing checked, Post Review waits for a summary or an outcome, then 
   const { view } = await openDraft({ 'rr.postReview': posted(sent) }, null, [comment('note:n1', { checked: false })])
   assert.equal(view.find(postReview)!.disabled, true)
 
-  await view.select(view.find({ type: 'Select', label: 'Outcome' })!, 'approve')
+  await view.select(view.find({ type: 'RadioGroup', label: 'Outcome' })!, 'approve')
   assert.equal(view.find(postReview)!.disabled, false)
   await view.press(view.find(postReview)!)
 

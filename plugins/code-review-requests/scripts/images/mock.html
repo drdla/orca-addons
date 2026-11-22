@@ -107,6 +107,10 @@ svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width:
 .body { font-size: 14px; line-height: 1.5; color: #d6d6d6; }
 .ta { border: 1px solid var(--line2); border-radius: 9px; padding: 9px 11px; font-size: 14px; line-height: 1.5; color: #e2e2e2; background: #181818; }
 .field-l { font-size: 13px; color: #bcbcbc; margin-bottom: 5px; }
+.radios { display: flex; gap: 18px; font-size: 14px; }
+.radios span { display: flex; align-items: center; gap: 7px; }
+.radios i { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid #5a5a5a; display: inline-block; box-sizing: border-box; }
+.radios i.on { border: 5px solid #ececec; }
 .sel-box { border: 1px solid var(--line2); border-radius: 9px; padding: 8px 11px; font-size: 14px; display: flex; justify-content: space-between; background: #181818; }
 .muted { color: var(--muted); }
 .agent-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: #c9b3ff; background: rgba(160,130,255,.12); border-radius: 999px; padding: 2px 9px; font-family: Geist, sans-serif; }
@@ -240,7 +244,7 @@ svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width:
     <div class="panel rd" style="height:820px"><div class="panel-in" style="gap:13px">
       <div style="display:flex;align-items:center;gap:12px"><span class="btn" style="border:none;background:none;padding:0;color:#ddd">LEFT Back</span><h2>Finish Review</h2></div>
       <div style="font-weight:600;font-size:15px">fix(billing): keep the VAT ID when a customer switches plans</div>
-      <div><div class="field-l">Outcome</div><div class="sel-box"><span>Approve</span><span class="muted">DOWN</span></div></div>
+      <div><div class="field-l">Outcome</div><div class="radios"><span><i></i>Comment</span><span><i></i>Request changes</span><span><i class="on"></i>Approve</span></div></div>
       <div><div class="field-l">Summary</div><div class="ta">Nice catch. Two small things below, otherwise good to go.</div></div>
       <div style="display:flex;gap:10px"><span class="btn primary">UPLOAD Post Review</span></div>
       <h3>Diff-view notes</h3>
