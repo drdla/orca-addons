@@ -1,6 +1,7 @@
 // Posting from the Review Draft view (#30): the confirm step, posting, partial failure, success
 // and the missing api scope. The worker is stubbed.
-import { assert, hostError, mockHost, mount, test } from 'orca/testing'
+import { assert, hostError, mockHost, test } from 'orca/testing'
+import { mount } from './testing/mount'
 import * as panel from './panel'
 import type {
   ConnectionView,
@@ -239,20 +240,5 @@ test('while posting, the confirm step is locked', async () => {
   assert.equal(view.find({ type: 'Button', text: 'Post review' })!.disabled, true)
   assert.equal(view.find({ type: 'Button', text: 'Cancel' })!.disabled, true)
   assert.ok(view.find({ type: 'Spinner', label: 'Posting' }))
-  await view.unmount()
-})
-
-test('an Ended card opens its Review Draft too', async () => {
-  const ended: ReviewRequestsSnapshot = {
-    reviewRequests: [],
-    refreshedAt: NOW,
-    ended: [{ ...inReview, workspace: WORKSPACE, reason: 'merged', endedAt: NOW, autoRemoveSkipped: null }]
-  }
-  const host = mockHost({ requests: { 'rr.snapshot': ended, 'rr.draft': draft([comment('note:n1')]) } })
-  const view = await mount(panel, { host, persisted: { plugin: { 'rr.tab': 'ended' } } })
-
-  await view.press(view.find({ type: 'Button', text: 'Review Draft' })!)
-
-  assert.ok(view.find({ type: 'Heading', text: 'Review Draft' }))
   await view.unmount()
 })

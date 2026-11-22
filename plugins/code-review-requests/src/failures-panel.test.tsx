@@ -1,7 +1,8 @@
 // The panel's failure states (#24): for Needs you, a warning above the tabs that opens the
 // Settings view, where the setup checklist is; the "Couldn't refresh" line over the last list for
 // transient failures.
-import { assert, mockHost, mount, test, type TestPanel } from 'orca/testing'
+import { assert, mockHost, test, type TestPanel } from 'orca/testing'
+import { mount } from './testing/mount'
 import * as panel from './panel'
 import type { GitLabProblemView, ReviewRequestsSnapshot } from './protocol'
 

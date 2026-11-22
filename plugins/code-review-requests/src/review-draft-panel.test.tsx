@@ -1,6 +1,7 @@
 // The Review Draft drill-in view (#29): opened from an In review card, it lists the diff-view
 // notes (read-only) and Agent Findings (editable) with a checkbox each. The worker is stubbed.
-import { assert, hostError, mockHost, mount, test } from 'orca/testing'
+import { assert, hostError, mockHost, test } from 'orca/testing'
+import { mount } from './testing/mount'
 import * as panel from './panel'
 import { VISIBILITY_CHECK_MS } from './review-draft-view'
 import type { ReviewCommentView, ReviewDraftView, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'

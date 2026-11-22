@@ -1,4 +1,5 @@
-import { assert, hostError, mockHost, mount, test } from 'orca/testing'
+import { assert, hostError, mockHost, test } from 'orca/testing'
+import { mount } from './testing/mount'
 import * as panel from './panel'
 import { shortTitle, TITLE_MAX } from './short-title'
 import type { ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'

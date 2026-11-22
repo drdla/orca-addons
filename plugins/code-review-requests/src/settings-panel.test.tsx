@@ -2,7 +2,8 @@
 // the connection first, then every setting the manifest declares, saved through settings:own so
 // Orca's Settings page shows the same values.
 import { readFileSync } from 'node:fs'
-import { assert, mockHost, mount, mountWorker, test } from 'orca/testing'
+import { assert, mockHost, mountWorker, test } from 'orca/testing'
+import { mount } from './testing/mount'
 import * as panel from './panel'
 import type { ReviewRequestsSnapshot } from './protocol'
 
