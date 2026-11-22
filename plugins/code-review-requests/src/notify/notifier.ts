@@ -4,6 +4,7 @@
 //   - No baseline yet: first run, one summary of what is waiting.
 //   - Catch-up (see isCatchUp): one summary of what changed since the baseline.
 //   - Otherwise: one notification per new and per dropped Review Request.
+// A Review Request the user approved ends without a notification (they did it themselves).
 // Items that came and went while away are never on either list, so they are never notified.
 // Only good polls reach the notifier, so a failed poll never derives new or dropped items.
 //
@@ -115,7 +116,9 @@ export function createNotifier(options: NotifierOptions) {
       })
       await save(host, { reviewRequests: [...reviewRequests, ...unexplained], lastSuccessAt: at })
       if (explained.length > 0) await options.onDropped?.(explained, at)
-      await send(catchUp ? [catchUpNote(added, explained)] : [...added.map(newNote), ...explained.map(droppedNote)])
+      // The reviewer's own approval is news to nobody: it ends the Review Request silently.
+      const told = explained.filter((d) => d.reason !== 'approved')
+      await send(catchUp ? [catchUpNote(added, told)] : [...added.map(newNote), ...told.map(droppedNote)])
     }
   }
 }

@@ -38,6 +38,7 @@ import {
   type OrcaNode,
   type PanelContext,
 } from 'orca'
+import { authorNameOf } from './author'
 import { Button } from './button'
 import { isManualOpen, ManualScreen, openManual } from './manual-view'
 import { MergeRequestLink } from './merge-request-link'
@@ -740,7 +741,7 @@ function Card({ card }: { card: ReviewRequestCard }) {
           <Box direction="column">
             <Box height={2} />
             <Text weight="semibold">{shortTitle(card.title)}</Text>
-            <Text muted size="xs">{`by ${card.author}`}</Text>
+            <Text muted size="xs">{`by ${authorNameOf(card)}`}</Text>
           </Box>
         </Row>
         {card.overdue && <Badge tone="danger">Late</Badge>}

@@ -49,6 +49,9 @@ const OUTCOMES: { value: ReviewOutcome; label: string }[] = [
   { value: 'approve', label: 'Approve' }
 ]
 
+/** Where Review Drafts post to: the only source so far. */
+export const PROVIDER = 'GitLab'
+
 export const API_SCOPE_HINT = 'Posting a review needs a token with the api scope.'
 
 /** Back to the Post button (opening or leaving a Review Draft). */
@@ -140,10 +143,10 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
           <Row gap="sm">
             <Button
               icon="upload"
-              disabled={blocked || current.kind === 'loading'}
+              disabled={blocked || unposted === 0 || current.kind === 'loading'}
               onPress={() => openConfirm(draft.url)}
             >
-              {`Post ${unposted} to GitLab`}
+              {`Submit ${plural(unposted, 'comment')} to ${PROVIDER}`}
             </Button>
             {current.kind === 'loading' && <Spinner label="Checking GitLab" labelHidden />}
           </Row>

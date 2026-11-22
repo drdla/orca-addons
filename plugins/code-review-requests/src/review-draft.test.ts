@@ -153,6 +153,22 @@ test('importing again follows Orca: edited notes change, deleted ones go, new fi
   await worker.deactivate()
 })
 
+test('a deleted Agent Finding leaves the draft and an import does not bring it back; notes are deleted in Orca', async () => {
+  const fakes = arrange()
+  fakes.cli.setDiffComments(WT_ID, [note('n1')])
+  fakes.files.write(FINDINGS_PATH, JSON.stringify([{ body: 'keep' }, { body: 'drop' }]))
+  const { worker } = await startWorker(fakes)
+  const opened = await worker.request('rr.draft', { url: MR_URL })
+  const drop = opened.comments.find((c) => c.body === 'drop')!
+
+  const after = await worker.request('rr.deleteDraftComment', { url: MR_URL, id: drop.id })
+  assert.deepEqual(after.comments.map((c) => c.body), ['note n1', 'keep'])
+  const again = await worker.request('rr.draft', { url: MR_URL })
+  assert.deepEqual(again.comments.map((c) => c.body), ['note n1', 'keep'])
+  await assert.rejects(worker.request('rr.deleteDraftComment', { url: MR_URL, id: 'note:n1' }), /delete it in Orca/i)
+  await worker.deactivate()
+})
+
 test('without a Review Workspace the draft says so and calls nothing', async () => {
   const fakes = arrange({ workspace: false })
   const { worker } = await startWorker(fakes)

@@ -23,7 +23,7 @@ import { plural } from '../plural'
 import { isOutdated } from './outdated'
 
 /** Which MR to post to. */
-export type PostTarget = { url: string; projectPath: string; iid: number }
+export type PostTarget = { url: string; projectPath: string; iid: number; /** For the notification. */ title?: string }
 
 export const API_SCOPE_HINT = 'Posting a review needs a token with the api scope.'
 
@@ -182,10 +182,7 @@ export function createReviewPoster(options: {
         await drafts.markPosted(target.url, posted)
         await drafts.update(target.url, (d) => withFailures(d, failures))
         if (posted.length > 0 || summary !== '' || request.outcome !== 'comment') {
-          const n = posted.length
-          await options
-            .notify('Review posted', `${n} ${n === 1 ? 'comment' : 'comments'} on !${target.iid}`)
-            .catch(() => {})
+          await options.notify(...postedNote(target, posted.length, request.outcome)).catch(() => {})
         }
         const byId = new Map(plan.map((p) => [p.comment.id, p.comment]))
         return {
@@ -363,4 +360,14 @@ function postingError(error: unknown, token: string | null): Error {
 function atLeast(version: string, major: number, minor: number): boolean {
   const [a = 0, b = 0] = version.split('.').map((n) => Number.parseInt(n, 10))
   return a > major || (a === major && b >= minor)
+}
+
+/** "You reviewed Add login" / "2 comments, approved · acme/api !7". */
+export function postedNote(target: PostTarget, comments: number, outcome: ReviewOutcome): [string, string] {
+  const parts: string[] = []
+  if (comments > 0) parts.push(`${comments} ${comments === 1 ? 'comment' : 'comments'}`)
+  if (outcome === 'approve') parts.push('approved')
+  if (outcome === 'requested_changes') parts.push('changes requested')
+  const where = `${target.projectPath} !${target.iid}`
+  return [`You reviewed ${target.title ?? `!${target.iid}`}`, parts.length === 0 ? where : `${parts.join(', ')} · ${where}`]
 }

@@ -13,15 +13,18 @@ import {
   Callout,
   Checkbox,
   Heading,
+  IconButton,
   plugin,
   read,
   Row,
   set,
   Skeleton,
+  Spinner,
   Stack,
   Text,
   Textarea,
   update,
+  type OrcaNode,
   type PanelContext
 } from 'orca'
 import { Button } from './button'
@@ -30,6 +33,8 @@ import type { ReviewCommentView, ReviewDraftView } from './protocol'
 import { isPostingNow, openConfirm, PostSection, resetPosting, setupPosting } from './review-post-view'
 import { messageOf } from './errors'
 import { plural } from './plural'
+import { hasReviewPrompt } from './settings-view'
+import { truncateMiddle } from './truncate-middle'
 
 /** The Review Request whose draft is open (its MR URL), or null for the tabs. Kept across reloads. */
 const draftUrl = atom<string | null>('rr.draftUrl', null, { persist: 'plugin' })
@@ -43,6 +48,10 @@ let lastImportAt = 0
 const edits = atom<Record<string, string>>({})
 /** Per-comment errors, by comment id. */
 const commentErrors = atom<Record<string, string>>({})
+/** Which section button waits for the worker: "Go to diff view" or "Run Agent Review". */
+const acting = atom<'changes' | 'agent' | null>(null)
+/** Why the last of those didn't work. */
+const actionError = atom<string | null>(null)
 
 /** Is a Review Draft open (the panel shows it instead of the tabs)? */
 export function isReviewDraftOpen(): boolean {
@@ -78,6 +87,7 @@ export function openReviewDraft(url: string): void {
   set(draft, null)
   set(edits, {})
   set(commentErrors, {})
+  set(actionError, null)
   resetPosting()
   importDraft()
 }
@@ -112,6 +122,28 @@ function importDraft(): void {
     .finally(() => set(importing, false))
 }
 
+/** The section buttons, like the In review card's: one request at a time, its error under the title. */
+function act(which: 'changes' | 'agent', failed: string, action: () => Promise<unknown>): void {
+  set(acting, which)
+  set(actionError, null)
+  action()
+    .catch((error: unknown) => set(actionError, `${failed}: ${messageOf(error)}`))
+    .finally(() => set(acting, null))
+}
+
+/** Orca's Source Control sidebar in the Review Workspace, for its changed files. */
+function showChanges(url: string): void {
+  act('changes', "Couldn't show the changed files", () => plugin.request('rr.showChanges', { url }))
+}
+
+function runAgentReview(url: string): void {
+  act('agent', "Couldn't start the Agent Review", () => plugin.request('rr.runAgentReview', { url }, { timeoutMs: 120_000 }))
+}
+
+/** Characters a file path may take on a comment, and how many of its last ones always show. */
+export const PATH_MAX = 60
+export const PATH_KEEP_END = 14
+
 function setCommentError(id: string, message: string | null): void {
   update(commentErrors, (all) => {
     const next = { ...all }
@@ -140,22 +172,43 @@ function changeComment(id: string, change: { checked?: boolean; body?: string })
     .catch((error: unknown) => setCommentError(id, messageOf(error)))
 }
 
+/** Deletes an Agent Finding (diff-view notes are deleted in Orca's diff view). */
+function deleteComment(id: string): void {
+  const url = read(draftUrl)
+  if (url === null) return
+  setCommentError(id, null)
+  plugin
+    .request('rr.deleteDraftComment', { url, id })
+    .then((answer) => {
+      set(draft, answer)
+      update(edits, (all) => {
+        const next = { ...all }
+        delete next[id]
+        return next
+      })
+    })
+    .catch((error: unknown) => setCommentError(id, messageOf(error)))
+}
+
 function setEdit(id: string, text: string): void {
   update(edits, (all) => ({ ...all, [id]: text }))
 }
 
-/** `src/a.ts:8–10`, `src/a.ts:10`, or "General comment". */
+/** `src/a.ts:8–10`, `src/a.ts:10`, or "General comment"; a long path loses its middle. */
 function locationOf(comment: ReviewCommentView): string {
   if (comment.filePath === null) return 'General comment'
-  if (comment.line === null) return comment.filePath
+  const path = truncateMiddle(comment.filePath, PATH_MAX, PATH_KEEP_END)
+  if (comment.line === null) return path
   const lines = comment.startLine === undefined ? `${comment.line}` : `${comment.startLine}–${comment.line}`
-  return `${comment.filePath}:${lines}`
+  return `${path}:${lines}`
 }
 
 export function ReviewDraftScreen() {
   const current = read(draft)
   const failure = read(draftFailure)
   const checked = current?.comments.filter((c) => c.checked).length ?? 0
+  const url = read(draftUrl)
+  const error = read(actionError)
   return (
     <Stack gap="md">
       <Row gap="sm">
@@ -195,15 +248,43 @@ export function ReviewDraftScreen() {
             </Callout>
           )}
           <MovedOn comments={current.comments} />
+          {error !== null && (
+            <Text tone="danger" size="xs">
+              {error}
+            </Text>
+          )}
           <Section
             title="Diff-view notes"
             empty="No diff-view notes. Add them in Orca's diff view; they show up here."
             comments={current.comments.filter((c) => c.origin === 'diff-note')}
+            action={
+              url !== null && (
+                <SectionButton
+                  which="changes"
+                  icon="branch"
+                  label="View changes"
+                  tooltip="Go to the diff view"
+                  onPress={() => showChanges(url)}
+                />
+              )
+            }
           />
           <Section
             title="Agent Findings"
             empty="No Agent Findings yet. Run an Agent Review, then import again."
             comments={current.comments.filter((c) => c.origin === 'agent-finding')}
+            action={
+              url !== null &&
+              hasReviewPrompt() && (
+                <SectionButton
+                  which="agent"
+                  icon="agent"
+                  label="Run Agent Review"
+                  tooltip="Start an agent review"
+                  onPress={() => runAgentReview(url)}
+                />
+              )
+            }
           />
         </Stack>
       )}
@@ -237,10 +318,40 @@ function MovedOn({ comments }: { comments: ReviewCommentView[] }) {
   )
 }
 
-function Section({ title, empty, comments }: { title: string; empty: string; comments: ReviewCommentView[] }) {
+/** A section heading's icon button, with a spinner beside it while its request runs. */
+function SectionButton(props: {
+  which: 'changes' | 'agent'
+  icon: 'branch' | 'agent'
+  label: string
+  tooltip: string
+  onPress: () => void
+}) {
+  const current = read(acting)
   return (
-    <Stack gap="sm">
-      <Heading level={3}>{title}</Heading>
+    <Row gap="xs" align="center">
+      <IconButton
+        icon={props.icon}
+        label={props.label}
+        tooltip={props.tooltip}
+        variant="ghost"
+        size="xs"
+        disabled={current !== null}
+        onPress={props.onPress}
+      />
+      {current === props.which && <Spinner label="Working" labelHidden />}
+    </Row>
+  )
+}
+
+function Section(props: { title: string; empty: string; comments: ReviewCommentView[]; action?: OrcaNode }) {
+  const { title, empty, comments, action } = props
+  // paddingY: more room above each section than between the draft's other parts.
+  return (
+    <Box direction="column" gap="sm" paddingY="sm">
+      <Row gap="xs" align="center">
+        <Heading level={3}>{title}</Heading>
+        {action}
+      </Row>
       {comments.length === 0 ? (
         <Text muted size="sm">
           {empty}
@@ -248,7 +359,40 @@ function Section({ title, empty, comments }: { title: string; empty: string; com
       ) : (
         comments.map((c) => <CommentCard key={c.id} comment={c} />)
       )}
-    </Stack>
+    </Box>
+  )
+}
+
+/**
+ * A diff-view note's way to edit or delete it: Orca has no API for either, nor for opening the
+ * diff view at one note, so the button opens the workspace's changes. An Agent Finding's Delete.
+ */
+function CommentButtons({ comment }: { comment: ReviewCommentView }) {
+  const url = read(draftUrl)
+  if (comment.origin === 'diff-note') {
+    if (comment.posted || url === null) return null
+    return (
+      <IconButton
+        icon="edit"
+        label="Edit or delete in the diff view"
+        tooltip="Edit or delete this note in Orca's diff view"
+        variant="ghost"
+        size="xs"
+        disabled={read(acting) !== null}
+        onPress={() => showChanges(url)}
+      />
+    )
+  }
+  return (
+    <IconButton
+      icon="delete"
+      label="Delete Agent Finding"
+      tooltip="Remove this finding from the Review Draft"
+      variant="ghost"
+      tone="danger"
+      size="xs"
+      onPress={() => deleteComment(comment.id)}
+    />
   )
 }
 
@@ -265,10 +409,11 @@ function CommentCard({ comment }: { comment: ReviewCommentView }) {
           disabled={comment.posted}
           onChange={(checked) => changeComment(comment.id, { checked })}
         />
-        <Row gap="xs">
+        <Row gap="xs" align="center">
           {comment.outdated === true && <Badge tone="warning">May be outdated</Badge>}
           {comment.stale === true && <Badge tone="neutral">Stale</Badge>}
           {comment.posted && <Badge tone="success">Posted</Badge>}
+          <CommentButtons comment={comment} />
         </Row>
       </Row>
       {comment.editable ? (
@@ -290,14 +435,7 @@ function CommentCard({ comment }: { comment: ReviewCommentView }) {
           )}
         </Stack>
       ) : (
-        <Stack gap="xs">
-          <Text size="sm">{comment.body}</Text>
-          {comment.origin === 'diff-note' && !comment.posted && (
-            <Text muted size="xs">
-              Edit it in Orca's diff view.
-            </Text>
-          )}
-        </Stack>
+        <Text size="sm">{comment.body}</Text>
       )}
       {comment.failure !== undefined && (
         <Text tone="danger" size="xs">

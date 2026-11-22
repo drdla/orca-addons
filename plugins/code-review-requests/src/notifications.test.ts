@@ -57,8 +57,8 @@ test('live poll: one notification per new Review Request', async () => {
   await fakes.clock.advance(5 * MINUTE)
 
   assert.deepEqual(notes().slice(1), [
-    { title: 'New Review Request', body: '!3 Fix header\nacme/web · bob' },
-    { title: 'New Review Request', body: '!7 Add login\nacme/api · ada' }
+    { title: 'bob asked you to review Fix header', body: 'acme/web !3' },
+    { title: 'ada asked you to review Add login', body: 'acme/api !7' }
   ])
   await worker.deactivate()
 })
@@ -75,7 +75,7 @@ test('live poll: nothing changed, nothing sent', async () => {
   await worker.deactivate()
 })
 
-test('live poll: one notification per ended Review Request, saying why it ended', async () => {
+test('live poll: one notification per ended Review Request, saying why it ended; none for my own approval', async () => {
   const fakes = fakeDeps()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 1, title: 'One' })
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 2, title: 'Two' })
@@ -95,10 +95,9 @@ test('live poll: one notification per ended Review Request, saying why it ended'
       .map((n) => `${n.title} | ${n.body}`)
       .sort(),
     [
-      'Review Request ended: approved | !1 One\nacme/api',
-      'Review Request ended: closed | !3 Three\nacme/api',
-      'Review Request ended: merged | !2 Two\nacme/api',
-      'Review Request ended: you were removed as Reviewer | !4 Four\nacme/api'
+      'Three was closed | acme/api !3',
+      'Two was merged | acme/api !2',
+      'You were removed as reviewer of Four | acme/api !4'
     ]
   )
   await worker.deactivate()
@@ -112,7 +111,7 @@ test('live poll: a Review Request made draft notifies, but not as ended', async 
   fakes.gitlab.markDraft('acme/api', 1)
   await fakes.clock.advance(5 * MINUTE)
 
-  assert.deepEqual(notes().slice(1), [{ title: 'Review Request made draft', body: '!1 One\nacme/api' }])
+  assert.deepEqual(notes().slice(1), [{ title: 'One was made a draft', body: 'acme/api !1' }])
   await worker.deactivate()
 })
 
@@ -121,13 +120,13 @@ test('the reason a Review Request ended comes from one GraphQL query, not a REST
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 1, title: 'One' })
   const { worker, notes } = await startWorker(fakes)
 
-  fakes.gitlab.approve('acme/api', 1)
+  fakes.gitlab.merge('acme/api', 1)
   await fakes.clock.advance(5 * MINUTE)
 
   const operations = fakes.gitlab.requests.map((r) => r.operation)
   assert.ok(operations.includes('graphql DroppedMergeRequest'))
   assert.ok(!operations.some((o) => /^GET \/projects\/[^/]+\/merge_requests\/1$/.test(o)), 'no REST lookup')
-  assert.equal(notes().at(-1)?.title, 'Review Request ended: approved')
+  assert.equal(notes().at(-1)?.title, 'One was merged')
   await worker.deactivate()
 })
 
@@ -141,7 +140,7 @@ test('a Review Request GitLab no longer shows the user is not Ended: one neutral
   await fakes.clock.advance(5 * MINUTE)
   await fakes.clock.advance(5 * MINUTE)
 
-  assert.deepEqual(notes().slice(1), [{ title: 'Review Request no longer visible', body: '!1 One\nacme/api' }])
+  assert.deepEqual(notes().slice(1), [{ title: 'One is no longer visible to you', body: 'acme/api !1' }])
   await worker.deactivate()
 })
 
@@ -158,7 +157,7 @@ test('a 403 or 404 on the lookup means "no longer visible", not Ended', async ()
       : graphql(query, variables)
   await fakes.clock.advance(5 * MINUTE)
 
-  assert.deepEqual(notes().slice(1), [{ title: 'Review Request no longer visible', body: '!1 One\nacme/api' }])
+  assert.deepEqual(notes().slice(1), [{ title: 'One is no longer visible to you', body: 'acme/api !1' }])
   await worker.deactivate()
 })
 
@@ -187,7 +186,7 @@ test("changing the instance URL never ends the old host's Review Requests: it is
   await changeSetting('instanceUrl', 'https://gitlab.other.com')
   await fakes.clock.advance(5 * MINUTE)
 
-  assert.deepEqual(notes().slice(1), [{ title: '1 Review Request waiting', body: '!2 New host' }])
+  assert.deepEqual(notes().slice(1), [{ title: '1 Review Request waiting', body: 'author asked you to review New host' }])
   assert.ok(!other.requests.some((r) => r.operation === 'graphql DroppedMergeRequest'), 'no old-host lookup')
   assert.equal((await worker.request('rr.snapshot')).ended, undefined)
   await worker.deactivate()
@@ -213,7 +212,7 @@ test('catch-up after a restart: one summary of what changed while away', async (
   fakes.gitlab.close('acme/web', 6)
   const { worker, notes } = await startWorker(fakes, stored)
 
-  assert.deepEqual(notes(), [{ title: 'While you were away: 1 new, 1 ended', body: '!5 Came while away\nEnded: !2' }])
+  assert.deepEqual(notes(), [{ title: 'While you were away: 1 new, 1 ended', body: 'author asked you to review Came while away\nGets merged was merged' }])
   await worker.deactivate()
 })
 
@@ -226,7 +225,7 @@ test('catch-up says only what changed', async () => {
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/web', iid: 6, title: 'Six' })
   const { worker, notes } = await startWorker(fakes, stored)
 
-  assert.deepEqual(notes(), [{ title: 'While you were away: 2 new', body: '!6 Six\n!5 Five' }])
+  assert.deepEqual(notes(), [{ title: 'While you were away: 2 new', body: 'author asked you to review Six\nauthor asked you to review Five' }])
   await worker.deactivate()
 })
 
@@ -251,7 +250,7 @@ test('catch-up after the Mac slept through more than 2 intervals', async () => {
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/web', iid: 6, title: 'Six' })
   await fakes.clock.advance(1 * MINUTE)
 
-  assert.deepEqual(notes().slice(1), [{ title: 'While you were away: 2 new', body: '!6 Six\n!5 Five' }])
+  assert.deepEqual(notes().slice(1), [{ title: 'While you were away: 2 new', body: 'author asked you to review Six\nauthor asked you to review Five' }])
   await worker.deactivate()
 })
 
@@ -263,7 +262,7 @@ test('a short sleep is not a catch-up: still one notification per item', async (
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/web', iid: 5, title: 'Five', author: 'ada' })
   await fakes.clock.advance(1 * MINUTE)
 
-  assert.deepEqual(notes(), [{ title: 'New Review Request', body: '!5 Five\nacme/web · ada' }])
+  assert.deepEqual(notes(), [{ title: 'ada asked you to review Five', body: 'acme/web !5' }])
   await worker.deactivate()
 })
 
@@ -280,7 +279,7 @@ test('failed polls notify nothing, and recovery after more than 2 intervals is a
   assert.equal(notes().length, 1)
 
   await fakes.clock.advance(5 * MINUTE)
-  assert.deepEqual(notes().slice(1), [{ title: 'While you were away: 1 new, 1 ended', body: '!5 Five\nEnded: !1' }])
+  assert.deepEqual(notes().slice(1), [{ title: 'While you were away: 1 new, 1 ended', body: 'author asked you to review Five\nOne was merged' }])
   await worker.deactivate()
 })
 
@@ -302,6 +301,6 @@ test('if GitLab cannot say why a Review Request dropped off, it asks again on th
   assert.equal(notes().length, 1)
 
   await fakes.clock.advance(5 * MINUTE)
-  assert.deepEqual(notes().slice(1), [{ title: 'Review Request ended: merged', body: '!1 One\nacme/api' }])
+  assert.deepEqual(notes().slice(1), [{ title: 'One was merged', body: 'acme/api !1' }])
   await worker.deactivate()
 })

@@ -57,6 +57,7 @@ function toView(node: ReviewRequestNode): ReviewRequestView {
     projectPath: node.project.fullPath,
     iid: Number(node.iid),
     author: node.author.username,
+    authorName: node.author.name,
     // Until withRequestedAt() knows better: the earliest the user can have been added.
     requestedAt: Date.parse(node.createdAt),
     sourceBranch: node.sourceBranch,

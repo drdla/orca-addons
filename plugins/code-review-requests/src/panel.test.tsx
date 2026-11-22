@@ -82,6 +82,18 @@ test('draws a card per Review Request in the order the worker gives, longest wai
   await view.unmount()
 })
 
+test("a card names the author by their GitLab display name, else their username", async () => {
+  const host = mockHost({
+    requests: { 'rr.snapshot': snapshot(card(7, { author: 'ada', authorName: 'Ada Lovelace' }), card(3, { author: 'bob' })) }
+  })
+  const view = await mount(panel, { host })
+
+  assert.ok(view.find({ type: 'Text', text: 'by Ada Lovelace' }))
+  assert.ok(view.find({ type: 'Text', text: 'by bob' }))
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
 test('an overdue card gets a Late badge; the tabs carry no icon', async () => {
   const host = mockHost({ requests: { 'rr.snapshot': snapshot(card(50, { overdue: true }), card(1)) } })
   const view = await mount(panel, { host })

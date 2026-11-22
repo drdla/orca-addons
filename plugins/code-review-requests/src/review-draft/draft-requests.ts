@@ -1,5 +1,5 @@
 // The Review Draft's panel requests (#29): `rr.draft` imports and answers a draft,
-// `rr.updateDraftComment` curates it. worker.ts calls registerDraftRequests once in activate.
+// `rr.updateDraftComment` and `rr.deleteDraftComment` curate it. worker.ts calls registerDraftRequests once in activate.
 import type { OrcaWorkerApi } from 'orca/worker'
 import type { Deps } from '../deps'
 import type { ReviewRequestCard } from '../protocol'
@@ -45,6 +45,7 @@ export function registerDraftRequests(
   orca.panels.handle('rr.updateDraftComment', async ({ url, ...change }) =>
     thenChanged(draftImport.change(targetOf(url), change))
   )
+  orca.panels.handle('rr.deleteDraftComment', async ({ url, id }) => thenChanged(draftImport.remove(targetOf(url), id)))
   return {
     async workspaceMoved(url, from) {
       await drafts.noteWrittenAt(url, from)

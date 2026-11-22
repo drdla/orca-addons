@@ -111,7 +111,7 @@ test('an edited finding is saved with Save; diff-view notes have no editor', asy
   })
 
   assert.equal(view.findAll({ type: 'Textarea' }).length, 1)
-  assert.ok(view.find({ text: "Edit it in Orca's diff view." }))
+  assert.ok(view.find({ type: 'IconButton', label: 'Edit or delete in the diff view' }))
   assert.equal(view.find({ type: 'Button', text: 'Save' }), null, 'no Save until something changed')
   await view.type(view.find({ type: 'Textarea', label: 'Agent Finding' })!, 'new text', { replace: true })
   await view.press(view.find({ type: 'Button', text: 'Save' })!)
@@ -220,5 +220,59 @@ test('an open Review Draft imports again when the panel comes back into view, no
   await view.settled()
   assert.equal(calls, 2)
   assert.ok(view.find({ text: 'Added in the diff view.' }))
+  await view.unmount()
+})
+
+test('a diff-view note opens the diff view to edit or delete it; an Agent Finding is deleted', async () => {
+  const asked: string[] = []
+  const deletes: unknown[] = []
+  const { view } = await openDraft({
+    'rr.draft': draft([comment('note:n1'), comment('finding:a')]),
+    'rr.showChanges': () => {
+      asked.push('showChanges')
+      return { opened: true }
+    },
+    'rr.deleteDraftComment': (input: unknown) => {
+      deletes.push(input)
+      return draft([comment('note:n1')])
+    }
+  })
+
+  await view.press(view.find({ type: 'IconButton', label: 'Edit or delete in the diff view' })!)
+  assert.deepEqual(asked, ['showChanges'])
+  await view.press(view.find({ type: 'IconButton', label: 'Delete Agent Finding' })!)
+  assert.deepEqual(deletes, [{ url: URL, id: 'finding:a' }])
+  assert.equal(view.find({ type: 'Textarea', label: 'Agent Finding' }), null)
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('the section headings go to the diff view and run an Agent Review', async () => {
+  const asked: string[] = []
+  const { view } = await openDraft({
+    'rr.draft': draft([]),
+    'rr.showChanges': () => {
+      asked.push('showChanges')
+      return { opened: true }
+    },
+    'rr.runAgentReview': () => {
+      asked.push('runAgentReview')
+      return { started: true }
+    }
+  })
+
+  await view.press(view.find({ type: 'IconButton', label: 'View changes' })!)
+  await view.press(view.find({ type: 'IconButton', label: 'Run Agent Review' })!)
+  assert.deepEqual(asked, ['showChanges', 'runAgentReview'])
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('a long file path loses its middle and keeps its end', async () => {
+  const filePath = 'apps/admin/src/modules/universalFilters/components/filters/TimeframeFilter.tsx'
+  const { view } = await openDraft({ 'rr.draft': draft([comment('note:n1', { filePath })]) })
+
+  const label = `${filePath.slice(0, 45)}…${filePath.slice(-14)}:10`
+  assert.ok(view.find({ type: 'Checkbox', label }), label)
   await view.unmount()
 })

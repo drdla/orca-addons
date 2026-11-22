@@ -221,7 +221,7 @@ test('breaking after working sends exactly one notification, even across retries
 
   assert.deepEqual(host.callsOf('notifications.show'), [
     {
-      title: 'GitLab Review Requests need you',
+      title: "Can't check for Review Requests",
       body: 'glab is not logged in to gitlab.example.com. Click the status bar to fix it.'
     }
   ])

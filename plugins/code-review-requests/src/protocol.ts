@@ -8,7 +8,10 @@ export type ReviewRequestView = {
   title: string
   projectPath: string
   iid: number
+  /** The author's GitLab username. */
   author: string
+  /** The author's display name, for cards and notifications; absent in views stored before it existed. */
+  authorName?: string
   /** When the user was added as Reviewer (ms): when the Review Request started waiting. */
   requestedAt: number
   /** The MR's branches, for the Review Prompt (#27); absent in views stored before #27. */
@@ -298,6 +301,8 @@ declare module 'orca' {
       input: { url: string; id: string; checked?: boolean; body?: string }
       output: ReviewDraftView
     }
+    /** Deletes an Agent Finding from the Review Draft; later imports leave it out. */
+    'rr.deleteDraftComment': { input: { url: string; id: string }; output: ReviewDraftView }
     /** The confirm step: what posting the Review Draft would send and publish (#30). Reads GitLab only. */
     'rr.postPreview': { input: { url: string }; output: PostPreview }
     /**

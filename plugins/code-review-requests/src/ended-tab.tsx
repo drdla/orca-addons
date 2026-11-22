@@ -17,6 +17,7 @@ import {
   Text,
   update,
 } from 'orca'
+import { authorNameOf } from './author'
 import { Button } from './button'
 import { MergeRequestLink } from './merge-request-link'
 import type { EndedCard, EndedReason, RemovalCheck, ReviewRequestsSnapshot } from './protocol'
@@ -137,7 +138,7 @@ function EndedCardView(props: {
           <Box direction="column">
             <Box height={2} />
             <Text weight="semibold">{shortTitle(card.title)}</Text>
-            <Text muted size="xs">{`by ${card.author}`}</Text>
+            <Text muted size="xs">{`by ${authorNameOf(card)}`}</Text>
           </Box>
         </Row>
         <ReasonPill reason={card.reason} />

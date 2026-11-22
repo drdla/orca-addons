@@ -76,7 +76,7 @@ export function createFailureHandling(options: FailureHandlingOptions) {
         // Only on the transition from working; never on a first run (the status bar covers it).
         if ((await remember('needs-you')) === 'ok') {
           await options.notify({
-            title: 'GitLab Review Requests need you',
+            title: "Can't check for Review Requests",
             body: `${summaryOf(needsYou)}. Click the status bar to fix it.`
           })
         }
