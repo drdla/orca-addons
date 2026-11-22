@@ -175,7 +175,7 @@ test("the card's title starts with the MR id, a button with the URL as tooltip t
 
   const link = view.find({ type: 'Button', text: '7' })
   assert.ok(link)
-  assert.equal(link!.props.tooltip, card(7).url)
+  assert.equal(link!.props.tooltip, `Open ${card(7).url}`)
   assert.equal(link!.props.icon, undefined)
   assert.equal(view.find({ text: /acme\/api/ }), null, 'the project path is only in the tooltip')
   await view.press(link!)
