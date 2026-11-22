@@ -225,8 +225,10 @@ export function ReviewDraftScreen() {
         failure === null && <Skeleton lines={4} label="Loading the Review Draft" />
       ) : (
         <Stack gap="md">
-          <Text weight="semibold">{current.title}</Text>
-          <PostSection draft={current} onDraft={(answer) => set(draft, answer)} />
+          <Stack gap="lg">
+            <Text weight="semibold">{current.title}</Text>
+            <PostSection draft={current} onDraft={(answer) => set(draft, answer)} />
+          </Stack>
           {current.warnings.length > 0 && (
             <Callout tone="warning" icon="warning" title="Some things were not imported">
               <Stack gap="xs">

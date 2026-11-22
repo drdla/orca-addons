@@ -109,6 +109,7 @@ test('the page has the outcome, the summary and Post Review', async () => {
 
   assert.equal(view.valueOf(view.find({ type: 'RadioGroup', label: 'Outcome' })!), 'requested_changes')
   assert.ok(view.find({ type: 'Textarea', label: 'Summary' }))
+  assert.ok(view.find({ text: '2 review notes included from the list below' }))
   assert.equal(view.find(postReview)!.disabled, false)
   assert.deepEqual(view.errors, [])
   await view.unmount()

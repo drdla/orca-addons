@@ -167,12 +167,13 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
       <Textarea
         label="Summary"
         labelHidden
-        rows={3}
+        rows={2}
         placeholder="Optional: a note on the whole review"
         value={read(summary)}
         disabled={busy}
         onChange={(value) => set(summary, value)}
       />
+      <Text muted size="xs">{`${plural(unposted, 'review note')} included from the list below`}</Text>
       {current.kind === 'confirm' && <Warnings preview={current.preview} />}
       <Row gap="sm">
         {current.kind === 'confirm' && confirming ? (
