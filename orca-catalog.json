@@ -17,8 +17,8 @@
       "releases": [
         {
           "version": "0.6.7",
-          "commit": "15956eeb9d5ad33c1331f258d869fba235767f3a",
-          "contentHash": "96662d28f043c4a008de92e7ba24404d2713c24396faeaf3cf50f434207c71f7",
+          "commit": "41be013dc3c3553d3d28d2645a4b0304a69e0f8b",
+          "contentHash": "7e51895ab5912564ef5f948d4fc4c94fee719fc5e73966b89f4533e21ac05506",
           "execution": "trusted-worker",
           "minimumOrca": "1.4.259",
           "name": "Code Review Requests",
@@ -72,16 +72,16 @@
                 "height": 1600
               },
               {
-                "path": "plugins/code-review-requests/images/review-workspace.png",
+                "path": "plugins/code-review-requests/images/start-review.png",
                 "alt": "An Orca window with a review workspace, the merge request description, the review agent in a terminal and the Reviewing tab",
-                "sha256": "e75d91250947ff88fba6fa9b429d43abfb51bbea561daa7b49a48c8f216e850c",
+                "sha256": "17edf93f53af6763c5e24b21b2ea0ee7dfc946e13781c3914187bc090f114c80",
                 "width": 2560,
                 "height": 1600
               },
               {
-                "path": "plugins/code-review-requests/images/review-draft.png",
-                "alt": "The Review Draft: diff-view notes and agent findings with checkboxes, a summary, the Approve outcome and Post review",
-                "sha256": "81900ebd8d1b31658decfb9a4ed839113c1810ad98b35150fc60a22ed9d584a1",
+                "path": "plugins/code-review-requests/images/finish-review.png",
+                "alt": "Finish Review: diff-view notes and agent findings with checkboxes, a summary, the Approve outcome and Post review",
+                "sha256": "68c289c644023e5460fe59631010710e0c3ca2f479062c7617648e910c42cd1e",
                 "width": 2560,
                 "height": 1600
               }
