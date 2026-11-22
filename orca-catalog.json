@@ -16,9 +16,9 @@
       "categories": ["productivity"],
       "releases": [
         {
-          "version": "0.7.0",
-          "commit": "219fc348772e901b2ae1e4987dee8f65072f763b",
-          "contentHash": "a07f22767299defae8197723326eab065a329a6fcfd2f0b938836aa66fdf7779",
+          "version": "0.6.7",
+          "commit": "66cc517d2b77011b54a607f737b7a021fac01451",
+          "contentHash": "03a061371fe680f50e81ef918829a3283acb5e107066fc1b6c823d3b5ad98e1c",
           "execution": "trusted-worker",
           "minimumOrca": "1.4.259",
           "name": "Code Review Requests",
@@ -43,45 +43,45 @@
           ],
           "images": {
             "icon": {
-              "path": "plugins/code-review-requests/images/icon-tiger.png",
+              "path": "plugins/code-review-requests/images/icon.png",
               "alt": "Code Review Requests",
-              "sha256": "824457348d74723dd32c5b076eea19ba6485f28e7eac83bfa06fcbd7caeb53a1",
-              "width": 256,
-              "height": 256
+              "sha256": "28771f8b1f23f9efad0913805fbb30f7599d44046db2c0de228545128441078b",
+              "width": 512,
+              "height": 512
             },
             "cover": {
-              "path": "plugins/code-review-requests/images/cover.jpg",
-              "alt": "A samurai tiger in armour kneeling in front of Mount Fuji, beside the title Code Review Requests and four Review Request cards",
-              "sha256": "a7ff8713fa8025768cc97ebc7075663cd533dc3fe4bdad3986ec229777934f01",
+              "path": "plugins/code-review-requests/images/cover-tiger.jpg",
+              "alt": "A samurai tiger in armour kneeling in front of Mount Fuji, beside the title Code Review Requests and a Review Requests card",
+              "sha256": "7253f789bbf8b2518c1aade6829781001d0aeb212dd94e060f50f9bf3ba726c6",
               "width": 1376,
-              "height": 860
+              "height": 768
             },
             "screenshots": [
               {
-                "path": "plugins/code-review-requests/images/review-queue.png",
+                "path": "plugins/code-review-requests/images/review-requests.png",
                 "alt": "The Review Requests panel: merge requests with their CI status, open comments, age and a Late badge",
-                "sha256": "866aa186f582caddf0054867abda4de714306aabcaa7dcfbc2c0252e4ff73e28",
+                "sha256": "4a55981d366bc87b0cddb0be9100f2fb51d1ef147a9c1bb4d5631414edfa01e8",
                 "width": 2560,
                 "height": 1600
               },
               {
-                "path": "plugins/code-review-requests/images/status-count.png",
+                "path": "plugins/code-review-requests/images/status-bar.png",
                 "alt": "The status bar item showing 3 | 3! with the tooltip \"6 Review Requests, 3 overdue. Click to open.\"",
-                "sha256": "087724097d395e684fa296e7fa24e6469e573ab35e993804cde7b0d09f7da732",
+                "sha256": "02455c38b8801ce9d08bd2b48e6450c7d1edb3d32243b7eada9d46b633da76fc",
                 "width": 2560,
                 "height": 1600
               },
               {
-                "path": "plugins/code-review-requests/images/start-review.png",
+                "path": "plugins/code-review-requests/images/review-workspace.png",
                 "alt": "An Orca window with a review workspace, the merge request description, the review agent in a terminal and the Reviewing tab",
-                "sha256": "61de4111c13efa3fb8767826966ee5c7f19fbd4501ec1befb773dde97cd1dcbb",
+                "sha256": "e75d91250947ff88fba6fa9b429d43abfb51bbea561daa7b49a48c8f216e850c",
                 "width": 2560,
                 "height": 1600
               },
               {
-                "path": "plugins/code-review-requests/images/finish-review.png",
-                "alt": "Finish Review: the Request changes outcome, a summary and Post Review above review comments and agent findings with checkboxes",
-                "sha256": "2ed90c4504346b3106d1b424c149d82045945500cd7acf53d12541a41d043fc9",
+                "path": "plugins/code-review-requests/images/review-draft.png",
+                "alt": "The Review Draft: diff-view notes and agent findings with checkboxes, a summary, the Approve outcome and Post review",
+                "sha256": "81900ebd8d1b31658decfb9a4ed839113c1810ad98b35150fc60a22ed9d584a1",
                 "width": 2560,
                 "height": 1600
               }
@@ -121,6 +121,13 @@
               "sha256": "28771f8b1f23f9efad0913805fbb30f7599d44046db2c0de228545128441078b",
               "width": 512,
               "height": 512
+            },
+            "cover": {
+              "path": "plugins/code-review-requests/images/cover-tiger.jpg",
+              "alt": "A samurai tiger in armour kneeling in front of Mount Fuji, beside the title Code Review Requests and a Review Requests card",
+              "sha256": "7253f789bbf8b2518c1aade6829781001d0aeb212dd94e060f50f9bf3ba726c6",
+              "width": 1376,
+              "height": 768
             },
             "screenshots": [
               {

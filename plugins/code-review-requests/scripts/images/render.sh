@@ -28,7 +28,7 @@ shot todo 1280,800 review-queue
 shot statusbar 1280,800 status-count
 shot workspace 1280,800 start-review
 shot draft 1280,800 finish-review
-# review-requests.png, status-bar.png, review-workspace.png and review-draft.png stay as released up to 0.6.6: the catalog pins each
+# review-requests.png, status-bar.png, review-workspace.png, review-draft.png and cover-tiger.jpg stay as released up to 0.6.7: the catalog pins each
 # release's images by path and sha256, so a changed screenshot gets a new name.
 shot cards 414,600 review-cards # four cards on transparent, the cards on the cover; kept next to the mock, trimmed below
 mv "$out/review-cards.png" "$here/review-cards.png"
