@@ -30,7 +30,7 @@
     },
     {
       "path": "images/finish-review.png",
-      "alt": "Finish Review: diff-view notes and agent findings with checkboxes, a summary, the Approve outcome and Post review",
+      "alt": "Finish Review: the Approve outcome, a summary and Post Review above diff-view notes and agent findings with checkboxes",
       "caption": "Collect comments and agent findings, post them as one review"
     }
   ],

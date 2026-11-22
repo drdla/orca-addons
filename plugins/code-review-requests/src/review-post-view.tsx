@@ -1,13 +1,12 @@
-// Posting a Review Draft from its drill-in view (#30): "Submit N comments to GitLab" opens a confirm step
-// (what posts, my other GitLab drafts that publish too, warnings, a summary and the outcome), then
-// shows what happened: posted, partly failed (Retry / Delete failed drafts), or refused. Gated on
+// Posting a Review Draft from its drill-in view (#30): the outcome, a summary and Post Review. Post
+// Review asks GitLab first; warnings or my other GitLab drafts that would publish too show above the
+// button (Post Anyway / Cancel). Then it shows what happened: posted, partly failed (Retry / Delete
+// failed drafts), or refused. Gated on
 // the connection's canPost: false disables it with the api-scope hint; null (unknown) allows it,
 // and the worker turns a 403 into the same hint.
 import {
   atom,
-  Box,
   Callout,
-  Heading,
   plugin,
   read,
   Row,
@@ -27,19 +26,19 @@ import { plural } from './plural'
 export type PostStep =
   | { kind: 'idle' }
   | { kind: 'loading' }
-  /** `postingSince`: when Post review was pressed (ms), while the worker posts; else null. */
+  /** `postingSince`: when posting started (ms), while the worker posts; else null. */
   | { kind: 'confirm'; preview: PostPreview; postingSince: number | null }
   | { kind: 'done'; result: Omit<PostResult, 'draft'> }
 
 /** The post request's timeout: a "posting" step older than this lost its answer (a reload). */
 const POST_TIMEOUT_MS = 120_000
 
-// Persisted (plugin scope) so the confirm step and its result survive a panel reload, and so
+// Persisted (plugin scope) so the warnings and the result survive a panel reload, and so
 // `orca plugin check` scenarios can show each step.
 const step = atom<PostStep>('rr.postStep', { kind: 'idle' }, { persist: 'plugin' })
 const summary = atom('rr.postSummary', '', { persist: 'plugin' })
 const outcome = atom<ReviewOutcome>('rr.postOutcome', 'comment', { persist: 'plugin' })
-/** Why loading the confirm step, posting or deleting failed drafts didn't work. */
+/** Why checking, posting or deleting failed drafts didn't work. */
 const failure = atom<string | null>(null)
 const deleting = atom(false)
 
@@ -54,7 +53,7 @@ export const PROVIDER = 'GitLab'
 
 export const API_SCOPE_HINT = 'Posting a review needs a token with the api scope.'
 
-/** Back to the Post button (opening or leaving a Review Draft). */
+/** A fresh form (opening or leaving a Review Draft). */
 export function resetPosting(): void {
   set(step, { kind: 'idle' })
   set(summary, '')
@@ -73,8 +72,8 @@ export function isPostingNow(): boolean {
 }
 
 /**
- * For the panel's setup: a step whose request was lost with the last panel goes back to the Post
- * button (the re-import shows what got posted). A post still within its timeout shows as posting
+ * For the panel's setup: a step whose request was lost with the last panel goes back to Post
+ * Review (the re-import shows what got posted). A post still within its timeout shows as posting
  * until the timeout has passed (isPosting), then the confirm step unlocks.
  */
 export function setupPosting(): void {
@@ -83,13 +82,19 @@ export function setupPosting(): void {
   if (current.kind === 'confirm' && current.postingSince !== null && !isPosting(current)) set(step, { kind: 'idle' })
 }
 
-/** Opens the confirm step for a Review Draft. */
-function openConfirm(url: string): void {
+/**
+ * Post Review: asks GitLab what the post would publish. With nothing to warn about it posts right
+ * away; otherwise the warnings show above the button, which becomes Post Anyway.
+ */
+function startPost(draft: ReviewDraftView, onDraft: (draft: ReviewDraftView) => void): void {
   set(step, { kind: 'loading' })
   set(failure, null)
   plugin
-    .request('rr.postPreview', { url }, { timeoutMs: 60_000 })
-    .then((preview) => set(step, { kind: 'confirm', preview, postingSince: null }))
+    .request('rr.postPreview', { url: draft.url }, { timeoutMs: 60_000 })
+    .then((preview) => {
+      if (preview.warnings.length === 0 && preview.leftoverDrafts.length === 0) post(preview, onDraft)
+      else set(step, { kind: 'confirm', preview, postingSince: null })
+    })
     .catch((error: unknown) => {
       set(step, { kind: 'idle' })
       set(failure, messageOf(error))
@@ -110,7 +115,7 @@ function post(preview: PostPreview, onDraft: (draft: ReviewDraftView) => void): 
       }
     })
     .catch((error: unknown) => {
-      set(step, { kind: 'confirm', preview, postingSince: null })
+      set(step, { kind: 'idle' })
       set(failure, messageOf(error))
     })
 }
@@ -128,37 +133,58 @@ function deleteFailedDrafts(url: string, onDraft: (draft: ReviewDraftView) => vo
     .finally(() => set(deleting, false))
 }
 
-/** The Post button, the confirm step, or what posting did, for the open Review Draft. */
+/** The outcome, the summary and Post Review for the open Review Draft, and what posting did. */
 export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: ReviewDraftView) => void }) {
   const { draft, onDraft } = props
   const current = read(step)
   const error = read(failure)
+  const posting = isPosting(current)
+  const busy = posting || current.kind === 'loading'
+  const confirming = current.kind === 'confirm' && !posting
   const unposted = draft.comments.filter((c) => c.checked && !c.posted).length
+  const nothingToPost = unposted === 0 && read(summary).trim() === '' && read(outcome) === 'comment'
   const blocked = canPostReviews() === false
   return (
     <Stack gap="sm">
-      {current.kind === 'done' && <Outcome result={current.result} url={draft.url} onDraft={onDraft} />}
-      {(current.kind === 'idle' || current.kind === 'loading' || current.kind === 'done') && (
-        <Stack gap="xs">
-          <Row gap="sm">
-            <Button
-              icon="upload"
-              disabled={blocked || unposted === 0 || current.kind === 'loading'}
-              onPress={() => openConfirm(draft.url)}
-            >
-              {`Submit ${plural(unposted, 'comment')} to ${PROVIDER}`}
-            </Button>
-            {current.kind === 'loading' && <Spinner label="Checking GitLab" labelHidden />}
-          </Row>
-          {blocked && (
-            <Text muted size="xs">
-              {API_SCOPE_HINT}
-            </Text>
-          )}
-        </Stack>
-      )}
-      {current.kind === 'confirm' && (
-        <Confirm preview={current.preview} posting={isPosting(current)} onDraft={onDraft} />
+      {current.kind === 'done' && <Outcome result={current.result} draft={draft} onDraft={onDraft} />}
+      <Select
+        label="Outcome"
+        options={OUTCOMES}
+        value={read(outcome)}
+        disabled={busy}
+        onChange={(value) => set(outcome, value as ReviewOutcome)}
+      />
+      <Textarea
+        label="Summary"
+        rows={3}
+        placeholder="Optional: a note on the whole review"
+        value={read(summary)}
+        disabled={busy}
+        onChange={(value) => set(summary, value)}
+      />
+      {current.kind === 'confirm' && <Warnings preview={current.preview} />}
+      <Row gap="sm">
+        {current.kind === 'confirm' && confirming ? (
+          <Button icon="upload" onPress={() => post(current.preview, onDraft)}>
+            Post Anyway
+          </Button>
+        ) : (
+          <Button icon="upload" disabled={blocked || nothingToPost || busy} onPress={() => startPost(draft, onDraft)}>
+            Post Review
+          </Button>
+        )}
+        {confirming && (
+          <Button variant="ghost" onPress={() => set(step, { kind: 'idle' })}>
+            Cancel
+          </Button>
+        )}
+        {current.kind === 'loading' && <Spinner label="Checking GitLab" labelHidden />}
+        {posting && <Spinner label="Posting" labelHidden />}
+      </Row>
+      {blocked && (
+        <Text muted size="xs">
+          {API_SCOPE_HINT}
+        </Text>
       )}
       {error !== null && (
         <Callout tone="danger" icon="error" title="Couldn't post the Review Draft">
@@ -169,14 +195,12 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
   )
 }
 
-function Confirm(props: { preview: PostPreview; posting: boolean; onDraft: (draft: ReviewDraftView) => void }) {
-  const { preview, posting } = props
+/** What GitLab said before posting: warnings, and my other GitLab drafts that publish too. */
+function Warnings(props: { preview: PostPreview }) {
+  const { preview } = props
+  if (preview.warnings.length === 0 && preview.leftoverDrafts.length === 0) return null
   return (
-    <Box border radius="md" padding="sm" direction="column" gap="sm">
-      <Heading level={3}>Post review</Heading>
-      <Text size="sm">
-        {preview.comments === 0 ? 'No Review Comments post: only the summary and outcome.' : `${plural(preview.comments, 'Review Comment')} post as one review.`}
-      </Text>
+    <Stack gap="sm">
       {preview.warnings.length > 0 && (
         <Callout tone="warning" icon="warning" title="Before you post">
           <Stack gap="xs">
@@ -202,35 +226,11 @@ function Confirm(props: { preview: PostPreview; posting: boolean; onDraft: (draf
           </Stack>
         </Callout>
       )}
-      <Textarea
-        label="Summary"
-        rows={3}
-        placeholder="Optional: a note on the whole review"
-        value={read(summary)}
-        disabled={posting}
-        onChange={(value) => set(summary, value)}
-      />
-      <Select
-        label="Outcome"
-        options={OUTCOMES}
-        value={read(outcome)}
-        disabled={posting}
-        onChange={(value) => set(outcome, value as ReviewOutcome)}
-      />
-      <Row gap="sm">
-        <Button icon="upload" disabled={posting} onPress={() => post(preview, props.onDraft)}>
-          Post review
-        </Button>
-        <Button variant="ghost" disabled={posting} onPress={resetPosting}>
-          Cancel
-        </Button>
-        {posting && <Spinner label="Posting" labelHidden />}
-      </Row>
-    </Box>
+    </Stack>
   )
 }
 
-function Outcome(props: { result: Omit<PostResult, 'draft'>; url: string; onDraft: (draft: ReviewDraftView) => void }) {
+function Outcome(props: { result: Omit<PostResult, 'draft'>; draft: ReviewDraftView; onDraft: (draft: ReviewDraftView) => void }) {
   const { result } = props
   return (
     <Stack gap="sm">
@@ -258,7 +258,7 @@ function Outcome(props: { result: Omit<PostResult, 'draft'>; url: string; onDraf
               They stay in the Review Draft, and GitLab keeps their drafts. Retry replaces those drafts.
             </Text>
             <Row gap="sm">
-              <Button size="xs" icon="refresh" onPress={() => openConfirm(props.url)}>
+              <Button size="xs" icon="refresh" onPress={() => startPost(props.draft, props.onDraft)}>
                 Retry
               </Button>
               <Button
@@ -267,7 +267,7 @@ function Outcome(props: { result: Omit<PostResult, 'draft'>; url: string; onDraf
                 tone="danger"
                 icon="delete"
                 disabled={read(deleting)}
-                onPress={() => deleteFailedDrafts(props.url, props.onDraft)}
+                onPress={() => deleteFailedDrafts(props.draft.url, props.onDraft)}
               >
                 Delete failed drafts
               </Button>

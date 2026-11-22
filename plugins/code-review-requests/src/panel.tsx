@@ -608,7 +608,7 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
           size="xs"
           variant="outline"
           icon="check"
-          tooltip="Pick the comments to send, then submit them to GitLab as one review"
+          tooltip="Pick the comments, the outcome and a summary, then post them to GitLab as one review"
           onPress={() => openReviewDraft(card.url)}
         >
           Finish Review

@@ -118,7 +118,7 @@ test('an edited finding is saved with Save; diff-view notes have no editor', asy
     }
   })
 
-  assert.equal(view.findAll({ type: 'Textarea' }).length, 1)
+  assert.equal(view.findAll({ type: 'Textarea', label: 'Agent Finding' }).length, 1)
   assert.ok(view.find({ type: 'IconButton', label: 'Edit or delete in the diff view' }))
   assert.equal(view.find({ type: 'Button', text: 'Save' }), null, 'no Save until something changed')
   await view.type(view.find({ type: 'Textarea', label: 'Agent Finding' })!, 'new text', { replace: true })
@@ -160,7 +160,7 @@ test('comments that may be outdated and stale Agent Findings are marked, and sta
   assert.ok(view.find({ text: /2 Review Comments may be outdated: their lines changed since they were written/ }))
   assert.ok(view.find({ text: /2 Agent Findings are from an older commit: run Agent Review for fresh ones, then import again/ }))
   // Still editable and checkable.
-  assert.equal(view.findAll({ type: 'Textarea' }).length, 2)
+  assert.equal(view.findAll({ type: 'Textarea', label: 'Agent Finding' }).length, 2)
   assert.notEqual(boxAt(view, 'src/login.ts:10')!.disabled, true)
   await view.toggle(boxAt(view, 'src/login.ts:10')!)
   assert.equal(view.valueOf(boxAt(view, 'src/login.ts:10')!), false)
