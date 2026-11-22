@@ -2,35 +2,35 @@
   "manifestVersion": 2,
   "id": "code-review-requests",
   "name": "Code Review Requests",
-  "version": "0.6.7",
+  "version": "0.7.0",
   "description": "Your GitLab Review Requests in Orca: a count in the status bar, a panel, and review workspaces.",
   "author": { "name": "Dominik Rodler" },
   "repository": "https://github.com/drdla/orca-addons",
   "license": "MIT",
-  "icon": "images/icon.png",
+  "icon": "images/icon-tiger.png",
   "cover": {
-    "path": "images/cover-tiger.jpg",
-    "alt": "A samurai tiger in armour kneeling in front of Mount Fuji, beside the title Code Review Requests and a Review Requests card"
+    "path": "images/cover.jpg",
+    "alt": "A samurai tiger in armour kneeling in front of Mount Fuji, beside the title Code Review Requests and four Review Request cards"
   },
   "screenshots": [
     {
-      "path": "images/review-requests.png",
+      "path": "images/review-queue.png",
       "alt": "The Review Requests panel: merge requests with their CI status, open comments, age and a Late badge",
       "caption": "Every merge request waiting for your review"
     },
     {
-      "path": "images/status-bar.png",
+      "path": "images/status-count.png",
       "alt": "The status bar item showing 3 | 3! with the tooltip \"6 Review Requests, 3 overdue. Click to open.\"",
       "caption": "The count in the status bar"
     },
     {
-      "path": "images/review-workspace.png",
+      "path": "images/start-review.png",
       "alt": "An Orca window with a review workspace, the merge request description, the review agent in a terminal and the Reviewing tab",
       "caption": "Start Review opens a review workspace and runs the agent"
     },
     {
-      "path": "images/review-draft.png",
-      "alt": "The Review Draft: diff-view notes and agent findings with checkboxes, a summary, the Approve outcome and Post review",
+      "path": "images/finish-review.png",
+      "alt": "Finish Review: the Request changes outcome, a summary and Post Review above review comments and agent findings with checkboxes",
       "caption": "Collect comments and agent findings, post them as one review"
     }
   ],

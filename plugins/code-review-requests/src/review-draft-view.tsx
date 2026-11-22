@@ -12,6 +12,7 @@ import {
   Box,
   Callout,
   Checkbox,
+  EmptyState,
   Heading,
   IconButton,
   plugin,
@@ -30,7 +31,7 @@ import {
 import { Button } from './button'
 import { BackButton } from './back-button'
 import type { ReviewCommentView, ReviewDraftView } from './protocol'
-import { isPostingNow, openConfirm, PostSection, resetPosting, setupPosting } from './review-post-view'
+import { isPostingNow, PostSection, resetPosting, setupPosting } from './review-post-view'
 import { messageOf } from './errors'
 import { plural } from './plural'
 import { hasReviewPrompt } from './settings-view'
@@ -90,12 +91,6 @@ export function openReviewDraft(url: string): void {
   set(actionError, null)
   resetPosting()
   importDraft()
-}
-
-/** A card's "Post N to GitLab" (#10): the Review Draft, opened at its confirm step. */
-export function openReviewDraftToPost(url: string): void {
-  openReviewDraft(url)
-  openConfirm(url)
 }
 
 function closeReviewDraft(): void {
@@ -206,14 +201,13 @@ function locationOf(comment: ReviewCommentView): string {
 export function ReviewDraftScreen() {
   const current = read(draft)
   const failure = read(draftFailure)
-  const checked = current?.comments.filter((c) => c.checked).length ?? 0
   const url = read(draftUrl)
   const error = read(actionError)
   return (
     <Stack gap="md">
       <Row gap="sm">
         <BackButton onPress={closeReviewDraft} />
-        <Heading level={2}>Review Draft</Heading>
+        <Heading level={2}>Finish Review</Heading>
       </Row>
       {failure !== null && (
         <Callout tone="warning" icon="warning" title="Can't load the Review Draft">
@@ -231,11 +225,10 @@ export function ReviewDraftScreen() {
         failure === null && <Skeleton lines={4} label="Loading the Review Draft" />
       ) : (
         <Stack gap="md">
-          <Stack gap="xs">
+          <Stack gap="lg">
             <Text weight="semibold">{current.title}</Text>
-            <Text muted size="xs">{`${checked} of ${current.comments.length} checked`}</Text>
+            <PostSection draft={current} onDraft={(answer) => set(draft, answer)} />
           </Stack>
-          <PostSection draft={current} onDraft={(answer) => set(draft, answer)} />
           {current.warnings.length > 0 && (
             <Callout tone="warning" icon="warning" title="Some things were not imported">
               <Stack gap="xs">
@@ -254,8 +247,8 @@ export function ReviewDraftScreen() {
             </Text>
           )}
           <Section
-            title="Diff-view notes"
-            empty="No diff-view notes. Add them in Orca's diff view; they show up here."
+            title="Review Comments"
+            empty={<EmptyState icon="branch" title="No Review Comments" />}
             comments={current.comments.filter((c) => c.origin === 'diff-note')}
             action={
               url !== null && (
@@ -263,7 +256,8 @@ export function ReviewDraftScreen() {
                   which="changes"
                   icon="branch"
                   label="View changes"
-                  tooltip="Go to the diff view"
+                  text
+                  tooltip="Open Orca's diff view to add, edit or delete review comments"
                   onPress={() => showChanges(url)}
                 />
               )
@@ -271,7 +265,7 @@ export function ReviewDraftScreen() {
           />
           <Section
             title="Agent Findings"
-            empty="No Agent Findings yet. Run an Agent Review, then import again."
+            empty={<EmptyState icon="agent" title="No Agent Findings" />}
             comments={current.comments.filter((c) => c.origin === 'agent-finding')}
             action={
               url !== null &&
@@ -323,27 +317,42 @@ function SectionButton(props: {
   which: 'changes' | 'agent'
   icon: 'branch' | 'agent'
   label: string
+  /** Shows the label next to the icon instead of only as the tooltip's name. */
+  text?: boolean
   tooltip: string
   onPress: () => void
 }) {
   const current = read(acting)
   return (
     <Row gap="xs" align="center">
-      <IconButton
-        icon={props.icon}
-        label={props.label}
-        tooltip={props.tooltip}
-        variant="ghost"
-        size="xs"
-        disabled={current !== null}
-        onPress={props.onPress}
-      />
+      {props.text === true ? (
+        <Button
+          icon={props.icon}
+          tooltip={props.tooltip}
+          variant="ghost"
+          size="xs"
+          disabled={current !== null}
+          onPress={props.onPress}
+        >
+          {props.label}
+        </Button>
+      ) : (
+        <IconButton
+          icon={props.icon}
+          label={props.label}
+          tooltip={props.tooltip}
+          variant="ghost"
+          size="xs"
+          disabled={current !== null}
+          onPress={props.onPress}
+        />
+      )}
       {current === props.which && <Spinner label="Working" labelHidden />}
     </Row>
   )
 }
 
-function Section(props: { title: string; empty: string; comments: ReviewCommentView[]; action?: OrcaNode }) {
+function Section(props: { title: string; empty: OrcaNode; comments: ReviewCommentView[]; action?: OrcaNode }) {
   const { title, empty, comments, action } = props
   // paddingY: more room above each section than between the draft's other parts.
   return (
@@ -353,9 +362,7 @@ function Section(props: { title: string; empty: string; comments: ReviewCommentV
         {action}
       </Row>
       {comments.length === 0 ? (
-        <Text muted size="sm">
-          {empty}
-        </Text>
+        empty
       ) : (
         comments.map((c) => <CommentCard key={c.id} comment={c} />)
       )}
@@ -396,6 +403,9 @@ function CommentButtons({ comment }: { comment: ReviewCommentView }) {
   )
 }
 
+/** Orca's Checkbox: a 16px box and an 8px gap before its label. */
+const CHECKBOX_INDENT = 24
+
 function CommentCard({ comment }: { comment: ReviewCommentView }) {
   const error = read(commentErrors)[comment.id]
   const edit = read(edits)[comment.id]
@@ -403,8 +413,12 @@ function CommentCard({ comment }: { comment: ReviewCommentView }) {
   return (
     <Box border radius="md" padding="sm" direction="column" gap="xs">
       <Row justify="between" align="start">
+        {/* The body is the label and the location its description, which Orca draws small and
+            muted in the same column: both start at one indent. An Agent Finding's body is the
+            Textarea below, so its label just names it. */}
         <Checkbox
-          label={locationOf(comment)}
+          label={comment.editable ? 'Agent Finding' : comment.body}
+          description={locationOf(comment)}
           checked={comment.checked}
           disabled={comment.posted}
           onChange={(checked) => changeComment(comment.id, { checked })}
@@ -416,36 +430,42 @@ function CommentCard({ comment }: { comment: ReviewCommentView }) {
           <CommentButtons comment={comment} />
         </Row>
       </Row>
-      {comment.editable ? (
-        <Stack gap="xs">
-          <Textarea
-            label="Agent Finding"
-            labelHidden
-            rows={3}
-            value={text}
-            onChange={(value) => setEdit(comment.id, value)}
-            onSubmit={(value) => changeComment(comment.id, { body: value })}
-          />
-          {edit !== undefined && edit !== comment.body && (
-            <Row gap="xs">
-              <Button size="xs" onPress={() => changeComment(comment.id, { body: edit })}>
-                Save
-              </Button>
-            </Row>
-          )}
-        </Stack>
-      ) : (
-        <Text size="sm">{comment.body}</Text>
-      )}
-      {comment.failure !== undefined && (
-        <Text tone="danger" size="xs">
-          {`Not posted: ${comment.failure}`}
-        </Text>
-      )}
-      {error !== undefined && (
-        <Text tone="danger" size="xs">
-          {error}
-        </Text>
+      {(comment.editable || comment.failure !== undefined || error !== undefined) && (
+        <Box direction="row">
+          {/* The checkbox's width and gap, so this lines up with its label. */}
+          <Box width={CHECKBOX_INDENT} shrink={false} />
+          <Box direction="column" gap="xs" grow>
+            {comment.editable && (
+              <Stack gap="xs">
+                <Textarea
+                  label="Agent Finding"
+                  labelHidden
+                  rows={3}
+                  value={text}
+                  onChange={(value) => setEdit(comment.id, value)}
+                  onSubmit={(value) => changeComment(comment.id, { body: value })}
+                />
+                {edit !== undefined && edit !== comment.body && (
+                  <Row gap="xs">
+                    <Button size="xs" onPress={() => changeComment(comment.id, { body: edit })}>
+                      Save
+                    </Button>
+                  </Row>
+                )}
+              </Stack>
+            )}
+            {comment.failure !== undefined && (
+              <Text tone="danger" size="xs">
+                {`Not posted: ${comment.failure}`}
+              </Text>
+            )}
+            {error !== undefined && (
+              <Text tone="danger" size="xs">
+                {error}
+              </Text>
+            )}
+          </Box>
+        </Box>
       )}
     </Box>
   )

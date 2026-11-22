@@ -15,29 +15,25 @@ html, body { background: #0d0e11; color: var(--text); font-family: Geist, -apple
 .frame { display: none; position: relative; overflow: hidden; }
 .frame.on { display: block; }
 .canvas {
+  /* the cover's rice paper: beige, lighter towards the bottom right, a faint ink wash */
   background:
-    radial-gradient(900px 600px at 88% -10%, rgba(240,112,106,.22), transparent 60%),
-    radial-gradient(800px 600px at -10% 110%, rgba(110,130,255,.13), transparent 60%),
-    linear-gradient(180deg, #121317, #0b0c0f);
-}
-.canvas::after { /* fine grid */
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
-  background-size: 40px 40px; mask-image: radial-gradient(ellipse at 50% 40%, #000 20%, transparent 75%);
+    radial-gradient(700px 500px at 100% 100%, rgba(250,247,238,.9), transparent 70%),
+    radial-gradient(600px 420px at 0% 0%, rgba(120,100,70,.07), transparent 70%),
+    #efe6d5;
 }
 .canvas > * { position: relative; z-index: 1; }
 svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
 /* ---------- marketing type ---------- */
-.eyebrow { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
-.h1 { font-size: 46px; line-height: 1.08; font-weight: 650; letter-spacing: -.025em; }
-.sub { font-size: 19px; line-height: 1.5; color: #a9abb3; }
-.points { list-style: none; display: grid; gap: 14px; font-size: 17px; color: #d4d5da; }
+.eyebrow { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: #b0352b; font-weight: 600; }
+.h1 { font-size: 46px; line-height: 1.08; font-weight: 650; letter-spacing: -.025em; color: #1d1a16; }
+.sub { font-size: 19px; line-height: 1.5; color: #5a5246; }
+.points { list-style: none; display: grid; gap: 14px; font-size: 17px; color: #36302a; }
 .points li { display: flex; gap: 12px; align-items: center; }
-.points .dot { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: rgba(240,112,106,.14); color: var(--accent); font-size: 15px; }
+.points .dot { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: rgba(176,53,43,.1); color: #b0352b; font-size: 15px; }
 
 /* ---------- Orca panel ---------- */
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.03) inset; overflow: hidden; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 30px 70px rgba(70,50,25,.35), 0 0 0 1px rgba(255,255,255,.03) inset; overflow: hidden; }
 .panel-in { padding: 18px 16px 16px; display: flex; flex-direction: column; gap: 14px; }
 .activity { display: flex; gap: 22px; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--line); color: #8a8a8a; font-size: 18px; }
 .activity .sel { color: #fff; position: relative; }
@@ -73,11 +69,11 @@ svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width:
 .statusbar { display: flex; align-items: center; gap: 18px; padding: 0 16px; height: 34px; background: #121212; border-top: 1px solid #262626; font-size: 13px; color: #a5a5a5; }
 .statusbar .item { display: inline-flex; align-items: center; gap: 6px; }
 .statusbar .hot { background: #2a2a2a; color: #f2f2f2; padding: 3px 9px; border-radius: 6px; }
-.tip { background: #f4f4f5; color: #111; border-radius: 12px; padding: 10px 16px; font-size: 15px; font-weight: 500; position: relative; box-shadow: 0 12px 30px rgba(0,0,0,.4); white-space: nowrap; }
+.tip { background: #f4f4f5; color: #111; border-radius: 12px; padding: 10px 16px; font-size: 15px; font-weight: 500; position: relative; box-shadow: 0 12px 30px rgba(70,50,25,.3); white-space: nowrap; }
 .tip::after { left: var(--arrow, 50%); content: ""; position: absolute; bottom: -7px; width: 14px; height: 14px; background: #f4f4f5; transform: translateX(-50%) rotate(45deg); border-radius: 2px; }
 
 /* ---------- window ---------- */
-.win { background: var(--win); border: 1px solid #2f2f2f; border-radius: 14px; box-shadow: 0 40px 120px rgba(0,0,0,.6); overflow: hidden; display: grid; }
+.win { background: var(--win); border: 1px solid #2f2f2f; border-radius: 14px; box-shadow: 0 40px 100px rgba(70,50,25,.4); overflow: hidden; display: grid; }
 .lights { display: flex; gap: 8px; }
 .lights span { width: 12px; height: 12px; border-radius: 50%; }
 .side { background: #1a1a1a; border-right: 1px solid #262626; padding: 14px 10px; font-size: 13px; color: #c9c9c9; display: flex; flex-direction: column; gap: 4px; }
@@ -107,8 +103,21 @@ svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width:
 .body { font-size: 14px; line-height: 1.5; color: #d6d6d6; }
 .ta { border: 1px solid var(--line2); border-radius: 9px; padding: 9px 11px; font-size: 14px; line-height: 1.5; color: #e2e2e2; background: #181818; }
 .field-l { font-size: 13px; color: #bcbcbc; margin-bottom: 5px; }
+.radios { display: flex; gap: 18px; font-size: 14px; }
+.radios span { display: flex; align-items: center; gap: 7px; }
+.radios i { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid #5a5a5a; display: inline-block; box-sizing: border-box; }
+.radios i.on { border: 5px solid #ececec; }
 .sel-box { border: 1px solid var(--line2); border-radius: 9px; padding: 8px 11px; font-size: 14px; display: flex; justify-content: space-between; background: #181818; }
 .muted { color: var(--muted); }
+.sec { display: flex; align-items: center; gap: 8px; font-size: 12.5px !important; font-weight: 500 !important; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+.btn.ghost { border: none; background: none; padding: 0 4px; font-size: 13.5px; font-weight: 400; color: #e2e2e2; text-transform: none; letter-spacing: 0; }
+.cm { display: flex; gap: 9px; align-items: flex-start; }
+.cm .cb { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid #5a5a5a; display: grid; place-items: center; font-size: 11px; flex: none; margin-top: 2px; }
+.cm .cb.on { background: #ececec; border-color: #ececec; color: #111; }
+.cm .t { flex: 1; min-width: 0; }
+.cm .lbl { font-size: 14.5px; font-weight: 500; line-height: 1.35; color: #ececec; }
+.cm .loc { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.cm .act { color: #cfcfcf; font-size: 14px; margin-top: 2px; }
 .agent-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: #c9b3ff; background: rgba(160,130,255,.12); border-radius: 999px; padding: 2px 9px; font-family: Geist, sans-serif; }
 
 /* ---------- icon ---------- */
@@ -173,8 +182,8 @@ svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width:
   </div>
   <div style="position:absolute;left:50%;top:430px;transform:translateX(-50%) scale(1.9);transform-origin:top center;display:flex;flex-direction:column;align-items:flex-start;gap:18px">
     <div class="tip" style="align-self:flex-start">6 Review Requests, 3 overdue. Click to open.</div>
-    <div class="statusbar" style="border:1px solid #2a2a2a;border-radius:10px;height:36px;box-shadow:0 20px 50px rgba(0,0,0,.5)">
-      <span class="item">GRID</span><span class="item hot">CHECK 3 | 3!</span><span class="item">REFRESH Linear</span><span class="item">CUP Agent <span style="color:#666">●</span></span><span class="item">MEM 8.34 GB</span>
+    <div class="statusbar" style="border:1px solid #2a2a2a;border-radius:10px;height:36px;box-shadow:0 20px 50px rgba(70,50,25,.35)">
+      <span class="item">REFRESH Linear</span><span class="item hot">CHECK 3 | 3!</span><span class="item">CUP Agent <span style="color:#ddd">●</span></span><span class="item">MEM TERM</span><span class="item">PLUG 14</span><span class="item">SERVER 0 hosts</span>
     </div>
   </div>
   <div style="position:absolute;right:70px;top:640px;width:360px" class="notif">
@@ -232,38 +241,40 @@ svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width:
 <!-- ======================= 4: REVIEW DRAFT ======================= -->
 <section class="frame canvas" id="draft" style="width:1280px;height:800px">
   <div style="position:absolute;left:90px;top:0;bottom:0;width:470px;display:flex;flex-direction:column;justify-content:center;gap:22px">
-    <div class="eyebrow">Review Draft</div>
+    <div class="eyebrow">Finish Review</div>
     <div class="h1">Post one review, not twenty comments</div>
     <div class="sub">Your notes from Orca's diff view and the agent's findings collect in one draft. Keep, edit or drop each one, then post them to GitLab together, with an approval if you want.</div>
   </div>
   <div style="position:absolute;right:80px;top:50px;width:540px">
     <div class="panel rd" style="height:820px"><div class="panel-in" style="gap:13px">
-      <div style="display:flex;align-items:center;gap:12px"><span class="btn" style="border:none;background:none;padding:0;color:#ddd">LEFT Back</span><h2>Review Draft</h2></div>
-      <div><div style="font-weight:600;font-size:15px">fix(billing): keep the VAT ID when a customer switches plans</div><div class="muted" style="font-size:13px;margin-top:3px">3 of 4 checked</div></div>
-      <div class="box">
-        <h3>Post review</h3>
-        <div class="body">3 Review Comments post as one review.</div>
-        <div><div class="field-l">Summary</div><div class="ta">Nice catch. Two small things below, otherwise good to go.</div></div>
-        <div><div class="field-l">Outcome</div><div class="sel-box"><span>Approve</span><span class="muted">DOWN</span></div></div>
-        <div style="display:flex;gap:10px"><span class="btn primary">UPLOAD Post review</span><span class="btn" style="border-color:transparent;background:none">Cancel</span></div>
+      <div style="display:flex;align-items:center;gap:12px"><span class="btn" style="border:none;background:none;padding:0;color:#ddd">LEFT Back</span><h2>Finish Review</h2></div>
+      <div style="font-weight:600;font-size:15px;margin-bottom:8px">fix(billing): keep the VAT ID when a customer switches plans</div>
+      <div class="box" style="gap:12px">
+        <div style="font-weight:600;font-size:14px;color:#ececec">Your Review</div>
+        <div class="radios"><span><i></i>Approve</span><span><i class="on"></i>Request changes</span><span><i></i>Comment</span></div>
+        <div class="ta" style="min-height:62px">Nice catch. Two small things below, otherwise good to go.</div>
+        <div class="muted" style="font-size:12px;margin-top:-4px">2 review comments included</div>
+        <div style="display:flex;gap:10px"><span class="btn">UPLOAD Post Review</span></div>
       </div>
-      <h3>Diff-view notes</h3>
+      <h3 class="sec">Review Comments <span class="btn ghost">BRANCH View changes</span></h3>
       <div class="box">
-        <div class="chk"><span class="cb on">CHECK</span>src/billing/change-plan.ts:57</div>
-        <div class="body">Could this reuse <code style="font-family:var(--mono);font-size:12.5px;background:#262626;border-radius:4px;padding:0 4px">pickBillingFields()</code> instead of copying the fields by hand?</div>
+        <div class="cm"><span class="cb on">CHECK</span><div class="t"><div class="lbl">Could this reuse pickBillingFields() instead of copying the fields by hand?</div><div class="loc">src/billing/change-plan.ts:57</div></div><span class="act">PENCIL</span></div>
       </div>
-      <h3 style="display:flex;align-items:center;gap:8px">Agent Findings <span class="agent-tag">BOT claude</span></h3>
+      <h3 class="sec">Agent Findings <span class="btn ghost">BOT</span></h3>
       <div class="box">
-        <div class="chk"><span class="cb on">CHECK</span>src/billing/change-plan.test.ts:31–44</div>
-        <div class="ta">The test covers monthly → yearly only. Add the reverse switch, which goes through the downgrade path.</div>
+        <div class="cm"><span class="cb on">CHECK</span><div class="t"><div class="lbl">Agent Finding</div><div class="loc">src/billing/change-plan.test.ts:31–44</div></div><span class="act" style="color:#f0706a">TRASH</span></div>
+        <div class="ta" style="margin-left:25px">The test covers monthly → yearly only. Add the reverse switch, which goes through the downgrade path.</div>
       </div>
-      <div class="box" style="opacity:.75">
-        <div class="chk"><span class="cb"></span>src/billing/profile.ts:12</div>
-        <div class="ta">Consider making <span style="font-family:var(--mono);font-size:12.5px">vatId</span> required on the BillingProfile type.</div>
+      <div class="box">
+        <div class="cm"><span class="cb"></span><div class="t"><div class="lbl">Agent Finding</div><div class="loc">src/billing/profile.ts:12</div></div><span class="act" style="color:#f0706a">TRASH</span></div>
+        <div class="ta" style="margin-left:25px">Consider making vatId required on the BillingProfile type.</div>
       </div>
     </div></div>
   </div>
 </section>
+
+<!-- ======================= CARDS (transparent, for the cover) ======================= -->
+<section class="frame" id="cards" style="width:412px;padding:1px"><div class="cards" id="cards-list"></div></section>
 
 <svg width="0" height="0" style="position:absolute"><defs>
   <g id="iconglyph">
@@ -296,6 +307,9 @@ const P = {
   SIDEBAR: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>',
   CUP: '<path d="M10 2v2"/><path d="M14 2v2"/><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"/><path d="M6 2v2"/>',
   MEM: '<path d="M6 19v-3"/><path d="M10 19v-3"/><path d="M14 19v-3"/><path d="M18 19v-3"/><path d="M8 11V9"/><path d="M16 11V9"/><path d="M12 11V9"/><path d="M2 15h20"/><path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.1a2 2 0 0 0 0 3.837V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5.1a2 2 0 0 0 0-3.837Z"/>',
+  PLUG: '<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
+  SERVER: '<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>',
+  TRASH: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
   CODE: '<path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/>',
   TERM: '<path d="m4 17 6-6-6-6"/><path d="M12 19h8"/>',
   UPLOAD: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
@@ -307,10 +321,10 @@ const P = {
 };
 const ic = (k) => `<svg class="i" viewBox="0 0 24 24">${P[k]}</svg>`;
 
-const MRS = [
+const MRS = [ // oldest first, as in Orca
+  { iid: 405, title: 'feat(search): fuzzy matching for product names', by: 'priya.n', late: true, meta: '', age: '12d' },
   { iid: 412, title: 'fix(billing): keep the VAT ID when a customer switches plans', by: 'm.lindqvist', late: true, meta: 'CI failed · 1 open comment', age: '6d' },
-  { iid: 418, title: 'feat(search): fuzzy matching for product names', by: 'priya.n', late: true, meta: '', age: '3d' },
-  { iid: 425, title: 'SHOP-881: Show delivery dates in the cart', by: 'tkowalski', late: true, meta: '2 open comments', age: '2d' },
+  { iid: 425, title: 'SHOP-881: Show delivery dates in the cart', by: 'tkowalski', late: true, meta: '2 open comments', age: '3d' },
   { iid: 431, title: 'Paginate the orders export instead of loading it in one go', by: 'a.moreau', late: false, meta: '', age: '1d' },
   { iid: 437, title: 'chore: move image resizing to the worker pool', by: 'sam.okafor', late: false, meta: '4 open comments', age: '4h' },
 ];
@@ -324,8 +338,8 @@ const card = (m, opts = {}) => `
     </div>
     ${opts.reviewing ? `
       <div class="bot"><span class="icons">${ic('FOLDER')}${ic('BRANCH')}${ic('FILE')}</span><span>${m.meta}</span></div>
-      <div class="bot"><span class="btn">${ic('PENCIL')} Review Draft</span><span style="color:#cfcfcf">${ic('BOT')}</span><span class="age ${m.late ? 'over' : ''}">${m.age}</span></div>`
-    : `<div class="bot"><span class="btn">${ic('PLAY')} Start Review</span><span>${m.meta}</span><span class="age ${m.late ? 'over' : ''}">${m.age}</span></div>`}
+      <div class="bot"><span class="btn">${ic('CHECK')} Finish Review</span><span style="color:#cfcfcf">${ic('BOT')}</span><span class="age">${m.age}</span></div>`
+    : `<div class="bot"><span class="btn">${ic('PLAY')} Start Review</span><span>${m.meta}</span><span class="age">${m.age}</span></div>`}
   </div>`;
 
 const header = (tabs) => `
@@ -336,21 +350,30 @@ const header = (tabs) => `
 const foot = (t) => `<div class="foot">${ic('REFRESH')} ${t}<span class="sp"></span>${ic('INFO')}<span style="width:10px"></span>${ic('SETTINGS')}</div>`;
 
 document.getElementById('todo-panel').innerHTML =
-  header('<span class="on">Todo · 3 | 3!</span><span>Reviewing</span><span>Done</span>') +
-  `<div class="cards">${MRS.map((m) => card(m)).join('')}</div>` + foot('just now');
+  header('<span class="on">Todo · 2 | 3!</span><span>Reviewing · 1</span><span>Done</span>') +
+  `<div class="cards">${MRS.map((m) => card(m)).join('')}</div>`;
 
 
 document.getElementById('ws-panel').innerHTML =
-  header('<span>Todo · 2 | 2!</span><span class="on">Reviewing · 1!</span><span>Done</span>') +
-  `<div class="cards">${card(MRS[0], { reviewing: true })}</div>`;
+  header('<span>Todo · 2 | 2!</span><span class="on">Reviewing · 1</span><span>Done</span>') +
+  `<div class="cards">${card({ ...MRS[1], late: false, meta: 'CI failed' }, { reviewing: true })}</div>`;
+
+const CARDS = [
+  { iid: 2958, title: 'PAY-2214: Retry card payments that time out at the bank', by: 'Lena Brandt', late: true, meta: 'CI failed · 1 open comment', age: '9d' },
+  { iid: 3019, title: 'feat(catalog): bulk-edit prices from a CSV upload', by: 'Jonas Weber', late: false, meta: '', age: '2d' },
+  { iid: 3021, title: 'SHOP-1645: Remember the last used shipping address', by: 'Amira Haddad', late: false, meta: '2 open comments', age: '2d' },
+  { iid: 3048, title: 'refactor: one date formatter for the whole web app', by: 'Tomás Ruiz', late: false, meta: 'CI running', age: '7h' },
+];
+document.getElementById('cards-list').innerHTML = CARDS.map((m) => card(m)).join('');
 
 // Replace ALLCAPS icon tokens in static markup with SVGs.
-for (const el of document.querySelectorAll('.activity, .statusbar, .points .dot, .tabbar, .side, .btn, .sel-box, .chk .cb, .agent-tag')) {
+for (const el of document.querySelectorAll('.activity, .statusbar, .points .dot, .tabbar, .side, .btn, .sel-box, .chk .cb, .agent-tag, .cm .cb, .cm .act')) {
   el.innerHTML = el.innerHTML.replace(/\b([A-Z]{2,8})\b/g, (w) => (P[w] ? ic(w) : w));
 }
 
 const id = location.hash.slice(1) || 'todo';
 document.getElementById(id).classList.add('on');
+if (id === 'cards') document.documentElement.style.background = document.body.style.background = 'transparent';
 // Point each tooltip's arrow at the highlighted status bar item below it (layout px, so transforms don't matter).
 for (const tip of document.querySelectorAll('#' + id + ' .tip')) {
   const hot = tip.parentElement.querySelector('.hot');

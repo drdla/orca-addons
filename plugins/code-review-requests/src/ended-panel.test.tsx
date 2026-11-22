@@ -40,7 +40,7 @@ test('the Ended tab counts and draws Ended Review Requests with their reason', a
   assert.ok(view.find({ text: 'Merge request 7' }))
   assert.equal(view.find({ type: 'Badge', text: 'Merged' })?.props.tone, 'neutral', 'a toned Badge draws a dot')
   assert.ok(view.find({ type: 'Badge', text: 'Removed as reviewer' }))
-  assert.equal(view.find({ type: 'Button', text: 'Review Draft' }), null)
+  assert.equal(view.find({ type: 'Button', text: 'Finish Review' }), null)
   assert.equal(view.findAll({ type: 'Button', text: 'Remove Workspace' }).length, 2)
   assert.deepEqual(headingCounts(view), [['0', 'dim']], 'Ended cards do not count as Review Requests')
   assert.deepEqual(view.errors, [])

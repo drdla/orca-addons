@@ -12,7 +12,7 @@ An Orca plugin that lists your GitLab **Review Requests** (open, non-draft merge
 - `src/seams/`: the outside world, behind interfaces: `GitLabTransport`, `OrcaCli`, `Clock`.
 - `src/fakes/`: in-memory doubles for each seam (`fakeDeps()`), including a stateful fake GitLab.
 - `src/smoke/`: the opt-in live smoke script (see below). The plugin never loads it.
-- `images/`: the icon, cover and screenshots for the plugin page. The cover (`cover-tiger.jpg`) is made by hand; `scripts/images/render.sh` renders the icon and screenshots from `scripts/images/mock.html` (made-up data, headless Chrome); edit the mock and re-run it rather than shipping real screenshots.
+- `images/`: the icon, cover and screenshots for the plugin page. The cover (`cover.jpg`) is made by hand, with the cards from `scripts/images/review-cards.png`; `scripts/images/render.sh` renders the icon and screenshots from `scripts/images/mock.html` (made-up data, headless Chrome); edit the mock and re-run it rather than shipping real screenshots.
 - `scripts/release.sh` and `src/release/`: the release script and the catalog merge it uses (see below). The plugin never loads them.
 
 ## Install

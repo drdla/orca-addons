@@ -151,7 +151,7 @@ const reviewDraft: ReviewDraftView = {
 /** The Review Draft view is open on MR 12 (it stays open across reloads). */
 const draftOpen = { plugin: { 'rr.tab': 'in', 'rr.draftUrl': DRAFT_URL } }
 
-/** The confirm step before posting (#30): two comments, one of my browser drafts, a warning. */
+/** What GitLab says before posting (#30): two comments, one of my browser drafts, a warning. */
 const postPreview: PostPreview = {
   url: DRAFT_URL,
   comments: 2,
@@ -435,15 +435,15 @@ export default defineCheck({
     },
     persisted: draftOpen
   },
-  /** Posting (#30): the confirm step with a summary, an outcome, leftover drafts and a warning. */
+  /** Posting (#30): a summary, an outcome, and the warnings with Post Anyway (leftover drafts, a warning). */
   postConfirm: {
     requests: { 'rr.snapshot': inReview, 'rr.draft': reviewDraft, 'rr.connection': connection() },
     persisted: postStep(
       { kind: 'confirm', preview: postPreview, postingSince: null },
-      { 'rr.postSummary': 'Nearly there: two things to fix.', 'rr.postOutcome': 'requested_changes' }
+      { 'rr.postSummary': 'Nearly there: two things to fix.', 'rr.postOutcomeChoice': 'requested_changes' }
     )
   },
-  /** The worker is posting: the confirm step locked with a spinner. */
+  /** The worker is posting: the form locked with a spinner. */
   posting: {
     requests: { 'rr.snapshot': inReview, 'rr.draft': reviewDraft, 'rr.connection': connection() },
     persisted: postStep({ kind: 'confirm', preview: postPreview, postingSince: Date.now() })
