@@ -6,6 +6,7 @@
 // and the worker turns a 403 into the same hint.
 import {
   atom,
+  Box,
   Callout,
   plugin,
   RadioGroup,
@@ -155,54 +156,56 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
   return (
     <Stack gap="sm">
       {current.kind === 'done' && <Outcome result={current.result} draft={draft} onDraft={onDraft} />}
-      <RadioGroup
-        label="Outcome"
-        labelHidden
-        orientation="horizontal"
-        options={OUTCOMES}
-        value={outcomeFor(draft)}
-        disabled={busy}
-        onChange={(value) => set(outcome, value as ReviewOutcome)}
-      />
-      <Textarea
-        label="Summary"
-        labelHidden
-        rows={2}
-        placeholder="Optional: a note on the whole review"
-        value={read(summary)}
-        disabled={busy}
-        onChange={(value) => set(summary, value)}
-      />
-      <Text muted size="xs">{`${plural(unposted, 'review note')} included from the list below`}</Text>
-      {current.kind === 'confirm' && <Warnings preview={current.preview} />}
-      <Row gap="sm">
-        {current.kind === 'confirm' && confirming ? (
-          <Button icon="upload" onPress={() => post(current.preview, outcomeFor(draft), onDraft)}>
-            Post Anyway
-          </Button>
-        ) : (
-          <Button icon="upload" disabled={blocked || nothingToPost || busy} onPress={() => startPost(draft, onDraft)}>
-            Post Review
-          </Button>
+      <Box border radius="md" padding="sm" direction="column" gap="sm">
+        <RadioGroup
+          label="Outcome"
+          labelHidden
+          orientation="horizontal"
+          options={OUTCOMES}
+          value={outcomeFor(draft)}
+          disabled={busy}
+          onChange={(value) => set(outcome, value as ReviewOutcome)}
+        />
+        <Textarea
+          label="Summary"
+          labelHidden
+          rows={2}
+          placeholder="Optional: a note on the whole review"
+          value={read(summary)}
+          disabled={busy}
+          onChange={(value) => set(summary, value)}
+        />
+        <Text muted size="xs">{`${plural(unposted, 'review note')} included from the list below`}</Text>
+        {current.kind === 'confirm' && <Warnings preview={current.preview} />}
+        <Row gap="sm">
+          {current.kind === 'confirm' && confirming ? (
+            <Button icon="upload" onPress={() => post(current.preview, outcomeFor(draft), onDraft)}>
+              Post Anyway
+            </Button>
+          ) : (
+            <Button icon="upload" disabled={blocked || nothingToPost || busy} onPress={() => startPost(draft, onDraft)}>
+              Post Review
+            </Button>
+          )}
+          {confirming && (
+            <Button variant="ghost" onPress={() => set(step, { kind: 'idle' })}>
+              Cancel
+            </Button>
+          )}
+          {current.kind === 'loading' && <Spinner label="Checking GitLab" labelHidden />}
+          {posting && <Spinner label="Posting" labelHidden />}
+        </Row>
+        {blocked && (
+          <Text muted size="xs">
+            {API_SCOPE_HINT}
+          </Text>
         )}
-        {confirming && (
-          <Button variant="ghost" onPress={() => set(step, { kind: 'idle' })}>
-            Cancel
-          </Button>
+        {error !== null && (
+          <Callout tone="danger" icon="error" title="Couldn't post the Review Draft">
+            {error}
+          </Callout>
         )}
-        {current.kind === 'loading' && <Spinner label="Checking GitLab" labelHidden />}
-        {posting && <Spinner label="Posting" labelHidden />}
-      </Row>
-      {blocked && (
-        <Text muted size="xs">
-          {API_SCOPE_HINT}
-        </Text>
-      )}
-      {error !== null && (
-        <Callout tone="danger" icon="error" title="Couldn't post the Review Draft">
-          {error}
-        </Callout>
-      )}
+      </Box>
     </Stack>
   )
 }
