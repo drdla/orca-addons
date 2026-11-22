@@ -17,8 +17,8 @@
       "releases": [
         {
           "version": "0.6.7",
-          "commit": "66cc517d2b77011b54a607f737b7a021fac01451",
-          "contentHash": "03a061371fe680f50e81ef918829a3283acb5e107066fc1b6c823d3b5ad98e1c",
+          "commit": "d387e164c620d8844a06ad14196db1d36dfc9cde",
+          "contentHash": "5730772995860b2975fcfb647f65803ccad347f267912523c62a0e41799170e5",
           "execution": "trusted-worker",
           "minimumOrca": "1.4.259",
           "name": "Code Review Requests",
@@ -50,11 +50,11 @@
               "height": 512
             },
             "cover": {
-              "path": "plugins/code-review-requests/images/cover-tiger.jpg",
-              "alt": "A samurai tiger in armour kneeling in front of Mount Fuji, beside the title Code Review Requests and a Review Requests card",
-              "sha256": "7253f789bbf8b2518c1aade6829781001d0aeb212dd94e060f50f9bf3ba726c6",
+              "path": "plugins/code-review-requests/images/cover.jpg",
+              "alt": "A samurai tiger in armour kneeling in front of Mount Fuji, beside the title Code Review Requests and four Review Request cards",
+              "sha256": "a7ff8713fa8025768cc97ebc7075663cd533dc3fe4bdad3986ec229777934f01",
               "width": 1376,
-              "height": 768
+              "height": 860
             },
             "screenshots": [
               {
@@ -121,13 +121,6 @@
               "sha256": "28771f8b1f23f9efad0913805fbb30f7599d44046db2c0de228545128441078b",
               "width": 512,
               "height": 512
-            },
-            "cover": {
-              "path": "plugins/code-review-requests/images/cover-tiger.jpg",
-              "alt": "A samurai tiger in armour kneeling in front of Mount Fuji, beside the title Code Review Requests and a Review Requests card",
-              "sha256": "7253f789bbf8b2518c1aade6829781001d0aeb212dd94e060f50f9bf3ba726c6",
-              "width": 1376,
-              "height": 768
             },
             "screenshots": [
               {
