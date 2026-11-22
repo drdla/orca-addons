@@ -207,7 +207,7 @@ export function ReviewDraftScreen() {
     <Stack gap="md">
       <Row gap="sm">
         <BackButton onPress={closeReviewDraft} />
-        <Heading level={2}>Review Draft</Heading>
+        <Heading level={2}>Finish Review</Heading>
       </Row>
       {failure !== null && (
         <Callout tone="warning" icon="warning" title="Can't load the Review Draft">

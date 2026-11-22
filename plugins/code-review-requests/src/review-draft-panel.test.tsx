@@ -55,7 +55,7 @@ function boxAt(view: View, location: string) {
 async function openDraft(requests: Record<string, unknown>) {
   const host = mockHost({ requests: { 'rr.snapshot': snapshot, ...requests } })
   const view = await mount(panel, { host, persisted })
-  await view.press(view.find({ type: 'Button', text: 'Review Draft' })!)
+  await view.press(view.find({ type: 'Button', text: 'Finish Review' })!)
   return { host, view }
 }
 
@@ -72,7 +72,7 @@ test('an In review card opens its Review Draft; Back returns to the tabs', async
   })
 
   assert.deepEqual(asked, [{ url: URL }])
-  assert.ok(view.find({ type: 'Heading', text: 'Review Draft' }))
+  assert.ok(view.find({ type: 'Heading', text: 'Finish Review' }))
   assert.ok(view.find({ text: 'Add login' }))
   // A note's body is its checkbox's label, the location its description; a finding's label names it.
   assert.equal(boxAt(view, 'src/login.ts:8–10')?.label, 'Why not reuse the helper?')

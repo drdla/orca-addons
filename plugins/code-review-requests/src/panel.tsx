@@ -598,14 +598,20 @@ function WorkspaceNavigation({ card }: { card: ReviewRequestCard }) {
   )
 }
 
-/** Start review, or Review draft and the other actions on the Review Workspace (#6). */
+/** Start review, or Finish Review (the Review Draft) and the other actions on the Review Workspace (#6). */
 function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
   const busy = read(busyCards)[card.url] === true
   if (card.workspace != null) {
     return (
       <Row gap="xs" align="center" wrap>
-        <Button size="xs" variant="outline" icon="edit" onPress={() => openReviewDraft(card.url)}>
-          Review Draft
+        <Button
+          size="xs"
+          variant="outline"
+          icon="check"
+          tooltip="Pick the comments to send, then submit them to GitLab as one review"
+          onPress={() => openReviewDraft(card.url)}
+        >
+          Finish Review
         </Button>
         {card.mergeRequestUpdated === true && (
           <Button

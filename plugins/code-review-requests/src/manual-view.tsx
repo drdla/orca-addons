@@ -40,8 +40,8 @@ export const MANUAL_SECTIONS: readonly { title?: string; paragraphs: readonly st
   {
     title: 'Write and post the review',
     paragraphs: [
-      'Comments you add in Orca\'s diff view and the agent\'s findings collect in the Review Draft.',
-      'Select, edit or drop them. "Post review" sends them to GitLab as one review, with an approval if you want.'
+      'Comments you add in Orca\'s diff view and the agent\'s findings collect under "Finish Review".',
+      'Select, edit or drop them, then submit them to GitLab as one review: a comment, an approval or a change request.'
     ]
   },
   {

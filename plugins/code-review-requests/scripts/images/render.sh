@@ -16,8 +16,10 @@ shot() { # frame, css size, output name
 shot icon 256,256 icon
 shot todo 1280,800 review-requests
 shot statusbar 1280,800 status-bar
-shot workspace 1280,800 review-workspace
-shot draft 1280,800 review-draft
+shot workspace 1280,800 start-review
+shot draft 1280,800 finish-review
+# review-workspace.png and review-draft.png stay as released up to 0.6.6: the catalog pins each
+# release's images by path and sha256, so a changed screenshot gets a new name.
 shot cards 414,600 review-cards # four cards on transparent, the cards on the cover; kept next to the mock, trimmed below
 mv "$out/review-cards.png" "$here/review-cards.png"
 python3 -c 'import sys; from PIL import Image; p=sys.argv[1]; i=Image.open(p); i.crop(i.getbbox()).save(p, optimize=True)' "$here/review-cards.png"

@@ -404,8 +404,8 @@ test('Open workspace and Run Agent Review go to the worker; navigation sits in i
     inRow(rowOf(open)).map((b) => b.props.label),
     ['Open workspace', 'View changes', 'View MR summary']
   )
-  const draft = view.find({ type: 'Button', text: 'Review Draft' })!
-  assert.equal(inRow(rowOf(draft))[0]?.text, 'Review Draft')
+  const draft = view.find({ type: 'Button', text: 'Finish Review' })!
+  assert.equal(inRow(rowOf(draft))[0]?.text, 'Finish Review')
   assert.ok(open.path.localeCompare(draft.path, undefined, { numeric: true }) < 0, 'navigation comes first')
   await view.press(view.find({ type: 'IconButton', label: 'Open workspace' })!)
   await view.press(view.find({ type: 'IconButton', label: 'Run Agent Review' })!)

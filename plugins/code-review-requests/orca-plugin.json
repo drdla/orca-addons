@@ -24,13 +24,13 @@
       "caption": "The count in the status bar"
     },
     {
-      "path": "images/review-workspace.png",
+      "path": "images/start-review.png",
       "alt": "An Orca window with a review workspace, the merge request description, the review agent in a terminal and the Reviewing tab",
       "caption": "Start Review opens a review workspace and runs the agent"
     },
     {
-      "path": "images/review-draft.png",
-      "alt": "The Review Draft: diff-view notes and agent findings with checkboxes, a summary, the Approve outcome and Post review",
+      "path": "images/finish-review.png",
+      "alt": "Finish Review: diff-view notes and agent findings with checkboxes, a summary, the Approve outcome and Post review",
       "caption": "Collect comments and agent findings, post them as one review"
     }
   ],

@@ -232,14 +232,14 @@ svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width:
 <!-- ======================= 4: REVIEW DRAFT ======================= -->
 <section class="frame canvas" id="draft" style="width:1280px;height:800px">
   <div style="position:absolute;left:90px;top:0;bottom:0;width:470px;display:flex;flex-direction:column;justify-content:center;gap:22px">
-    <div class="eyebrow">Review Draft</div>
+    <div class="eyebrow">Finish Review</div>
     <div class="h1">Post one review, not twenty comments</div>
     <div class="sub">Your notes from Orca's diff view and the agent's findings collect in one draft. Keep, edit or drop each one, then post them to GitLab together, with an approval if you want.</div>
   </div>
   <div style="position:absolute;right:80px;top:50px;width:540px">
     <div class="panel rd" style="height:820px"><div class="panel-in" style="gap:13px">
-      <div style="display:flex;align-items:center;gap:12px"><span class="btn" style="border:none;background:none;padding:0;color:#ddd">LEFT Back</span><h2>Review Draft</h2></div>
-      <div><div style="font-weight:600;font-size:15px">fix(billing): keep the VAT ID when a customer switches plans</div><div class="muted" style="font-size:13px;margin-top:3px">3 of 4 checked</div></div>
+      <div style="display:flex;align-items:center;gap:12px"><span class="btn" style="border:none;background:none;padding:0;color:#ddd">LEFT Back</span><h2>Finish Review</h2></div>
+      <div style="font-weight:600;font-size:15px">fix(billing): keep the VAT ID when a customer switches plans</div>
       <div class="box">
         <h3>Post review</h3>
         <div class="body">3 Review Comments post as one review.</div>
@@ -327,7 +327,7 @@ const card = (m, opts = {}) => `
     </div>
     ${opts.reviewing ? `
       <div class="bot"><span class="icons">${ic('FOLDER')}${ic('BRANCH')}${ic('FILE')}</span><span>${m.meta}</span></div>
-      <div class="bot"><span class="btn">${ic('PENCIL')} Review Draft</span><span style="color:#cfcfcf">${ic('BOT')}</span><span class="age ${m.late ? 'over' : ''}">${m.age}</span></div>`
+      <div class="bot"><span class="btn">${ic('CHECK')} Finish Review</span><span style="color:#cfcfcf">${ic('BOT')}</span><span class="age ${m.late ? 'over' : ''}">${m.age}</span></div>`
     : `<div class="bot"><span class="btn">${ic('PLAY')} Start Review</span><span>${m.meta}</span><span class="age ${m.late ? 'over' : ''}">${m.age}</span></div>`}
   </div>`;
 
