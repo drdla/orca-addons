@@ -17,8 +17,8 @@
       "releases": [
         {
           "version": "0.6.7",
-          "commit": "8197687c1f58f52ad533253c78383cf624825fcd",
-          "contentHash": "acf72b0193c6bc55f503ceaee7424fa1e3de77dd9593708e9efa6c5533278986",
+          "commit": "9957fc9c8f996d54eb79992bacebb675136a0536",
+          "contentHash": "e5b9e0a4aee310f0adc5c1287d8491ffdf79903b89ef55148cccf635381b664e",
           "execution": "trusted-worker",
           "minimumOrca": "1.4.259",
           "name": "Code Review Requests",
