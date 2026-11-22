@@ -17,8 +17,8 @@
       "releases": [
         {
           "version": "0.6.7",
-          "commit": "89f49635313fc4cc2aeda6676b3c4a3d59f29ff9",
-          "contentHash": "0642b377165e26b7b8f559cc2e966416e02d79413a2da6b175e239629fcae04e",
+          "commit": "14934b5d3d96bd512fb52a9174eeca18f08984cc",
+          "contentHash": "81f3c59b006cf1ea889437c2bb55a2b9c38c88aa73294a9b197bf43008644bbb",
           "execution": "trusted-worker",
           "minimumOrca": "1.4.259",
           "name": "Code Review Requests",
@@ -81,7 +81,7 @@
               {
                 "path": "plugins/code-review-requests/images/finish-review.png",
                 "alt": "Finish Review: the Approve outcome, a summary and Post Review above diff-view notes and agent findings with checkboxes",
-                "sha256": "640c4b6498be34dc0f723d3da1e5f5464a9399d6089f1435d746df0967a3338e",
+                "sha256": "531e155a228d10cd87368b2ae6046bca069417879a94b76d3252ebab03c34f3b",
                 "width": 2560,
                 "height": 1600
               }
