@@ -43,7 +43,7 @@ import { Button } from './button'
 import { isManualOpen, ManualScreen, openManual } from './manual-view'
 import { MergeRequestLink } from './merge-request-link'
 import type { CiStatus, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
-import { canPostReviews, connectionProblem, loadConnection } from './connection-section'
+import { connectionProblem, loadConnection } from './connection-section'
 import { messageOf } from './errors'
 import { MinuteTime, minuteTimeText, setupClock } from './minute-time'
 import { countText, overdueSplit } from './overdue-split'
@@ -55,11 +55,9 @@ import { EndedList, WorkspacesUnavailable } from './ended-tab'
 import {
   isReviewDraftOpen,
   openReviewDraft,
-  openReviewDraftToPost,
   ReviewDraftScreen,
   setupReviewDraft
 } from './review-draft-view'
-import { API_SCOPE_HINT } from './review-post-view'
 import { hasReviewPrompt, isSettingsOpen, openSettings, SettingsScreen, setupSettings } from './settings-view'
 
 type TabId = 'todo' | 'in' | 'ended'
@@ -637,17 +635,6 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
               onPress={() => runAgentReview(card.url)}
             />
           )
-        )}
-        {(card.toPost ?? 0) > 0 && (
-          <Button
-            size="xs"
-            icon="upload"
-            disabled={canPostReviews() === false}
-            tooltip={canPostReviews() === false ? API_SCOPE_HINT : 'Post the Review Draft to GitLab as one review'}
-            onPress={() => openReviewDraftToPost(card.url)}
-          >
-            {`Post ${card.toPost} to GitLab`}
-          </Button>
         )}
         {busy && <Spinner label="Working" labelHidden />}
       </Row>

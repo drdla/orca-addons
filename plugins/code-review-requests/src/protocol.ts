@@ -81,7 +81,7 @@ export type ReviewRequestCard = ReviewRequestView & {
   isNew?: boolean
   /** The Agent Review in its Review Workspace, or null when no agent ran there (#10). */
   agentReview?: AgentReviewView | null
-  /** Checked, unposted Review Comments in its Review Draft: "Post N to GitLab" on the card (#10). */
+  /** Checked, unposted Review Comments in its Review Draft; the panel no longer shows it. */
   toPost?: number
   /**
    * New commits were pushed since its Review Workspace was checked out (#57): the "Merge request

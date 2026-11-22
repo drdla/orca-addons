@@ -1,4 +1,4 @@
-// Posting a Review Draft from its drill-in view (#30): "Post N to GitLab" opens a confirm step
+// Posting a Review Draft from its drill-in view (#30): "Submit N comments to GitLab" opens a confirm step
 // (what posts, my other GitLab drafts that publish too, warnings, a summary and the outcome), then
 // shows what happened: posted, partly failed (Retry / Delete failed drafts), or refused. Gated on
 // the connection's canPost: false disables it with the api-scope hint; null (unknown) allows it,
@@ -83,8 +83,8 @@ export function setupPosting(): void {
   if (current.kind === 'confirm' && current.postingSince !== null && !isPosting(current)) set(step, { kind: 'idle' })
 }
 
-/** Opens the confirm step for a Review Draft (also from a card's "Post N to GitLab", #10). */
-export function openConfirm(url: string): void {
+/** Opens the confirm step for a Review Draft. */
+function openConfirm(url: string): void {
   set(step, { kind: 'loading' })
   set(failure, null)
   plugin

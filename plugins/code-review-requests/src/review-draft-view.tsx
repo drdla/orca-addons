@@ -31,7 +31,7 @@ import {
 import { Button } from './button'
 import { BackButton } from './back-button'
 import type { ReviewCommentView, ReviewDraftView } from './protocol'
-import { isPostingNow, openConfirm, PostSection, resetPosting, setupPosting } from './review-post-view'
+import { isPostingNow, PostSection, resetPosting, setupPosting } from './review-post-view'
 import { messageOf } from './errors'
 import { plural } from './plural'
 import { hasReviewPrompt } from './settings-view'
@@ -91,12 +91,6 @@ export function openReviewDraft(url: string): void {
   set(actionError, null)
   resetPosting()
   importDraft()
-}
-
-/** A card's "Post N to GitLab" (#10): the Review Draft, opened at its confirm step. */
-export function openReviewDraftToPost(url: string): void {
-  openReviewDraft(url)
-  openConfirm(url)
 }
 
 function closeReviewDraft(): void {

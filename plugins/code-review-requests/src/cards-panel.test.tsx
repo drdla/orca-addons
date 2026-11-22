@@ -1,10 +1,10 @@
 // The card look of #10 (variant D): the New badge, what holds the merge
 // request up (CI, open comments) after the buttons, approvals, the Agent Review line and
-// "Post N to GitLab" on In review cards. The worker is stubbed.
+// the Review Draft button on In review cards. The worker is stubbed.
 import { assert, mockHost, test } from 'orca/testing'
 import { mount } from './testing/mount'
 import * as panel from './panel'
-import type { PostPreview, ReviewDraftView, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
+import type { ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
 
 const HOUR = 3_600_000
 const NOW = Date.UTC(2026, 10, 16, 9, 0)
@@ -110,36 +110,9 @@ test('a running Agent Review replaces the agent button with a spinner; a done on
   await view.unmount()
 })
 
-test('"Post N to GitLab" on an In review card opens the Review Draft at the post step', async () => {
-  const url = card(7).url
-  const draft: ReviewDraftView = { url, title: 'Merge request 7', workspace: WORKSPACE, comments: [], warnings: [], importedAt: NOW }
-  const preview: PostPreview = { url, comments: 2, leftoverDrafts: [], warnings: [] }
-  const previews: string[] = []
+test('an In review card has no Post button: posting is on its Review Draft', async () => {
   const view = await mountWith(
-    {
-      'rr.snapshot': snapshot(card(7, { workspace: WORKSPACE, toPost: 2, agentReview: null })),
-      'rr.draft': draft,
-      'rr.postPreview': ({ url: asked }: { url: string }) => {
-        previews.push(asked)
-        return preview
-      }
-    },
-    { 'rr.tab': 'in' }
-  )
-
-  assert.equal(view.find({ type: 'Button', text: 'Post 0 to GitLab' }), null)
-  await view.press(view.find({ type: 'Button', text: 'Post 2 to GitLab' })!)
-
-  assert.deepEqual(previews, [url])
-  assert.ok(view.find({ type: 'Heading', text: 'Review Draft' }))
-  assert.ok(view.find({ type: 'Heading', text: 'Post review' }))
-  assert.deepEqual(view.errors, [])
-  await view.unmount()
-})
-
-test('an In review card with nothing to post has no Post button', async () => {
-  const view = await mountWith(
-    { 'rr.snapshot': snapshot(card(7, { workspace: WORKSPACE, toPost: 0 })) },
+    { 'rr.snapshot': snapshot(card(7, { workspace: WORKSPACE, toPost: 2 })) },
     { 'rr.tab': 'in' }
   )
 
