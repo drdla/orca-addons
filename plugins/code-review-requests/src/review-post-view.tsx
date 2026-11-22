@@ -176,7 +176,9 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
           disabled={busy}
           onChange={(value) => set(summary, value)}
         />
-        <Text muted size="xs">{`${plural(unposted, 'review note')} included from the list below`}</Text>
+        <Text muted size="xs">
+          {unposted === 0 ? 'No Review Comments included' : `${plural(unposted, 'Review Comment')} included`}
+        </Text>
         {current.kind === 'confirm' && <Warnings preview={current.preview} />}
         <Row gap="sm">
           {current.kind === 'confirm' && confirming ? (

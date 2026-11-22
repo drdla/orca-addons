@@ -196,7 +196,7 @@ test('says so when the Review Draft cannot be loaded, and Try Again retries', as
 
   await view.press(view.find({ type: 'Button', text: 'Try Again' })!)
   assert.equal(calls, 2)
-  assert.ok(view.find({ type: 'EmptyState', text: 'No diff-view notes' }))
+  assert.ok(view.find({ type: 'EmptyState', text: 'No Review Comments' }))
   await view.unmount()
 })
 
@@ -269,7 +269,7 @@ test('the section headings go to the diff view and run an Agent Review', async (
     }
   })
 
-  await view.press(view.find({ type: 'IconButton', label: 'View changes' })!)
+  await view.press(view.find({ type: 'Button', text: 'Open Diff View' })!)
   await view.press(view.find({ type: 'IconButton', label: 'Run Agent Review' })!)
   assert.deepEqual(asked, ['showChanges', 'runAgentReview'])
   assert.deepEqual(view.errors, [])

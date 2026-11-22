@@ -247,16 +247,17 @@ export function ReviewDraftScreen() {
             </Text>
           )}
           <Section
-            title="Diff-view notes"
-            empty={<EmptyState icon="branch" title="No diff-view notes" />}
+            title="Review Comments"
+            empty={<EmptyState icon="branch" title="No Review Comments" />}
             comments={current.comments.filter((c) => c.origin === 'diff-note')}
             action={
               url !== null && (
                 <SectionButton
                   which="changes"
                   icon="branch"
-                  label="View changes"
-                  tooltip="Go to the diff view"
+                  label="Open Diff View"
+                  text
+                  tooltip="Open Orca's diff view to add, edit or delete Review Comments"
                   onPress={() => showChanges(url)}
                 />
               )
@@ -316,21 +317,36 @@ function SectionButton(props: {
   which: 'changes' | 'agent'
   icon: 'branch' | 'agent'
   label: string
+  /** Shows the label next to the icon instead of only as the tooltip's name. */
+  text?: boolean
   tooltip: string
   onPress: () => void
 }) {
   const current = read(acting)
   return (
     <Row gap="xs" align="center">
-      <IconButton
-        icon={props.icon}
-        label={props.label}
-        tooltip={props.tooltip}
-        variant="ghost"
-        size="xs"
-        disabled={current !== null}
-        onPress={props.onPress}
-      />
+      {props.text === true ? (
+        <Button
+          icon={props.icon}
+          tooltip={props.tooltip}
+          variant="ghost"
+          size="xs"
+          disabled={current !== null}
+          onPress={props.onPress}
+        >
+          {props.label}
+        </Button>
+      ) : (
+        <IconButton
+          icon={props.icon}
+          label={props.label}
+          tooltip={props.tooltip}
+          variant="ghost"
+          size="xs"
+          disabled={current !== null}
+          onPress={props.onPress}
+        />
+      )}
       {current === props.which && <Spinner label="Working" labelHidden />}
     </Row>
   )
