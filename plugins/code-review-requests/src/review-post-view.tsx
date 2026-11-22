@@ -43,9 +43,9 @@ const failure = atom<string | null>(null)
 const deleting = atom(false)
 
 const OUTCOMES: { value: ReviewOutcome; label: string }[] = [
-  { value: 'comment', label: 'Comment' },
+  { value: 'approve', label: 'Approve' },
   { value: 'requested_changes', label: 'Request changes' },
-  { value: 'approve', label: 'Approve' }
+  { value: 'comment', label: 'Comment' }
 ]
 
 /** Where Review Drafts post to: the only source so far. */
@@ -149,6 +149,7 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
       {current.kind === 'done' && <Outcome result={current.result} draft={draft} onDraft={onDraft} />}
       <RadioGroup
         label="Outcome"
+        labelHidden
         orientation="horizontal"
         options={OUTCOMES}
         value={read(outcome)}
@@ -157,6 +158,7 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
       />
       <Textarea
         label="Summary"
+        labelHidden
         rows={3}
         placeholder="Optional: a note on the whole review"
         value={read(summary)}
