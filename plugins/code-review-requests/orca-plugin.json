@@ -2,15 +2,15 @@
   "manifestVersion": 2,
   "id": "code-review-requests",
   "name": "Code Review Requests",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "Your GitLab Review Requests in Orca: a count in the status bar, a panel, and review workspaces.",
   "author": { "name": "Dominik Rodler" },
   "repository": "https://github.com/drdla/orca-addons",
   "license": "MIT",
   "icon": "images/icon.png",
   "cover": {
-    "path": "images/cover-owl.png",
-    "alt": "A samurai owl in ukiyo-e style holding up a scroll with the Review Requests panel, under the title Code Review Requests"
+    "path": "images/cover-tiger.jpg",
+    "alt": "A samurai tiger in armour kneeling in front of Mount Fuji, beside the title Code Review Requests and a Review Requests card"
   },
   "screenshots": [
     {
