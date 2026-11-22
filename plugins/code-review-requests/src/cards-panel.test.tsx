@@ -1,4 +1,4 @@
-// The card look of #10 (variant D): the New badge and accent border, what holds the merge
+// The card look of #10 (variant D): the New badge, what holds the merge
 // request up (CI, open comments) after the buttons, approvals, the Agent Review line and
 // "Post N to GitLab" on In review cards. The worker is stubbed.
 import { assert, mockHost, test } from 'orca/testing'

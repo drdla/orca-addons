@@ -732,7 +732,7 @@ function Card({ card }: { card: ReviewRequestCard }) {
   // Overdue takes precedence over New (#10).
   const isNew = card.isNew === true && !card.overdue
   return (
-    <Box border={isNew ? 'accent' : true} radius="md" padding="sm" direction="column" gap="xs">
+    <Box border radius="md" padding="sm" direction="column" gap="xs">
       <Row justify="between" align="start">
         <Row gap="sm" align="start">
           <MergeRequestLink url={card.url} iid={card.iid} onOpen={openInGitLab} />
