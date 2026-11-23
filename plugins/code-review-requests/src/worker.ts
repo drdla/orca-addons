@@ -326,7 +326,10 @@ export function createWorker(deps: Deps) {
       drafts,
       cards: draftCards,
       connection: gitLabAccess,
-      onChanged: postChanged
+      onChanged: postChanged,
+      onApproved: async () => {
+        if (failures.rateLimitedUntil() === null) await poller.pollNow()
+      }
     })
     // Token mode, the Connection section and the setup checklist (#8, #25).
     registerConnectionRequests(orca, {
