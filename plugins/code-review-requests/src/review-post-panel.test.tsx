@@ -46,7 +46,7 @@ function comment(id: string, extra: Partial<ReviewCommentView> = {}): ReviewComm
 }
 
 function draft(comments: ReviewCommentView[]): ReviewDraftView {
-  return { url: URL, title: 'Add login', workspace: WORKSPACE, comments, warnings: [], importedAt: NOW }
+  return { url: URL, iid: 7, title: 'Add login', author: 'ada', workspace: WORKSPACE, comments, warnings: [], importedAt: NOW }
 }
 
 function connection(canPost: boolean | null): ConnectionView {

@@ -28,7 +28,10 @@ export function registerDraftRequests(
     const state = options.workspaceState()
     return {
       url,
+      iid: card.iid,
       title: card.title,
+      author: card.author,
+      ...(card.authorName ? { authorName: card.authorName } : {}),
       workspace: card.workspace ?? null,
       workspaceProblem: state.kind === 'unavailable' ? `Workspaces are unavailable: ${state.reason}` : null
     }

@@ -95,7 +95,10 @@ const DRAFT_URL = `https://gitlab.example.com/acme/api/-/merge_requests/12`
 /** A curated Review Draft (#29): a note range, a posted note, an edited range finding, a general one. */
 const reviewDraft: ReviewDraftView = {
   url: DRAFT_URL,
+  iid: 12,
   title: 'Add login with SSO',
+  author: 'ada',
+  authorName: 'Ada Lovelace',
   workspace: WORKSPACE,
   comments: [
     {

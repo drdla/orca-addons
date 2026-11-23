@@ -25,7 +25,10 @@ import { messageOf } from '../errors'
 /** The Review Request a draft belongs to, with its Review Workspace if it has one. */
 export type DraftTarget = {
   url: string
+  iid: number
   title: string
+  author: string
+  authorName?: string
   workspace: ReviewWorkspaceView | null
   /** Why there is no workspace to read, when it isn't simply "none" (the orca CLI is broken). */
   workspaceProblem?: string | null
@@ -243,7 +246,10 @@ function findingId(finding: AgentFinding): string {
 export function viewOf(draft: ReviewDraft, target: DraftTarget): ReviewDraftView {
   return {
     url: target.url,
+    iid: target.iid,
     title: target.title,
+    author: target.author,
+    ...(target.authorName ? { authorName: target.authorName } : {}),
     workspace: target.workspace,
     comments: draft.comments.map((c) =>
       commentView(c, draft.failedDrafts?.find((f) => f.commentId === c.id), draft.outdated)

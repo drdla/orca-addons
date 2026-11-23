@@ -202,7 +202,11 @@ export type PostResult = {
 /** A Review Request's Review Draft (#29): what the drill-in panel view curates. */
 export type ReviewDraftView = {
   url: string
+  /** The merge request's iid, title and author, for the header the card has too. */
+  iid: number
   title: string
+  author: string
+  authorName?: string
   workspace: ReviewWorkspaceView | null
   /** Diff-view notes first (in Orca's order), then Agent Findings (in the file's order). */
   comments: ReviewCommentView[]
