@@ -115,7 +115,7 @@ const reviewDraft: ReviewDraftView = {
       origin: 'diff-note',
       filePath: 'src/auth/sso.ts',
       line: 12,
-      body: 'Typo in the error message.',
+      body: 'Typo in the error message. While you are here, the message could also say which identity provider refused the login, so support can tell them apart.',
       checked: true,
       editable: false,
       sha: 'a1b2c3d',
