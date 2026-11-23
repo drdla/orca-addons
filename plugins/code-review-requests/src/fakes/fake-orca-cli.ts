@@ -6,6 +6,7 @@ import {
   type CreateWorktreeInput,
   type DiffComment,
   type LaunchAgentInput,
+  type OpenFileInput,
   type OrcaCli,
   type RemoveWorktreeOptions,
   type Worktree,
@@ -158,6 +159,11 @@ export class FakeOrcaCli implements OrcaCli {
 
   async launchAgent(input: LaunchAgentInput): Promise<void> {
     this.#record('agent launch', input)
+    this.#select(input.worktree)
+  }
+
+  async openFile(input: OpenFileInput): Promise<void> {
+    this.#record('file open', input)
     this.#select(input.worktree)
   }
 

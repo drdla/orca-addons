@@ -294,6 +294,42 @@ test('a diff-view note opens the diff view to edit or delete it; an Agent Findin
   await view.unmount()
 })
 
+test("an Agent Finding's last button opens its file at its line; a general finding has none", async () => {
+  const opens: unknown[] = []
+  const { view } = await openDraft({
+    'rr.draft': draft([
+      comment('note:n1'),
+      comment('finding:a', { line: 48 }),
+      comment('finding:general', { filePath: null, line: null })
+    ]),
+    'rr.openFile': (input: unknown) => {
+      opens.push(input)
+      return { opened: true }
+    }
+  })
+
+  const buttons = view.findAll({ type: 'IconButton', label: 'Open in the workspace' })
+  assert.equal(buttons.length, 1, 'not on a diff-view note, nor on a finding without a file')
+  assert.equal(buttons[0]!.props.tooltip, 'Open this file at line 48')
+  await view.press(buttons[0]!)
+  assert.deepEqual(opens, [{ url: URL, path: 'src/login.ts', line: 48 }])
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test("a file that can't be opened says why", async () => {
+  const { view } = await openDraft({
+    'rr.draft': draft([comment('finding:a')]),
+    'rr.openFile': () => {
+      throw new Error('no such file')
+    }
+  })
+
+  await view.press(view.find({ type: 'IconButton', label: 'Open in the workspace' })!)
+  assert.ok(view.find({ text: /Couldn't open the file: .*no such file/ }))
+  await view.unmount()
+})
+
 test('the section headings go to the diff view and run an Agent Review', async () => {
   const asked: string[] = []
   const { view } = await openDraft({

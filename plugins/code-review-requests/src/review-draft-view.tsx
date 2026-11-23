@@ -134,6 +134,15 @@ function showChanges(url: string): void {
   act('changes', "Couldn't show the changed files", () => plugin.request('rr.showChanges', { url }))
 }
 
+/** An Agent Finding's file in the Review Workspace, at its line; a failure shows on the finding. */
+function openFinding(url: string, comment: ReviewCommentView): void {
+  if (comment.filePath === null) return
+  setCommentError(comment.id, null)
+  plugin
+    .request('rr.openFile', { url, path: comment.filePath, line: comment.line })
+    .catch((error: unknown) => setCommentError(comment.id, `Couldn't open the file: ${messageOf(error)}`))
+}
+
 /** The merge request in the browser; a failure shows under the title, like a section button's. */
 function openInGitLab(url: string): void {
   set(actionError, null)
@@ -413,7 +422,8 @@ function Section(props: { title: string; empty: OrcaNode; comments: ReviewCommen
 
 /**
  * A diff-view note's way to edit or delete it: Orca has no API for either, nor for opening the
- * diff view at one note, so the button opens the workspace's changes. An Agent Finding's Delete.
+ * diff view at one note, so the button opens the workspace's changes. An Agent Finding's Delete,
+ * then (rightmost) a button that opens its file at its line; a general finding has no file.
  */
 function CommentButtons({ comment }: { comment: ReviewCommentView }) {
   const url = read(draftUrl)
@@ -432,15 +442,28 @@ function CommentButtons({ comment }: { comment: ReviewCommentView }) {
     )
   }
   return (
-    <IconButton
-      icon="delete"
-      label="Delete Agent Finding"
-      tooltip="Remove this finding from the Review Draft"
-      variant="ghost"
-      tone="danger"
-      size="xs"
-      onPress={() => deleteComment(comment.id)}
-    />
+    <>
+      <IconButton
+        icon="delete"
+        label="Delete Agent Finding"
+        tooltip="Remove this finding from the Review Draft"
+        variant="ghost"
+        tone="danger"
+        size="xs"
+        onPress={() => deleteComment(comment.id)}
+      />
+      {comment.filePath !== null && url !== null && (
+        <IconButton
+          icon="code"
+          label="Open in the workspace"
+          tooltip={comment.line === null ? 'Open this file in the Review Workspace' : `Open this file at line ${comment.line}`}
+          variant="ghost"
+          size="xs"
+          disabled={read(acting) !== null}
+          onPress={() => openFinding(url, comment)}
+        />
+      )}
+    </>
   )
 }
 

@@ -50,6 +50,8 @@ export type ReviewActions = {
   openCoverPage(url: string): Promise<void>
   /** Shows the Review Workspace and toggles Orca's Source Control sidebar (its changed files). */
   showChanges(url: string): Promise<void>
+  /** Opens a file of the Review Workspace at `line` (or its top) and switches Orca to it. */
+  openFile(url: string, path: string, line: number | null): Promise<void>
   /**
    * Moves a clean Review Workspace to the merge request's current head and rebuilds its Review
    * Cover Page (#57). Rejects, changing nothing, when it has uncommitted changes.
@@ -380,6 +382,10 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
       const worktree = await existingWorkspace(rr)
       await openIn(worktree)
       await deps.host.call('commands.run', { action: 'sidebar.sourceControl.toggle' })
+    },
+    async openFile(url, path, line) {
+      const worktree = await existingWorkspace(reviewRequestOf(url))
+      await deps.cli().openFile({ worktree: `id:${worktree.id}`, path, ...(line === null ? {} : { line }) })
     },
     async runAgentReview(url) {
       const rr = reviewRequestOf(url)

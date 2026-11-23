@@ -97,6 +97,11 @@ export function registerWorkspaceRequests(
     await reviewActions.showChanges(url)
     return { opened: true as const }
   })
+  // An Agent Finding's Open at line, on Finish Review.
+  orca.panels.handle('rr.openFile', async ({ url, path, line }) => {
+    await reviewActions.openFile(url, path, line)
+    return { opened: true as const }
+  })
   // "Update workspace" (#57). Which Review Comments may be outdated is worked out against the
   // workspace's HEAD whenever the Review Draft is imported (#58); the update only hands over the
   // head it left (onMoved, as soon as HEAD moved), so what was written before it keeps that commit.

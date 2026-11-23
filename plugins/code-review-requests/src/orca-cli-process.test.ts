@@ -100,6 +100,18 @@ test("sets a worktree's display name only", async () => {
   assert.deepEqual(calls, [['worktree', 'set', '--worktree', 'id:r::/p', '--display-name', 'REVIEW Add login', '--json']])
 })
 
+test('opens a file of the worktree at a line and switches to it: `orca file open --focus`', async () => {
+  const { calls, cli } = runner(ok({ ok: true, result: { opened: true, kind: 'text' } }))
+
+  await cli.openFile({ worktree: 'id:r::/wt', path: 'src/a.ts', line: 48 })
+  await cli.openFile({ worktree: 'id:r::/wt', path: '-odd.md' })
+
+  assert.deepEqual(calls, [
+    ['file', 'open', '--path', 'src/a.ts', '--worktree', 'id:r::/wt', '--line', '48', '--focus', '--json'],
+    ['file', 'open', '--path', '-odd.md', '--worktree', 'id:r::/wt', '--focus', '--json']
+  ])
+})
+
 test('launches an agent with its prompt in a terminal of the worktree: `orca agent launch`', async () => {
   const { calls, cli } = runner(ok({ ok: true, result: { outcome: { kind: 'terminal', handle: 'term_1' } } }))
 

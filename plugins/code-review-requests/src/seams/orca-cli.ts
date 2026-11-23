@@ -108,6 +108,22 @@ export interface OrcaCli {
    * (`agent_launch_terminal_not_running_agent`), leaving an idle agent in a background tab.
    */
   launchAgent(input: LaunchAgentInput): Promise<void>
+  /**
+   * `orca file open --focus`: opens a file of the worktree as an editor tab, with the cursor on
+   * `line`, and switches Orca to it. The host API's `editor.open` takes no line, and `orca file
+   * diff` neither (it also shows only uncommitted changes, which a Review Workspace has none of).
+   */
+  openFile(input: OpenFileInput): Promise<void>
+}
+
+/** `orca file open` flags. */
+export type OpenFileInput = {
+  /** An Orca worktree selector, for example `id:<id>`. */
+  worktree: string
+  /** Relative to the worktree. */
+  path: string
+  /** 1-based; the file opens at its top without one. */
+  line?: number
 }
 
 /** `orca agent launch` flags. */
