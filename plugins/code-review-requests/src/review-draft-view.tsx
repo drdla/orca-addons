@@ -412,24 +412,27 @@ function CommentCard({ comment }: { comment: ReviewCommentView }) {
   const text = edit ?? comment.body
   return (
     <Box border radius="md" padding="sm" direction="column" gap="xs">
-      <Row justify="between" align="start">
+      <Box direction="row" gap="xs" align="start">
         {/* The body is the label and the location its description, which Orca draws small and
             muted in the same column: both start at one indent. An Agent Finding's body is the
-            Textarea below, so its label just names it. */}
-        <Checkbox
-          label={comment.editable ? 'Agent Finding' : comment.body}
-          description={locationOf(comment)}
-          checked={comment.checked}
-          disabled={comment.posted}
-          onChange={(checked) => changeComment(comment.id, { checked })}
-        />
-        <Row gap="xs" align="center">
+            Textarea below, so its label just names it. minWidth 0 lets a long body wrap instead
+            of pushing the badges off the card. */}
+        <Box grow minWidth={0}>
+          <Checkbox
+            label={comment.editable ? 'Agent Finding' : comment.body}
+            description={locationOf(comment)}
+            checked={comment.checked}
+            disabled={comment.posted}
+            onChange={(checked) => changeComment(comment.id, { checked })}
+          />
+        </Box>
+        <Box direction="row" gap="xs" align="center" shrink={false}>
           {comment.outdated === true && <Badge tone="warning">May be outdated</Badge>}
           {comment.stale === true && <Badge tone="neutral">Stale</Badge>}
           {comment.posted && <Badge tone="success">Posted</Badge>}
           <CommentButtons comment={comment} />
-        </Row>
-      </Row>
+        </Box>
+      </Box>
       {(comment.editable || comment.failure !== undefined || error !== undefined) && (
         <Box direction="row">
           {/* The checkbox's width and gap, so this lines up with its label. */}
