@@ -47,9 +47,9 @@ const persisted = { plugin: { 'rr.tab': 'in' } }
 
 type View = Awaited<ReturnType<typeof mount>>
 
-/** A comment's checkbox, found by its location: the checkbox's description. */
-function boxAt(view: View, location: string) {
-  return view.findAll({ type: 'Checkbox' }).find((box) => box.props.description === location) ?? null
+/** A comment's checkbox, found by its label: the line it is on. */
+function boxAt(view: View, line: string) {
+  return view.find({ type: 'Checkbox', label: line })
 }
 
 async function openDraft(requests: Record<string, unknown>) {
@@ -74,9 +74,11 @@ test('an In review card opens its Review Draft; Back returns to the tabs', async
   assert.deepEqual(asked, [{ url: URL }])
   assert.ok(view.find({ type: 'Heading', text: 'Finish Review' }))
   assert.ok(view.find({ text: 'Add login' }))
-  // A note's body is its checkbox's label, the location its description; a finding's label names it.
-  assert.equal(boxAt(view, 'src/login.ts:8–10')?.label, 'Why not reuse the helper?')
-  assert.equal(boxAt(view, 'General comment')?.label, 'Agent Finding')
+  // The file heads its comments; a checkbox names the line, and the comment text sits below it.
+  assert.ok(view.find({ type: 'Text', text: 'src/login.ts' }))
+  assert.ok(boxAt(view, 'Lines 8–10'))
+  assert.ok(view.find({ type: 'Text', text: 'Why not reuse the helper?' }))
+  assert.ok(boxAt(view, 'General comment'))
   assert.equal(view.valueOf(view.find({ type: 'Textarea', label: 'Agent Finding' })!), 'Split this MR.')
   assert.equal(view.find({ text: /checked/ }), null, 'no "N of M checked" line')
   assert.equal(view.find({ type: 'Tabs' }), null)
@@ -98,12 +100,12 @@ test('checking a finding asks the worker and shows its answer', async () => {
     }
   })
 
-  const box = boxAt(view, 'src/login.ts:10')!
+  const box = boxAt(view, 'Line 10')!
   assert.equal(view.valueOf(box), false)
   await view.toggle(box)
 
   assert.deepEqual(updates, [{ url: URL, id: 'finding:a', checked: true }])
-  assert.equal(view.valueOf(boxAt(view, 'src/login.ts:10')!), true)
+  assert.equal(view.valueOf(boxAt(view, 'Line 10')!), true)
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })
@@ -137,7 +139,7 @@ test('a refused change shows on the comment', async () => {
       throw hostError('invalid_params', 'That Review Comment is already posted to GitLab.')
     }
   })
-  await view.toggle(boxAt(view, 'src/login.ts:10')!)
+  await view.toggle(boxAt(view, 'Line 10')!)
   assert.ok(view.find({ text: /already posted to GitLab/ }))
   await view.unmount()
 })
@@ -161,9 +163,9 @@ test('comments that may be outdated and stale Agent Findings are marked, and sta
   assert.ok(view.find({ text: /2 Agent Findings are from an older commit: run Agent Review for fresh ones, then import again/ }))
   // Still editable and checkable.
   assert.equal(view.findAll({ type: 'Textarea', label: 'Agent Finding' }).length, 2)
-  assert.notEqual(boxAt(view, 'src/login.ts:10')!.disabled, true)
-  await view.toggle(boxAt(view, 'src/login.ts:10')!)
-  assert.equal(view.valueOf(boxAt(view, 'src/login.ts:10')!), false)
+  assert.notEqual(boxAt(view, 'Line 10')!.disabled, true)
+  await view.toggle(boxAt(view, 'Line 10')!)
+  assert.equal(view.valueOf(boxAt(view, 'Line 10')!), false)
   assert.ok(view.find({ type: 'Badge', text: 'May be outdated' }), 'the flag stays after the change')
   await view.unmount()
 })
@@ -176,7 +178,7 @@ test('posted comments are marked and locked; warnings and empty sections are exp
   })
 
   assert.ok(view.find({ type: 'Badge', text: 'Posted' }))
-  assert.equal(boxAt(view, 'src/login.ts:10')!.disabled, true)
+  assert.equal(boxAt(view, 'Line 10')!.disabled, true)
   assert.ok(view.find({ type: 'Callout', label: 'Some things were not imported' }))
   assert.ok(view.find({ text: 'Agent Finding 3 skipped: no body.' }))
   assert.ok(view.find({ type: 'EmptyState', text: 'No Agent Findings' }))
@@ -227,7 +229,7 @@ test('an open Review Draft imports again when the panel comes back into view, no
   await wait(VISIBILITY_CHECK_MS * 1.5)
   await view.settled()
   assert.equal(calls, 2)
-  assert.ok(view.find({ type: 'Checkbox', label: 'Added in the diff view.' }))
+  assert.ok(view.find({ type: 'Text', text: 'Added in the diff view.' }))
   await view.unmount()
 })
 
@@ -280,7 +282,28 @@ test('a long file path loses its middle and keeps its end', async () => {
   const filePath = 'apps/admin/src/modules/universalFilters/components/filters/TimeframeFilter.tsx'
   const { view } = await openDraft({ 'rr.draft': draft([comment('note:n1', { filePath })]) })
 
-  const location = `${filePath.slice(0, 45)}…${filePath.slice(-14)}:10`
-  assert.ok(boxAt(view, location), location)
+  const heading = `${filePath.slice(0, 45)}…${filePath.slice(-14)}`
+  assert.ok(view.find({ type: 'Text', text: heading }), heading)
+  await view.unmount()
+})
+
+test('comments are grouped by file, each file named once above its comments, in line order', async () => {
+  const { view } = await openDraft({
+    'rr.draft': draft([
+      comment('note:n1', { filePath: 'src/b.ts', line: 30 }),
+      comment('note:n2', { filePath: 'src/a.ts', line: 5 }),
+      comment('note:n3', { filePath: 'src/b.ts', line: 4 }),
+      comment('note:n4', { filePath: null, line: null }),
+      comment('note:n5', { filePath: 'src/b.ts', line: null })
+    ])
+  })
+
+  const texts = view
+    .findAll({ type: 'Text' })
+    .map((t) => t.text)
+    .filter((t) => /^src\//.test(t))
+  assert.deepEqual(texts, ['src/b.ts', 'src/a.ts'])
+  const labels = view.findAll({ type: 'Checkbox' }).map((box) => box.label)
+  assert.deepEqual(labels, ['General comment', 'Whole file', 'Line 4', 'Line 30', 'Line 5'])
   await view.unmount()
 })

@@ -189,13 +189,25 @@ function setEdit(id: string, text: string): void {
   update(edits, (all) => ({ ...all, [id]: text }))
 }
 
-/** `src/a.ts:8–10`, `src/a.ts:10`, or "General comment"; a long path loses its middle. */
-function locationOf(comment: ReviewCommentView): string {
+/** A comment's checkbox label: "Lines 8–10", "Line 10", "Whole file" or "General comment". */
+function lineLabel(comment: ReviewCommentView): string {
   if (comment.filePath === null) return 'General comment'
-  const path = truncateMiddle(comment.filePath, PATH_MAX, PATH_KEEP_END)
-  if (comment.line === null) return path
-  const lines = comment.startLine === undefined ? `${comment.line}` : `${comment.startLine}–${comment.line}`
-  return `${path}:${lines}`
+  if (comment.line === null) return 'Whole file'
+  return comment.startLine === undefined ? `Line ${comment.line}` : `Lines ${comment.startLine}–${comment.line}`
+}
+
+/**
+ * Comments by file: general comments first, then files in the order they first appear. Within a
+ * file, whole-file comments come first, then by line.
+ */
+function byFile(comments: ReviewCommentView[]): { filePath: string | null; comments: ReviewCommentView[] }[] {
+  const groups = new Map<string | null, ReviewCommentView[]>()
+  if (comments.some((c) => c.filePath === null)) groups.set(null, [])
+  for (const c of comments) groups.set(c.filePath, [...(groups.get(c.filePath) ?? []), c])
+  return [...groups].map(([filePath, list]) => ({
+    filePath,
+    comments: [...list].sort((a, b) => (a.startLine ?? a.line ?? -1) - (b.startLine ?? b.line ?? -1))
+  }))
 }
 
 export function ReviewDraftScreen() {
@@ -364,7 +376,18 @@ function Section(props: { title: string; empty: OrcaNode; comments: ReviewCommen
       {comments.length === 0 ? (
         empty
       ) : (
-        comments.map((c) => <CommentCard key={c.id} comment={c} />)
+        byFile(comments).map((group) => (
+          <Box key={group.filePath ?? ''} direction="column" gap="xs">
+            {group.filePath !== null && (
+              <Text size="xs" muted>
+                {truncateMiddle(group.filePath, PATH_MAX, PATH_KEEP_END)}
+              </Text>
+            )}
+            {group.comments.map((c) => (
+              <CommentCard key={c.id} comment={c} />
+            ))}
+          </Box>
+        ))
       )}
     </Box>
   )
@@ -413,14 +436,11 @@ function CommentCard({ comment }: { comment: ReviewCommentView }) {
   return (
     <Box border radius="md" padding="sm" direction="column" gap="xs">
       <Box direction="row" gap="xs" align="start">
-        {/* The body is the label and the location its description, which Orca draws small and
-            muted in the same column: both start at one indent. An Agent Finding's body is the
-            Textarea below, so its label just names it. minWidth 0 lets a long body wrap instead
-            of pushing the badges off the card. */}
+        {/* The file is the group's heading above the card, so the label is just the line.
+            minWidth 0 keeps the badges on the card. */}
         <Box grow minWidth={0}>
           <Checkbox
-            label={comment.editable ? 'Agent Finding' : comment.body}
-            description={locationOf(comment)}
+            label={lineLabel(comment)}
             checked={comment.checked}
             disabled={comment.posted}
             onChange={(checked) => changeComment(comment.id, { checked })}
@@ -433,43 +453,42 @@ function CommentCard({ comment }: { comment: ReviewCommentView }) {
           <CommentButtons comment={comment} />
         </Box>
       </Box>
-      {(comment.editable || comment.failure !== undefined || error !== undefined) && (
-        <Box direction="row">
-          {/* The checkbox's width and gap, so this lines up with its label. */}
-          <Box width={CHECKBOX_INDENT} shrink={false} />
-          <Box direction="column" gap="xs" grow>
-            {comment.editable && (
-              <Stack gap="xs">
-                <Textarea
-                  label="Agent Finding"
-                  labelHidden
-                  rows={3}
-                  value={text}
-                  onChange={(value) => setEdit(comment.id, value)}
-                  onSubmit={(value) => changeComment(comment.id, { body: value })}
-                />
-                {edit !== undefined && edit !== comment.body && (
-                  <Row gap="xs">
-                    <Button size="xs" onPress={() => changeComment(comment.id, { body: edit })}>
-                      Save
-                    </Button>
-                  </Row>
-                )}
-              </Stack>
-            )}
-            {comment.failure !== undefined && (
-              <Text tone="danger" size="xs">
-                {`Not posted: ${comment.failure}`}
-              </Text>
-            )}
-            {error !== undefined && (
-              <Text tone="danger" size="xs">
-                {error}
-              </Text>
-            )}
-          </Box>
+      <Box direction="row">
+        {/* The checkbox's width and gap, so the comment lines up with its label. */}
+        <Box width={CHECKBOX_INDENT} shrink={false} />
+        <Box direction="column" gap="xs" grow minWidth={0}>
+          {!comment.editable && <Text>{comment.body}</Text>}
+          {comment.editable && (
+            <Stack gap="xs">
+              <Textarea
+                label="Agent Finding"
+                labelHidden
+                rows={3}
+                value={text}
+                onChange={(value) => setEdit(comment.id, value)}
+                onSubmit={(value) => changeComment(comment.id, { body: value })}
+              />
+              {edit !== undefined && edit !== comment.body && (
+                <Row gap="xs">
+                  <Button size="xs" onPress={() => changeComment(comment.id, { body: edit })}>
+                    Save
+                  </Button>
+                </Row>
+              )}
+            </Stack>
+          )}
+          {comment.failure !== undefined && (
+            <Text tone="danger" size="xs">
+              {`Not posted: ${comment.failure}`}
+            </Text>
+          )}
+          {error !== undefined && (
+            <Text tone="danger" size="xs">
+              {error}
+            </Text>
+          )}
         </Box>
-      )}
+      </Box>
     </Box>
   )
 }
