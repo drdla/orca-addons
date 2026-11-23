@@ -287,6 +287,8 @@ declare module 'orca' {
      * for its changed files. Orca only offers a toggle: when Source Control already shows, it closes.
      */
     'rr.showChanges': { input: { url: string }; output: { opened: true } }
+    /** Opens a file of a Review Request's Review Workspace at a line (or its top), in Orca's main view. */
+    'rr.openFile': { input: { url: string; path: string; line: number | null }; output: { opened: true } }
     /**
      * "Update workspace" (#57): moves a clean Review Workspace to the merge request's new head
      * (`baseRef` untouched, the target branch fetched fresh), rebuilds its Review Cover Page and

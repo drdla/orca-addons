@@ -69,6 +69,10 @@ export function createOrcaCli(run: RunOrca): OrcaCli {
       await call(['agent', 'launch', '--agent', input.agent, '--worktree', input.worktree, '--surface', 'terminal',
         '--prompt', input.prompt, ...(input.focus ? ['--focus'] : [])])
     },
+    async openFile(input) {
+      await call(['file', 'open', '--path', input.path, '--worktree', input.worktree,
+        ...(input.line === undefined ? [] : ['--line', String(input.line)]), '--focus'])
+    },
     async removeWorktree(selector, options = {}) {
       await call(['worktree', 'rm', '--worktree', selector, ...(options.force ? ['--force'] : []),
         ...(options.deleteBranch ? ['--delete-branch'] : [])])

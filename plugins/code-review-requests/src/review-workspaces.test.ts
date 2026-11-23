@@ -209,6 +209,26 @@ test('with a custom review command, the Agent Review runs it in a new terminal i
   await worker.deactivate()
 })
 
+test("an Agent Finding's file opens in the Review Workspace at its line, with `orca file open`", async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  fakes.cli.addWorktree({ name: 'by-hand', repoId: REPO.repoId, path: '/wt/by-hand', references: [MR_URL] })
+  const { worker } = await startWorker(fakes, { workspaces: ['/src/api', '/wt/by-hand'] })
+
+  assert.deepEqual(await worker.request('rr.openFile', { url: MR_URL, path: 'src/login.ts', line: 48 }), { opened: true })
+  await worker.request('rr.openFile', { url: MR_URL, path: 'README.md', line: null })
+
+  assert.deepEqual(
+    fakes.cli.calls.filter((c) => c.command === 'file open').map((c) => c.args),
+    [
+      { worktree: 'id:repo-api::/wt/by-hand', path: 'src/login.ts', line: 48 },
+      { worktree: 'id:repo-api::/wt/by-hand', path: 'README.md' }
+    ]
+  )
+  await worker.deactivate()
+})
+
 test('Open workspace and Run Agent Review act on the existing Review Workspace', async () => {
   const fakes = fakeDeps()
   addReviewRequest(fakes)

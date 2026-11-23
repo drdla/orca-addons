@@ -294,6 +294,64 @@ test('a diff-view note opens the diff view to edit or delete it; an Agent Findin
   await view.unmount()
 })
 
+test('the last button of a review comment and an Agent Finding opens its file at its line; a general comment has none', async () => {
+  const opens: unknown[] = []
+  const { view } = await openDraft({
+    'rr.draft': draft([
+      comment('note:n1', { line: 12 }),
+      comment('note:posted', { line: 20, posted: true }),
+      comment('finding:a', { line: 48 }),
+      comment('finding:general', { filePath: null, line: null })
+    ]),
+    'rr.openFile': (input: unknown) => {
+      opens.push(input)
+      return { opened: true }
+    }
+  })
+
+  const buttons = view.findAll({ type: 'IconButton', label: 'Open in the workspace' })
+  assert.deepEqual(
+    buttons.map((b) => b.props.tooltip),
+    ['Open this file at line 12', 'Open this file at line 20', 'Open this file at line 48'],
+    'posted comments too; not a comment without a file'
+  )
+  assert.deepEqual(
+    view
+      .findAll({ type: 'IconButton', label: /^(Edit or delete in the diff view|Delete Agent Finding|Open in the workspace)$/ })
+      .map((b) => b.props.label),
+    [
+      'Edit or delete in the diff view',
+      'Open in the workspace',
+      'Open in the workspace',
+      'Delete Agent Finding',
+      'Delete Agent Finding',
+      'Open in the workspace'
+    ],
+    'the open button comes last on each card (the general finding is listed first)'
+  )
+  for (const button of buttons) await view.press(button)
+  assert.deepEqual(opens, [
+    { url: URL, path: 'src/login.ts', line: 12 },
+    { url: URL, path: 'src/login.ts', line: 20 },
+    { url: URL, path: 'src/login.ts', line: 48 }
+  ])
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test("a file that can't be opened says why", async () => {
+  const { view } = await openDraft({
+    'rr.draft': draft([comment('finding:a')]),
+    'rr.openFile': () => {
+      throw new Error('no such file')
+    }
+  })
+
+  await view.press(view.find({ type: 'IconButton', label: 'Open in the workspace' })!)
+  assert.ok(view.find({ text: /Couldn't open the file: .*no such file/ }))
+  await view.unmount()
+})
+
 test('the section headings go to the diff view and run an Agent Review', async () => {
   const asked: string[] = []
   const { view } = await openDraft({
