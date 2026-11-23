@@ -642,7 +642,7 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
             />
           )
         )}
-        <MyReviewMark card={card} />
+        <MyReviewBadge card={card} />
         {busy && <Spinner label="Working" labelHidden />}
       </Row>
     )
@@ -669,37 +669,19 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
   )
 }
 
-/** How a Reviewing card says the user already reviewed on GitLab; approving ends the Review Request. */
-const MY_REVIEW: Record<MyReview, { icon: IconName; tone: Tone; label: string; tooltip: string }> = {
-  commented: {
-    icon: 'edit',
-    tone: 'neutral',
-    label: 'You commented',
-    tooltip: 'You already commented on this merge request. Open it in GitLab'
-  },
-  'changes-requested': {
-    icon: 'flag',
-    tone: 'warning',
-    label: 'You requested changes',
-    tooltip: 'You requested changes on this merge request. Open it in GitLab'
-  }
+/**
+ * The user's own review so far, as a Badge after the agent button. No "Approved": approving ends
+ * the Review Request, and the Done tab's card says so.
+ */
+const MY_REVIEW: Record<MyReview, { tone: Tone; text: string }> = {
+  commented: { tone: 'neutral', text: 'Commented' },
+  'changes-requested': { tone: 'warning', text: 'Changes requested' }
 }
 
-/** After the agent button: whether the user already commented or requested changes on GitLab. */
-function MyReviewMark({ card }: { card: ReviewRequestCard }) {
+function MyReviewBadge({ card }: { card: ReviewRequestCard }) {
   if (card.myReview == null) return null
-  const mark = MY_REVIEW[card.myReview]
-  return (
-    <IconButton
-      icon={mark.icon}
-      tone={mark.tone}
-      label={mark.label}
-      tooltip={mark.tooltip}
-      variant="ghost"
-      size="xs"
-      onPress={() => openInGitLab(card.url)}
-    />
-  )
+  const badge = MY_REVIEW[card.myReview]
+  return <Badge tone={badge.tone}>{badge.text}</Badge>
 }
 
 /** Only CI that holds a review up blocks it: a passed pipeline, or none, has nothing to say. */
