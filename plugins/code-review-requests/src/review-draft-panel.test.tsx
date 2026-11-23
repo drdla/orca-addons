@@ -40,7 +40,18 @@ function comment(id: string, extra: Partial<ReviewCommentView> = {}): ReviewComm
 }
 
 function draft(comments: ReviewCommentView[], extra: Partial<ReviewDraftView> = {}): ReviewDraftView {
-  return { url: URL, title: 'Add login', workspace: WORKSPACE, comments, warnings: [], importedAt: NOW, ...extra }
+  return {
+    url: URL,
+    iid: 7,
+    title: 'Add login',
+    author: 'ada',
+    authorName: 'Ada Lovelace',
+    workspace: WORKSPACE,
+    comments,
+    warnings: [],
+    importedAt: NOW,
+    ...extra
+  }
 }
 
 const persisted = { plugin: { 'rr.tab': 'in' } }
@@ -52,8 +63,8 @@ function boxAt(view: View, line: string) {
   return view.find({ type: 'Checkbox', label: line })
 }
 
-async function openDraft(requests: Record<string, unknown>) {
-  const host = mockHost({ requests: { 'rr.snapshot': snapshot, ...requests } })
+async function openDraft(requests: Record<string, unknown>, results: Record<string, unknown> = {}) {
+  const host = mockHost({ requests: { 'rr.snapshot': snapshot, ...requests }, results })
   const view = await mount(panel, { host, persisted })
   await view.press(view.find({ type: 'Button', text: 'Finish Review' })!)
   return { host, view }
@@ -206,6 +217,32 @@ test('the header has only Back and the title: no Cover page or Import again', as
   const { view } = await openDraft({ 'rr.draft': draft([]) })
   assert.equal(view.find({ type: 'Button', text: 'Cover page' }), null)
   assert.equal(view.find({ type: 'IconButton', label: 'Import again' }), null)
+  await view.unmount()
+})
+
+test('the header repeats the card: the MR id opening GitLab, the title and its author', async () => {
+  const { host, view } = await openDraft({ 'rr.draft': draft([]) }, { 'shell.openExternal': { opened: true } })
+
+  assert.ok(view.find({ type: 'Text', text: 'Add login' }))
+  assert.ok(view.find({ type: 'Text', text: 'by Ada Lovelace' }))
+  await view.press(view.find({ type: 'Button', text: '7' })!)
+  assert.deepEqual(host.callsOf('shell.openExternal'), [{ url: URL }])
+  await view.unmount()
+})
+
+test("when GitLab can't be opened, Finish Review says why", async () => {
+  const { view } = await openDraft(
+    { 'rr.draft': draft([]) },
+    {
+      'shell.openExternal': () => {
+        throw hostError('action_failed', 'no browser')
+      }
+    }
+  )
+
+  await view.press(view.find({ type: 'Button', text: '7' })!)
+
+  assert.ok(view.find({ type: 'Text', text: "Couldn't open the link: no browser" }))
   await view.unmount()
 })
 

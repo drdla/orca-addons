@@ -95,7 +95,10 @@ const DRAFT_URL = `https://gitlab.example.com/acme/api/-/merge_requests/12`
 /** A curated Review Draft (#29): a note range, a posted note, an edited range finding, a general one. */
 const reviewDraft: ReviewDraftView = {
   url: DRAFT_URL,
+  iid: 12,
   title: 'Add login with SSO',
+  author: 'ada',
+  authorName: 'Ada Lovelace',
   workspace: WORKSPACE,
   comments: [
     {
@@ -329,7 +332,7 @@ export default defineCheck({
     requests: {
       'rr.snapshot': {
         reviewRequests: [
-          { ...card(12, 'Add login with SSO', 5), workspace: WORKSPACE, startBlocked: null, agentReview: { state: 'done', commentsReady: 4 }, toPost: 3 },
+          { ...card(12, 'Add login with SSO', 5), workspace: WORKSPACE, startBlocked: null, agentReview: { state: 'done', commentsReady: 4 }, toPost: 3, myReview: 'changes-requested' },
           {
             ...card(14, 'Fix flaky upload test', 1),
             workspace: { ...WORKSPACE, id: 'repo-api::/wt/review-api-14', path: '/wt/review-api-14' },

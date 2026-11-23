@@ -131,6 +131,7 @@ test('the panel snapshot lists the Review Requests from the last poll', async ()
         ci: null,
         approvals: null,
         comments: 0,
+        myReview: null,
         overdue: false,
         isNew: false,
         workspace: null,

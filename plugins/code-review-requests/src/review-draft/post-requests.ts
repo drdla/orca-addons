@@ -38,7 +38,14 @@ export function registerPostRequests(
 
   async function draftView(card: ReviewRequestCard) {
     const draft = (await drafts.get(card.url)) ?? emptyDraft(card.url)
-    return viewOf(draft, { url: card.url, title: card.title, workspace: card.workspace ?? null })
+    return viewOf(draft, {
+      url: card.url,
+      iid: card.iid,
+      title: card.title,
+      author: card.author,
+      ...(card.authorName ? { authorName: card.authorName } : {}),
+      workspace: card.workspace ?? null
+    })
   }
 
   orca.panels.handle('rr.postPreview', async ({ url }) => poster.preview(cardOf(url)))

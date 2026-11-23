@@ -14,6 +14,7 @@ import {
   Checkbox,
   EmptyState,
   Heading,
+  host,
   IconButton,
   plugin,
   read,
@@ -28,8 +29,10 @@ import {
   type OrcaNode,
   type PanelContext
 } from 'orca'
+import { authorNameOf } from './author'
 import { Button } from './button'
 import { BackButton } from './back-button'
+import { MergeRequestTitle } from './merge-request-link'
 import type { ReviewCommentView, ReviewDraftView } from './protocol'
 import { isPostingNow, PostSection, resetPosting, setupPosting } from './review-post-view'
 import { messageOf } from './errors'
@@ -129,6 +132,14 @@ function act(which: 'changes' | 'agent', failed: string, action: () => Promise<u
 /** Orca's Source Control sidebar in the Review Workspace, for its changed files. */
 function showChanges(url: string): void {
   act('changes', "Couldn't show the changed files", () => plugin.request('rr.showChanges', { url }))
+}
+
+/** The merge request in the browser; a failure shows under the title, like a section button's. */
+function openInGitLab(url: string): void {
+  set(actionError, null)
+  host
+    .call('shell.openExternal', { url })
+    .catch((error: unknown) => set(actionError, `Couldn't open the link: ${messageOf(error)}`))
 }
 
 function runAgentReview(url: string): void {
@@ -238,7 +249,13 @@ export function ReviewDraftScreen() {
       ) : (
         <Stack gap="md">
           <Stack gap="lg">
-            <Text weight="semibold">{current.title}</Text>
+            <MergeRequestTitle
+              url={current.url}
+              iid={current.iid}
+              title={current.title}
+              author={authorNameOf(current)}
+              onOpen={openInGitLab}
+            />
             <PostSection draft={current} onDraft={(answer) => set(draft, answer)} />
           </Stack>
           {current.warnings.length > 0 && (

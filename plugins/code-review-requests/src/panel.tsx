@@ -41,8 +41,8 @@ import {
 import { authorNameOf } from './author'
 import { Button } from './button'
 import { isManualOpen, ManualScreen, openManual } from './manual-view'
-import { MergeRequestLink } from './merge-request-link'
-import type { CiStatus, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
+import { MergeRequestTitle } from './merge-request-link'
+import type { CiStatus, MyReview, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
 import { connectionProblem, loadConnection } from './connection-section'
 import { messageOf } from './errors'
 import { MinuteTime, minuteTimeText, setupClock } from './minute-time'
@@ -642,6 +642,7 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
             />
           )
         )}
+        <MyReviewMark card={card} />
         {busy && <Spinner label="Working" labelHidden />}
       </Row>
     )
@@ -665,6 +666,39 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
       </Button>
       {busy && <Spinner label="Creating the Review Workspace" labelHidden />}
     </Row>
+  )
+}
+
+/** How a Reviewing card says the user already reviewed on GitLab; approving ends the Review Request. */
+const MY_REVIEW: Record<MyReview, { icon: IconName; tone: Tone; label: string; tooltip: string }> = {
+  commented: {
+    icon: 'edit',
+    tone: 'neutral',
+    label: 'You commented',
+    tooltip: 'You already commented on this merge request. Open it in GitLab'
+  },
+  'changes-requested': {
+    icon: 'flag',
+    tone: 'warning',
+    label: 'You requested changes',
+    tooltip: 'You requested changes on this merge request. Open it in GitLab'
+  }
+}
+
+/** After the agent button: whether the user already commented or requested changes on GitLab. */
+function MyReviewMark({ card }: { card: ReviewRequestCard }) {
+  if (card.myReview == null) return null
+  const mark = MY_REVIEW[card.myReview]
+  return (
+    <IconButton
+      icon={mark.icon}
+      tone={mark.tone}
+      label={mark.label}
+      tooltip={mark.tooltip}
+      variant="ghost"
+      size="xs"
+      onPress={() => openInGitLab(card.url)}
+    />
   )
 }
 
@@ -727,16 +761,13 @@ function Card({ card }: { card: ReviewRequestCard }) {
   return (
     <Box border radius="md" padding="sm" direction="column" gap="xs">
       <Row justify="between" align="start">
-        <Row gap="sm" align="start">
-          <MergeRequestLink url={card.url} iid={card.iid} onOpen={openInGitLab} />
-          {/* Nudged down 2px so the title's first line sits level with the button's text; the
-              author sits under the title, at its indent. */}
-          <Box direction="column">
-            <Box height={2} />
-            <Text weight="semibold">{shortTitle(card.title)}</Text>
-            <Text muted size="xs">{`by ${authorNameOf(card)}`}</Text>
-          </Box>
-        </Row>
+        <MergeRequestTitle
+          url={card.url}
+          iid={card.iid}
+          title={shortTitle(card.title)}
+          author={authorNameOf(card)}
+          onOpen={openInGitLab}
+        />
         {card.overdue && <Badge tone="danger">Late</Badge>}
         {isNew && <Badge tone="accent">New</Badge>}
         {card.mergeRequestUpdated === true && <Badge tone="warning">Merge request updated</Badge>}

@@ -110,6 +110,32 @@ test('a running Agent Review replaces the agent button with a spinner; a done on
   await view.unmount()
 })
 
+test('an In review card says when the user already commented or requested changes, and the mark opens the MR', async () => {
+  const host = mockHost({
+    requests: {
+      'rr.markSeen': { seen: true },
+      'rr.snapshot': snapshot(
+        card(7, { workspace: WORKSPACE, myReview: 'commented' }),
+        card(8, { workspace: { ...WORKSPACE, id: 'w8' }, myReview: 'changes-requested' }),
+        card(9, { workspace: { ...WORKSPACE, id: 'w9' }, myReview: null })
+      )
+    } as never,
+    results: { 'shell.openExternal': { opened: true } }
+  })
+  const view = await mount(panel, { host, persisted: { plugin: { 'rr.tab': 'in' } } })
+
+  const commented = view.find({ type: 'IconButton', label: 'You commented' })
+  assert.equal(commented?.props.tooltip, 'You already commented on this merge request. Open it in GitLab')
+  const requested = view.find({ type: 'IconButton', label: 'You requested changes' })
+  assert.equal(requested?.props.tone, 'warning')
+  assert.equal(view.findAll({ type: 'IconButton', label: /^You / }).length, 2, 'nothing on a card not yet reviewed')
+
+  await view.press(commented!)
+  assert.deepEqual(host.callsOf('shell.openExternal'), [{ url: card(7).url }])
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
 test('an In review card has no Post button: posting is on its Review Draft', async () => {
   const view = await mountWith(
     { 'rr.snapshot': snapshot(card(7, { workspace: WORKSPACE, toPost: 2 })) },
