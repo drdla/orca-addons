@@ -32,7 +32,6 @@ async function startWorker(
     settings,
     results: {
       'workspace.list': workspaceList(...(options.workspaces ?? [])),
-      'agent.launch': { terminalId: 'term-agent' },
       'terminal.create': { terminalId: 'term-cmd' },
       'workspace.open': { opened: true },
       'editor.open': { opened: true }
@@ -50,6 +49,11 @@ function addReviewRequest(fakes: Fakes) {
     sourceBranch: 'feature/login',
     targetBranch: 'main'
   })
+}
+
+/** The Agent Reviews launched through `orca agent launch`. */
+function agentLaunches(fakes: Fakes) {
+  return fakes.cli.calls.filter((c) => c.command === 'agent launch').map((c) => c.args)
 }
 
 function worktreeLists(fakes: Fakes): number {
@@ -155,7 +159,7 @@ test('Start review creates a workspace based on the target branch, at the MR hea
   const opens = host.calls.map((c) => c.method).filter((m) => m === 'workspace.open' || m === 'editor.open')
   assert.deepEqual(opens, ['workspace.open', 'editor.open'])
   assert.deepEqual(host.callsOf('workspace.open'), [{ workspaceId: 'ws-1' }])
-  assert.equal(host.callsOf('agent.launch').length, 0)
+  assert.equal(agentLaunches(fakes).length, 0)
   assert.equal(host.callsOf('terminal.create').length, 0)
   const pushed = worker.posts.filter((p) => p.event === 'rr.changed').at(-1)?.payload as {
     reviewRequests: { workspace?: { name: string } | null }[]
@@ -175,9 +179,15 @@ test('Start review with an Agent Review launches the Review Agent in the new wor
 
   await worker.request('rr.startReview', { url: MR_URL, withAgent: true })
 
-  assert.deepEqual(host.callsOf('agent.launch'), [
-    { workspaceId: 'ws-1', agent: 'codex', prompt: `Review ${MR_URL} (feature/login → main)` }
+  assert.deepEqual(agentLaunches(fakes), [
+    {
+      worktree: 'id:repo-api::/worktrees/review-api-7',
+      agent: 'codex',
+      prompt: `Review ${MR_URL} (feature/login → main)`,
+      focus: false
+    }
   ])
+  assert.equal(host.callsOf('agent.launch').length, 0, 'never the host API: it drops the prompt')
   await worker.deactivate()
 })
 
@@ -195,7 +205,7 @@ test('with a custom review command, the Agent Review runs it in a new terminal i
   assert.deepEqual(host.callsOf('terminal.create'), [
     { workspaceId: 'ws-0', title: 'Agent Review', command: `claude --model opus 'Review Add login'` }
   ])
-  assert.equal(host.callsOf('agent.launch').length, 0)
+  assert.equal(agentLaunches(fakes).length, 0)
   await worker.deactivate()
 })
 
@@ -210,7 +220,11 @@ test('Open workspace and Run Agent Review act on the existing Review Workspace',
   assert.deepEqual(host.callsOf('workspace.open'), [{ workspaceId: 'ws-1' }])
 
   assert.deepEqual(await worker.request('rr.runAgentReview', { url: MR_URL }), { started: true })
-  assert.equal((host.callsOf('agent.launch')[0] as { workspaceId: string }).workspaceId, 'ws-1')
+  assert.deepEqual(
+    agentLaunches(fakes).map((a) => ({ ...(a as object), prompt: undefined })),
+    [{ worktree: 'id:repo-api::/wt/by-hand', agent: 'claude', prompt: undefined, focus: true }],
+    'Run Agent Review brings the agent terminal to the front'
+  )
   assert.equal(host.callsOf('workspace.open').length, 2, 'Run Agent Review switches to the workspace too')
   assert.equal(fakes.cli.calls.filter((c) => c.command === 'worktree create').length, 0)
   await worker.deactivate()
@@ -226,7 +240,7 @@ test('Start review on a Review Request that already has a workspace creates no s
   await worker.request('rr.startReview', { url: MR_URL, withAgent: true })
 
   assert.equal(fakes.cli.calls.filter((c) => c.command === 'worktree create').length, 0)
-  assert.equal(host.callsOf('agent.launch').length, 1)
+  assert.equal(agentLaunches(fakes).length, 1)
   await worker.deactivate()
 })
 
@@ -262,11 +276,13 @@ test('when the agent does not start, Start review says the workspace is ready an
   const fakes = fakeDeps()
   addReviewRequest(fakes)
   fakes.cli.addRepo(REPO)
-  // workspace.list does not know the new workspace (yet).
-  const { worker } = await startWorker(fakes, { workspaces: ['/src/api'] })
+  const { worker } = await startWorker(fakes, { workspaces: ['/src/api', '/worktrees/review-api-7'] })
+  fakes.cli.launchAgent = async () => {
+    throw new OrcaCliError('agent_not_found', 'No agent named claude')
+  }
 
   await assert.rejects(worker.request('rr.startReview', { url: MR_URL, withAgent: true }), (error) =>
-    /workspace is ready, but .*the Agent Review didn't start/i.test(String(error))
+    /workspace is ready, but the Agent Review didn't start: No agent named claude/i.test(String(error))
   )
   const [card] = (await worker.request('rr.snapshot')).reviewRequests
   assert.equal(card!.workspace?.name, 'REVIEW Add login')
@@ -308,7 +324,7 @@ test('when the reset to the MR head fails, Start review removes the new workspac
   })
   const [card] = (await worker.request('rr.snapshot')).reviewRequests
   assert.equal(card!.workspace, null)
-  assert.equal(host.callsOf('agent.launch').length, 0)
+  assert.equal(agentLaunches(fakes).length, 0)
   await worker.deactivate()
 })
 
@@ -343,7 +359,7 @@ test('a second Start review while the first is still running reuses it: one work
   ])
 
   assert.equal(fakes.cli.calls.filter((c) => c.command === 'worktree create').length, 1)
-  assert.equal(host.callsOf('agent.launch').length, 1)
+  assert.equal(agentLaunches(fakes).length, 1)
   await worker.deactivate()
 })
 
@@ -360,7 +376,7 @@ test('Start review on a Review Workspace still at the target branch (reset never
 
   assert.deepEqual(fakes.git.resets, [{ worktreePath: '/wt/review-api-7', ref: 'refs/remotes/origin/merge-requests/7' }])
   assert.equal(fakes.cli.calls.filter((c) => c.command === 'worktree create').length, 0)
-  assert.equal(host.callsOf('agent.launch').length, 1)
+  assert.equal(agentLaunches(fakes).length, 1)
   await worker.deactivate()
 })
 
@@ -378,7 +394,7 @@ test('Start review on a Review Workspace still at the target branch with changes
     /review-api-7 is still at the target branch main and has uncommitted changes/.test(String(error))
   )
   assert.deepEqual(fakes.git.resets, [])
-  assert.equal(host.callsOf('agent.launch').length, 0)
+  assert.equal(agentLaunches(fakes).length, 0)
   await worker.deactivate()
 })
 
@@ -395,7 +411,7 @@ test('Start review leaves a Review Workspace at the MR head alone', async () => 
 
   assert.deepEqual(fakes.git.resets, [])
   assert.deepEqual(fakes.git.fetches, [{ repoPath: '/wt/review-api-7', branch: 'main' }], 'only the base, fresh')
-  assert.equal(host.callsOf('agent.launch').length, 1)
+  assert.equal(agentLaunches(fakes).length, 1)
   await worker.deactivate()
 })
 
@@ -417,14 +433,15 @@ async function existingWorkspace(fakes: Fakes, targetBranch = 'main') {
     settings,
     results: {
       'workspace.list': workspaceList('/wt/review-api-7'),
-      'agent.launch': () => {
-        fetchesAtLaunch.push([...fakes.git.fetches])
-        return { terminalId: 'term-agent' }
-      },
       'workspace.open': { opened: true },
       'editor.open': { opened: true }
     }
   })
+  const launch = fakes.cli.launchAgent.bind(fakes.cli)
+  fakes.cli.launchAgent = async (input) => {
+    fetchesAtLaunch.push([...fakes.git.fetches])
+    return launch(input)
+  }
   const { worker } = await startHarness(fakes, settings, host)
   return { host, worker, fetchesAtLaunch }
 }
@@ -459,7 +476,7 @@ test("a failed fetch of the target branch doesn't hold the Agent Review back whe
 
   assert.deepEqual(await worker.request('rr.runAgentReview', { url: MR_URL }), { started: true })
 
-  assert.equal(host.callsOf('agent.launch').length, 1)
+  assert.equal(agentLaunches(fakes).length, 1)
   await worker.deactivate()
 })
 
@@ -477,7 +494,7 @@ test('when the fetch fails and there is no base to diff against, the Agent Revie
       String(error)
     )
   )
-  assert.equal(host.callsOf('agent.launch').length, 0)
+  assert.equal(agentLaunches(fakes).length, 0)
   await worker.deactivate()
 })
 
@@ -491,6 +508,6 @@ test('an Agent Review refuses a Review Request without a target branch: its diff
   await assert.rejects(worker.request('rr.startReview', { url: MR_URL, withAgent: true }), (error) =>
     /the Agent Review didn't start: This Review Request has no target branch yet/.test(String(error))
   )
-  assert.equal(host.callsOf('agent.launch').length, 0)
+  assert.equal(agentLaunches(fakes).length, 0)
   await worker.deactivate()
 })

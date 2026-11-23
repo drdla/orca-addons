@@ -99,3 +99,15 @@ test("sets a worktree's display name only", async () => {
   await cli.setDisplayName('id:r::/p', 'REVIEW Add login')
   assert.deepEqual(calls, [['worktree', 'set', '--worktree', 'id:r::/p', '--display-name', 'REVIEW Add login', '--json']])
 })
+
+test('launches an agent with its prompt in a terminal of the worktree: `orca agent launch`', async () => {
+  const { calls, cli } = runner(ok({ ok: true, result: { outcome: { kind: 'terminal', handle: 'term_1' } } }))
+
+  await cli.launchAgent({ worktree: 'id:r::/wt', agent: 'claude', prompt: 'Review it', focus: true })
+  await cli.launchAgent({ worktree: 'id:r::/wt', agent: 'codex', prompt: 'Review it' })
+
+  assert.deepEqual(calls, [
+    ['agent', 'launch', '--agent', 'claude', '--worktree', 'id:r::/wt', '--surface', 'terminal', '--prompt', 'Review it', '--focus', '--json'],
+    ['agent', 'launch', '--agent', 'codex', '--worktree', 'id:r::/wt', '--surface', 'terminal', '--prompt', 'Review it', '--json']
+  ])
+})

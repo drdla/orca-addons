@@ -100,7 +100,12 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
    * refuses (the diff would be empty). `fetchBase` first refreshes that branch, for a workspace
    * made earlier (#56): a failed fetch is fine while the ref is there, a missing ref is not.
    */
-  async function agentReview(worktree: Worktree, rr: ReviewRequestView, fetchBase: boolean): Promise<void> {
+  async function agentReview(
+    worktree: Worktree,
+    rr: ReviewRequestView,
+    fetchBase: boolean,
+    focus: boolean
+  ): Promise<void> {
     const targetBranch = rr.targetBranch
     if (!targetBranch) throw new Error('This Review Request has no target branch yet. Refresh and try again.')
     if (fetchBase) {
@@ -108,14 +113,15 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
         if ((await deps.git.resolveRef(worktree.path, targetBranchFullRef(targetBranch))) === null) throw error
       })
     }
-    const workspaceId = await hostWorkspaceId(worktree)
     const settings = await deps.settings()
     const prompt = reviewPromptFor(settings.reviewPrompt, rr)
     if (settings.reviewCommand.trim() !== '') {
       const command = reviewCommandFor(settings.reviewCommand.trim(), prompt, rr)
-      await deps.host.call('terminal.create', { workspaceId, title: 'Agent Review', command })
+      await deps.host.call('terminal.create', { workspaceId: await hostWorkspaceId(worktree), title: 'Agent Review', command })
     } else {
-      await deps.host.call('agent.launch', { workspaceId, agent: settings.reviewAgent, prompt })
+      // Through the orca CLI, not the host API's `agent.launch`: that one started the agent but
+      // never sent it the prompt (see OrcaCli.launchAgent).
+      await deps.cli().launchAgent({ worktree: `id:${worktree.id}`, agent: settings.reviewAgent, prompt, focus })
     }
   }
 
@@ -204,7 +210,8 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     // that fails doesn't hold the agent back. The page opens last: the tab in front.
     const target = coverPageTarget(worktree, rr)
     const page = await settle(deps.coverPages.ensure(target))
-    const agent = withAgent ? await settle(agentReview(worktree, rr, existed)) : null
+    // Not focused: the Review Cover Page opens in front afterwards.
+    const agent = withAgent ? await settle(agentReview(worktree, rr, existed, false)) : null
     const problems: string[] = []
     if (opened !== null) problems.push(`it didn't open: ${messageOf(opened)}`)
     if (agent !== null) problems.push(`the Agent Review didn't start: ${messageOf(agent)}`)
@@ -362,7 +369,8 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
       // The Agent Review reads the Review Cover Page (#56): a workspace without one gets it first.
       // Best effort: without the page, the Review Prompt sends the agent to GitLab for the description.
       await settle(deps.coverPages.ensure(coverPageTarget(worktree, rr)))
-      await agentReview(worktree, rr, true)
+      // Focused: the reviewer clicked for the agent, so its terminal comes to the front.
+      await agentReview(worktree, rr, true, true)
     },
     async updateWorkspace(url) {
       const rr = reviewRequestOf(url)

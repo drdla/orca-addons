@@ -101,6 +101,24 @@ export interface OrcaCli {
   removeWorktree(selector: string, options?: RemoveWorktreeOptions): Promise<void>
   /** `orca worktree set --display-name`: the name Orca shows; the branch and folder stay. */
   setDisplayName(selector: string, name: string): Promise<void>
+  /**
+   * `orca agent launch --surface terminal`: starts `agent` in a new terminal of the worktree and
+   * submits `prompt` once it is ready. The Agent Review uses it instead of the host API's
+   * `agent.launch`, whose prompt never reached the agent in Orca 1.4.269
+   * (`agent_launch_terminal_not_running_agent`), leaving an idle agent in a background tab.
+   */
+  launchAgent(input: LaunchAgentInput): Promise<void>
+}
+
+/** `orca agent launch` flags. */
+export type LaunchAgentInput = {
+  /** An Orca worktree selector, for example `id:<id>`. */
+  worktree: string
+  /** An Orca agent id, for example `claude` or `codex`. */
+  agent: string
+  prompt: string
+  /** `--focus`: switch Orca to the new terminal. */
+  focus?: boolean
 }
 
 /** A failed CLI call: `code` is the envelope's `error.code` (or `unavailable` if it can't run). */
