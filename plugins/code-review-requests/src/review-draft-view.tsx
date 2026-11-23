@@ -134,8 +134,8 @@ function showChanges(url: string): void {
   act('changes', "Couldn't show the changed files", () => plugin.request('rr.showChanges', { url }))
 }
 
-/** An Agent Finding's file in the Review Workspace, at its line; a failure shows on the finding. */
-function openFinding(url: string, comment: ReviewCommentView): void {
+/** A comment's file in the Review Workspace, at its line; a failure shows on the comment. */
+function openAtLine(url: string, comment: ReviewCommentView): void {
   if (comment.filePath === null) return
   setCommentError(comment.id, null)
   plugin
@@ -421,46 +421,48 @@ function Section(props: { title: string; empty: OrcaNode; comments: ReviewCommen
 }
 
 /**
- * A diff-view note's way to edit or delete it: Orca has no API for either, nor for opening the
- * diff view at one note, so the button opens the workspace's changes. An Agent Finding's Delete,
- * then (rightmost) a button that opens its file at its line; a general finding has no file.
+ * A comment's buttons. A diff-view note's way to edit or delete it: Orca has no API for either,
+ * nor for opening the diff view at one note, so the button opens the workspace's changes. An
+ * Agent Finding's Delete. Then, rightmost on both, a button that opens the comment's file at its
+ * line; a general comment has no file.
  */
 function CommentButtons({ comment }: { comment: ReviewCommentView }) {
   const url = read(draftUrl)
-  if (comment.origin === 'diff-note') {
-    if (comment.posted || url === null) return null
-    return (
-      <IconButton
-        icon="edit"
-        label="Edit or delete in the diff view"
-        tooltip="Edit or delete this note in Orca's diff view"
-        variant="ghost"
-        size="xs"
-        disabled={read(acting) !== null}
-        onPress={() => showChanges(url)}
-      />
-    )
-  }
+  if (url === null) return null
+  const busy = read(acting) !== null
   return (
     <>
-      <IconButton
-        icon="delete"
-        label="Delete Agent Finding"
-        tooltip="Remove this finding from the Review Draft"
-        variant="ghost"
-        tone="danger"
-        size="xs"
-        onPress={() => deleteComment(comment.id)}
-      />
-      {comment.filePath !== null && url !== null && (
+      {comment.origin === 'diff-note' && !comment.posted && (
+        <IconButton
+          icon="edit"
+          label="Edit or delete in the diff view"
+          tooltip="Edit or delete this note in Orca's diff view"
+          variant="ghost"
+          size="xs"
+          disabled={busy}
+          onPress={() => showChanges(url)}
+        />
+      )}
+      {comment.origin === 'agent-finding' && (
+        <IconButton
+          icon="delete"
+          label="Delete Agent Finding"
+          tooltip="Remove this finding from the Review Draft"
+          variant="ghost"
+          tone="danger"
+          size="xs"
+          onPress={() => deleteComment(comment.id)}
+        />
+      )}
+      {comment.filePath !== null && (
         <IconButton
           icon="code"
           label="Open in the workspace"
           tooltip={comment.line === null ? 'Open this file in the Review Workspace' : `Open this file at line ${comment.line}`}
           variant="ghost"
           size="xs"
-          disabled={read(acting) !== null}
-          onPress={() => openFinding(url, comment)}
+          disabled={busy}
+          onPress={() => openAtLine(url, comment)}
         />
       )}
     </>
