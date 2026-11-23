@@ -41,6 +41,21 @@ test('cards carry the CI status, approvals given/required and the open comment c
   await worker.deactivate()
 })
 
+test("cards carry the user's own review on GitLab: commented or requested changes, nothing for a started draft", async () => {
+  const fakes = fakeDeps()
+  for (const iid of [1, 2, 3, 4]) fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid })
+  fakes.gitlab.setReviewState('acme/api', 1, 'REVIEWED')
+  fakes.gitlab.setReviewState('acme/api', 2, 'REQUESTED_CHANGES')
+  fakes.gitlab.setReviewState('acme/api', 3, 'REVIEW_STARTED')
+  const { worker } = await startWorker(fakes)
+
+  assert.equal((await cardOf(worker, 1))?.myReview, 'commented')
+  assert.equal((await cardOf(worker, 2))?.myReview, 'changes-requested')
+  assert.equal((await cardOf(worker, 3))?.myReview, null, 'unpublished drafts are not a review yet')
+  assert.equal((await cardOf(worker, 4))?.myReview, null)
+  await worker.deactivate()
+})
+
 test('on GitLab CE (no approval fields) the list still loads; only the approvals badge is hidden', async () => {
   const fakes = fakeDeps({ gitlab: { edition: 'ce' } })
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 1, pipeline: 'SUCCESS', openThreads: 2, approvalsRequired: 2 })

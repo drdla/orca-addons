@@ -42,7 +42,7 @@ import { authorNameOf } from './author'
 import { Button } from './button'
 import { isManualOpen, ManualScreen, openManual } from './manual-view'
 import { MergeRequestTitle } from './merge-request-link'
-import type { CiStatus, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
+import type { CiStatus, MyReview, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
 import { connectionProblem, loadConnection } from './connection-section'
 import { messageOf } from './errors'
 import { MinuteTime, minuteTimeText, setupClock } from './minute-time'
@@ -642,6 +642,7 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
             />
           )
         )}
+        <MyReviewMark card={card} />
         {busy && <Spinner label="Working" labelHidden />}
       </Row>
     )
@@ -665,6 +666,39 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
       </Button>
       {busy && <Spinner label="Creating the Review Workspace" labelHidden />}
     </Row>
+  )
+}
+
+/** How a Reviewing card says the user already reviewed on GitLab; approving ends the Review Request. */
+const MY_REVIEW: Record<MyReview, { icon: IconName; tone: Tone; label: string; tooltip: string }> = {
+  commented: {
+    icon: 'edit',
+    tone: 'neutral',
+    label: 'You commented',
+    tooltip: 'You already commented on this merge request. Open it in GitLab'
+  },
+  'changes-requested': {
+    icon: 'flag',
+    tone: 'warning',
+    label: 'You requested changes',
+    tooltip: 'You requested changes on this merge request. Open it in GitLab'
+  }
+}
+
+/** After the agent button: whether the user already commented or requested changes on GitLab. */
+function MyReviewMark({ card }: { card: ReviewRequestCard }) {
+  if (card.myReview == null) return null
+  const mark = MY_REVIEW[card.myReview]
+  return (
+    <IconButton
+      icon={mark.icon}
+      tone={mark.tone}
+      label={mark.label}
+      tooltip={mark.tooltip}
+      variant="ghost"
+      size="xs"
+      onPress={() => openInGitLab(card.url)}
+    />
   )
 }
 

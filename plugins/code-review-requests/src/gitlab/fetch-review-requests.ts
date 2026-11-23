@@ -1,12 +1,13 @@
 // Reads the user's Review Requests from GitLab through the transport seam: who am I, then every
 // page of the Review Requests query, mapped to the views the rest of the plugin uses.
-import type { CiStatus, ReviewRequestView } from '../protocol'
+import type { CiStatus, MyReview, ReviewRequestView } from '../protocol'
 import type { GitLabTransport } from '../seams/gitlab'
 import {
   REVIEW_REQUESTS_QUERY,
   type PipelineStatus,
   type ReviewRequestNode,
-  type ReviewRequestsResponse
+  type ReviewRequestsResponse,
+  type ReviewState
 } from './review-requests-query'
 import { explainRefusedQuery } from './version-check'
 
@@ -33,7 +34,7 @@ export async function fetchReviewRequests(
     }
     const page = data.currentUser.reviewRequestedMergeRequests
     for (const node of page.nodes) {
-      if (isReviewRequest(node, me)) views.push(toView(node))
+      if (isReviewRequest(node, me)) views.push(toView(node, me))
     }
     if (!page.pageInfo.hasNextPage || page.pageInfo.endCursor === null) return views
     after = page.pageInfo.endCursor
@@ -50,7 +51,7 @@ function isReviewRequest(node: ReviewRequestNode, me: string): boolean {
   return mine?.mergeRequestInteraction?.approved !== true
 }
 
-function toView(node: ReviewRequestNode): ReviewRequestView {
+function toView(node: ReviewRequestNode, me: string): ReviewRequestView {
   return {
     url: node.webUrl,
     title: node.title,
@@ -66,8 +67,19 @@ function toView(node: ReviewRequestNode): ReviewRequestView {
     ci: ciOf(node.headPipeline?.status ?? null),
     // Filled in from the optional approvals query (approvals.ts), which CE may not answer.
     approvals: null,
-    comments: openThreadsOf(node)
+    comments: openThreadsOf(node),
+    myReview: myReviewOf(node.reviewers.nodes.find((r) => r.username === me)?.mergeRequestInteraction?.reviewState)
   }
+}
+
+/**
+ * What the user's reviewer state says they did: REVIEWED is a submitted review or comment,
+ * REQUESTED_CHANGES a review that asked for changes. REVIEW_STARTED only means unpublished drafts.
+ */
+function myReviewOf(state: ReviewState | undefined): MyReview | null {
+  if (state === 'REVIEWED') return 'commented'
+  if (state === 'REQUESTED_CHANGES') return 'changes-requested'
+  return null
 }
 
 /** Passed, failed or running; nothing for no pipeline or one that was canceled, skipped or manual. */

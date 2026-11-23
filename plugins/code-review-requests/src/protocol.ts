@@ -28,7 +28,15 @@ export type ReviewRequestView = {
   approvals?: { given: number; required: number } | null
   /** The comments badge: unresolved threads on the MR. */
   comments?: number
+  /**
+   * The user's own review so far, from their reviewer state on GitLab: they commented or
+   * requested changes. Null while they haven't (or GitLab reset it on a new review request);
+   * absent in views stored before it existed.
+   */
+  myReview?: MyReview | null
 }
+
+export type MyReview = 'commented' | 'changes-requested'
 
 export type CiStatus = 'passed' | 'failed' | 'running'
 

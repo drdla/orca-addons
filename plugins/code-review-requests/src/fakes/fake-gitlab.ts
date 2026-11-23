@@ -203,6 +203,13 @@ export class FakeGitLab implements GitLabTransport {
     this.#touch(mr)
   }
 
+  /** A reviewer's state as GitLab reports it, for example REVIEWED after they comment. */
+  setReviewState(projectPath: string, iid: number, state: ReviewState, username = this.me): void {
+    const mr = this.#find(projectPath, iid)
+    mr.reviewStates[username] = state
+    this.#touch(mr)
+  }
+
   merge(projectPath: string, iid: number): void {
     this.#touch(Object.assign(this.#find(projectPath, iid), { state: 'merged' as const }))
   }
