@@ -1,6 +1,6 @@
 // Why did a Review Request drop off the list? The list query can't say (it only returns what is
 // still waiting), so ask GitLab about each dropped MR with one small GraphQL query (#7): state,
-// draft, approvedBy and reviewers. Made draft is not an Ended Review Request, so the
+// draft, approvedBy and reviewers (with the user's reviewer state, for changes requested, #78). Made draft is not an Ended Review Request, so the
 // notifications must tell it apart from approved, merged, closed and removed as Reviewer.
 //
 // An MR GitLab no longer shows the user (deleted, access lost: a null project or merge request,
@@ -10,6 +10,7 @@
 // unknown, and the notifier asks again on the next good poll.
 import type { ReviewRequestView } from '../protocol'
 import { GitLabError, type GitLabTransport } from '../seams/gitlab'
+import type { ReviewState } from '../gitlab/review-requests-query'
 import type { DropReason } from './changes'
 
 export const DROPPED_MERGE_REQUEST_QUERY = `query DroppedMergeRequest($project: ID!, $iid: String!) {
@@ -18,7 +19,7 @@ export const DROPPED_MERGE_REQUEST_QUERY = `query DroppedMergeRequest($project: 
       state
       draft
       approvedBy { nodes { username } }
-      reviewers { nodes { username } }
+      reviewers { nodes { username mergeRequestInteraction { reviewState } } }
     }
   }
 }`
@@ -27,7 +28,7 @@ export type DroppedMergeRequestNode = {
   state: 'opened' | 'closed' | 'locked' | 'merged'
   draft: boolean
   approvedBy: { nodes: { username: string }[] }
-  reviewers: { nodes: { username: string }[] }
+  reviewers: { nodes: { username: string; mergeRequestInteraction?: { reviewState: ReviewState } | null }[] }
 }
 
 export type DroppedMergeRequestResponse = {
@@ -66,7 +67,9 @@ function reasonOf(mr: DroppedMergeRequestNode, me: string): DropReason | null {
   if (mr.state === 'merged') return 'merged'
   if (mr.state !== 'opened') return 'closed'
   if (mr.approvedBy.nodes.some((u) => u.username === me)) return 'approved'
-  if (!mr.reviewers.nodes.some((u) => u.username === me)) return 'unassigned'
+  const mine = mr.reviewers.nodes.find((u) => u.username === me)
+  if (mine === undefined) return 'unassigned'
+  if (mine.mergeRequestInteraction?.reviewState === 'REQUESTED_CHANGES') return 'changes-requested'
   if (mr.draft) return 'draft'
   return null
 }

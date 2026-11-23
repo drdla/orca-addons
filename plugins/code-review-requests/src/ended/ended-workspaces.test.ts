@@ -38,12 +38,6 @@ async function arrange(unposted: () => number) {
 
 const removals = (cli: FakeOrcaCli) => cli.calls.filter((c) => c.command === 'worktree rm')
 
-test('unposted Review Comments make manual removal ask first, without forcing', async () => {
-  const { ended } = await arrange(() => 3)
-
-  assert.deepEqual(await ended.checkRemoval(MR_URL), { problems: ['3 unposted Review Comments'], force: false })
-})
-
 test('unposted Review Comments make auto-removal skip until they are posted', async () => {
   let unposted = 1
   const { clock, cli, ended } = await arrange(() => unposted)

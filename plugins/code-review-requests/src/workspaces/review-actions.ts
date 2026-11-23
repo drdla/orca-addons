@@ -5,8 +5,9 @@
 // Update workspace (#57) moves a Review Workspace to the merge request's new head. Every failure
 // rejects with a message the panel shows on the card.
 import { coverPageTargetOf, type CoverPages } from '../cover-page/cover-pages'
-import type { ReviewRequestView } from '../protocol'
+import type { ReviewRequestView, ReviewWorkspaceView } from '../protocol'
 import { mergeRequestHeadRef, targetBranchFullRef } from '../seams/git'
+import { removeReviewWorkspace } from './remove-review-workspace'
 import type { Worktree } from '../seams/orca-cli'
 import type { Settings } from '../settings'
 import { reviewCommandFor, reviewPromptFor } from './review-prompt'
@@ -42,6 +43,11 @@ export type ReviewActionsDeps = WorkspaceContext & {
 export type WorkspaceUpdate = { url: string; worktreePath: string; from: string; to: string }
 
 export type ReviewActions = {
+  /**
+   * A listed Review Request's Review Workspace, for removing it while the review is in progress
+   * (#80). Rejects while Start review or Update workspace runs for it.
+   */
+  reviewWorkspace(url: string): Promise<ReviewWorkspaceView>
   /** Creates (or reuses) the Review Workspace, then starts an Agent Review if `withAgent`. */
   startReview(url: string, withAgent: boolean): Promise<void>
   openWorkspace(url: string): Promise<void>
@@ -153,7 +159,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     } catch (error) {
       const reason = `Couldn't check out the merge request in the new Review Workspace ${worktree.displayName}: ${sentence(error)}`
       try {
-        await deps.cli().removeWorktree(`id:${worktree.id}`, { force: true, deleteBranch: true })
+        await removeReviewWorkspace(deps, { id: worktree.id, branch: worktree.branch, repoPath }, { force: true })
       } catch (removeError) {
         throw new Error(
           `${reason}. Removing it failed too (${sentence(removeError)}); remove it in Orca before you start the review again.`
@@ -246,9 +252,20 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     )
   }
 
-  /** Refuses unless `head` is (in) `mergeRequestHead`: the reviewer has no commits of their own. */
-  async function refuseLocalCommits(worktree: Worktree, head: string, mergeRequestHead: string | null): Promise<void> {
+  /**
+   * Refuses unless `head` is (in) `mergeRequestHead` or the target branch: the reviewer has no
+   * commits of their own. A workspace still at the target branch (a Start review cut off between
+   * creating the worktree and the reset) has only the target's commits, none of its own.
+   */
+  async function refuseLocalCommits(
+    worktree: Worktree,
+    rr: ReviewRequestView,
+    head: string,
+    mergeRequestHead: string | null
+  ): Promise<void> {
     if (mergeRequestHead !== null && (await deps.git.isAncestor(worktree.path, head, mergeRequestHead))) return
+    const target = rr.targetBranch ? await deps.git.resolveRef(worktree.path, targetBranchFullRef(rr.targetBranch)) : null
+    if (target !== null && (await deps.git.isAncestor(worktree.path, head, target))) return
     throw new Error(
       `The Review Workspace ${worktree.displayName} has local commits that aren't in the merge request; ` +
         'nothing was changed.'
@@ -272,7 +289,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     // Own commits: HEAD is not in the MR head fetched last time. Comparing with the new head would
     // refuse every force-push (a rebased merge request), so the check runs before fetching it.
     const fetchedBefore = await deps.git.resolveRef(worktree.path, mergeRequestHeadRef(rr.iid))
-    if (fetchedBefore !== null) await refuseLocalCommits(worktree, from, fetchedBefore)
+    if (fetchedBefore !== null) await refuseLocalCommits(worktree, rr, from, fetchedBefore)
     // The base moves too: after a rebase onto a newer target, a stale remote-tracking target
     // branch would put the target's commits into "Committed on Branch" and the Agent Review's diff.
     try {
@@ -292,7 +309,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
       )
     }
     // Never fetched before: nothing to tell own commits by but the new head itself.
-    if (fetchedBefore === null) await refuseLocalCommits(worktree, from, await deps.git.resolveRef(worktree.path, head))
+    if (fetchedBefore === null) await refuseLocalCommits(worktree, rr, from, await deps.git.resolveRef(worktree.path, head))
     // Edits made while fetching would be lost too.
     await refuseUncommitted(worktree)
     let failure: unknown = null
@@ -359,6 +376,13 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     coverPageTargetOf(rr, { ...worktree, name: worktree.displayName })
 
   return {
+    async reviewWorkspace(url) {
+      const rr = reviewRequestOf(url)
+      const change = running.get(normalizeMergeRequestUrl(rr.url) ?? rr.url)
+      if (change) throw new Error(`${change.action} is still running for this merge request. Try again when it's done.`)
+      const worktree = await existingWorkspace(rr)
+      return { id: worktree.id, name: worktree.displayName, path: worktree.path }
+    },
     async startReview(url, withAgent) {
       const rr = reviewRequestOf(url)
       return exclusive(rr, 'Start Review', () => startReview(rr, withAgent))
@@ -400,7 +424,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     },
     async updateWorkspace(url) {
       const rr = reviewRequestOf(url)
-      return exclusive(rr, 'Update Workspace', () => updateWorkspace(rr))
+      return exclusive(rr, 'Pull Changes', () => updateWorkspace(rr))
     }
   }
 }
@@ -414,7 +438,7 @@ function settle(work: Promise<unknown>): Promise<unknown> {
 }
 
 /** The workspace changes that never run at once for one merge request. */
-type WorkspaceChange = 'Start Review' | 'Update Workspace'
+type WorkspaceChange = 'Start Review' | 'Pull Changes'
 
 /**
  * An untracked entry of `git status --porcelain -z` in the plugin's own folder (when the exclude

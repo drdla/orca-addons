@@ -181,6 +181,9 @@ export function createReviewPoster(options: {
 
         await drafts.markPosted(target.url, posted)
         await drafts.update(target.url, (d) => withFailures(d, failures))
+        // #81: the review is in; what wasn't checked for it goes. Not while some comments failed:
+        // the person is still at it.
+        if (failures.length === 0) await drafts.clearUnchecked(target.url)
         if (posted.length > 0 || summary !== '' || request.outcome !== 'comment') {
           await options.notify(...postedNote(target, posted.length, request.outcome)).catch(() => {})
         }

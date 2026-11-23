@@ -310,7 +310,7 @@ export default defineCheck({
   allOverdue: { requests: { 'rr.snapshot': allOverdue } },
   /** The person left the panel on In review, with nothing there. */
   inReviewTab: { requests: { 'rr.snapshot': toReview }, persisted: { plugin: { 'rr.tab': 'in' } } },
-  /** In review: a card with a Review Workspace, Open workspace and Run Agent Review (#27). */
+  /** In review: a card with a Review Workspace, Open workspace (#27). */
   inReview: { requests: { 'rr.snapshot': inReview }, persisted: { plugin: { 'rr.tab': 'in' } } },
   /** Todo next to a Reviewing card: Start review and its Agent Review button (#27). */
   startReview: { requests: { 'rr.snapshot': inReview } },
@@ -332,7 +332,7 @@ export default defineCheck({
     requests: {
       'rr.snapshot': {
         reviewRequests: [
-          { ...card(12, 'Add login with SSO', 5), workspace: WORKSPACE, startBlocked: null, agentReview: { state: 'done', commentsReady: 4 }, toPost: 3, myReview: 'changes-requested' },
+          { ...card(12, 'Add login with SSO', 5), workspace: WORKSPACE, startBlocked: null, agentReview: { state: 'done', commentsReady: 4 }, toPost: 3, myReview: 'commented' },
           {
             ...card(14, 'Fix flaky upload test', 1),
             workspace: { ...WORKSPACE, id: 'repo-api::/wt/review-api-14', path: '/wt/review-api-14' },
@@ -347,7 +347,21 @@ export default defineCheck({
     },
     persisted: { plugin: { 'rr.tab': 'in' } }
   },
-  /** In review (#57): new commits on the merge request, so "Merge request updated" and Update workspace. */
+  /** Todo (#79): re-requested after an approval (old workspace kept) and after a comment (none). */
+  todoReRequested: {
+    requests: {
+      'rr.snapshot': {
+        reviewRequests: [
+          { ...card(12, 'Add login with SSO', 5), workspace: WORKSPACE, startBlocked: null, reRequested: 'approved', mergeRequestUpdated: true },
+          { ...card(14, 'Fix flaky upload test', 1), reRequested: 'commented' }
+        ],
+        refreshedAt: NOW
+      } satisfies ReviewRequestsSnapshot,
+      'rr.connection': connection()
+    },
+    persisted: { plugin: { 'rr.tab': 'todo' } }
+  },
+  /** In review (#57): new commits on the merge request, so Pull Changes, first in the row. */
   inReviewMergeRequestUpdated: {
     requests: {
       'rr.snapshot': {

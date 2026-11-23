@@ -4,7 +4,9 @@
 //   - No baseline yet: first run, one summary of what is waiting.
 //   - Catch-up (see isCatchUp): one summary of what changed since the baseline.
 //   - Otherwise: one notification per new and per dropped Review Request.
-// A Review Request the user approved ends without a notification (they did it themselves).
+// A Review Request the user approved or requested changes on ends without a notification (they
+// did it themselves). A re-requested review (#79) is worded as such: listed again after an
+// approval or a request for changes, or still listed after a comment.
 // Items that came and went while away are never on either list, so they are never notified.
 // Only good polls reach the notifier, so a failed poll never derives new or dropped items.
 //
@@ -13,7 +15,7 @@
 // notified as ended or put under Ended. Switching back diffs against that host's own baseline.
 import type { ReviewRequestView } from '../protocol'
 import { diffReviewRequests, isCatchUp, type DropReason, type Dropped } from './changes'
-import { catchUpNote, droppedNote, firstRunNote, newNote, type Note } from './notes'
+import { catchUpNote, droppedNote, firstRunNote, newNote, reRequestedNote, type Note } from './notes'
 
 const BASELINE_PREFIX = 'notify.baseline:'
 
@@ -83,8 +85,16 @@ export function createNotifier(options: NotifierOptions) {
   }
 
   return {
-    /** Hand it every good poll: its list, when it started, and the host it read. */
-    async onGoodPoll(reviewRequests: ReviewRequestView[], at: number, host: string): Promise<void> {
+    /**
+     * Hand it every good poll: its list, when it started, and the host it read. `reRequested`: the
+     * URLs this poll found re-requested (#79).
+     */
+    async onGoodPoll(
+      reviewRequests: ReviewRequestView[],
+      at: number,
+      host: string,
+      reRequested: ReadonlySet<string> = new Set()
+    ): Promise<void> {
       if (!baselines.has(host)) baselines.set(host, await loadBaseline(options.storage, host))
       const baseline = baselines.get(host)!
       const firstSinceStart = !polled.has(host)
@@ -98,7 +108,11 @@ export function createNotifier(options: NotifierOptions) {
       }
 
       const changes = diffReviewRequests(baseline.reviewRequests, reviewRequests)
-      const added = changes.added.filter(isShown)
+      const isReRequested = (r: ReviewRequestView) => reRequested.has(r.url)
+      // New to the list, or re-requested: listed again (approved or changes requested before) or
+      // still listed (commented before). Each is notified once.
+      const again = reviewRequests.filter((r) => isReRequested(r) && isShown(r))
+      const added = changes.added.filter((r) => isShown(r) && !isReRequested(r))
       const dropped = changes.dropped.filter(isShown)
       const reasons = dropped.length > 0 ? await options.explainDropped(dropped, host) : new Map()
       const explained: Dropped[] = []
@@ -116,9 +130,13 @@ export function createNotifier(options: NotifierOptions) {
       })
       await save(host, { reviewRequests: [...reviewRequests, ...unexplained], lastSuccessAt: at })
       if (explained.length > 0) await options.onDropped?.(explained, at)
-      // The reviewer's own approval is news to nobody: it ends the Review Request silently.
-      const told = explained.filter((d) => d.reason !== 'approved')
-      await send(catchUp ? [catchUpNote(added, told)] : [...added.map(newNote), ...told.map(droppedNote)])
+      // The reviewer's own approval or request for changes is news to nobody: it ends silently.
+      const told = explained.filter((d) => d.reason !== 'approved' && d.reason !== 'changes-requested')
+      await send(
+        catchUp
+          ? [catchUpNote(added, told, again)]
+          : [...added.map(newNote), ...again.map(reRequestedNote), ...told.map(droppedNote)]
+      )
     }
   }
 }

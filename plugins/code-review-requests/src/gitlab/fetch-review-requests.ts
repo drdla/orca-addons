@@ -42,16 +42,18 @@ export async function fetchReviewRequests(
 }
 
 /**
- * The query already filters these out, but `not: { approvedBy }` is experimental, so check the
- * user's own reviewer node too (research #5).
+ * The query already filters out approved ones, but `not: { approvedBy }` is experimental, so check
+ * the user's own reviewer node too (research #5). Requesting changes ends the Review Request as
+ * approving does (#78); the query can't filter by reviewer state, so it is checked here only.
  */
 function isReviewRequest(node: ReviewRequestNode, me: string): boolean {
   if (node.draft || node.state !== 'opened') return false
-  const mine = node.reviewers.nodes.find((r) => r.username === me)
-  return mine?.mergeRequestInteraction?.approved !== true
+  const mine = node.reviewers.nodes.find((r) => r.username === me)?.mergeRequestInteraction
+  return mine?.approved !== true && mine?.reviewState !== 'REQUESTED_CHANGES'
 }
 
 function toView(node: ReviewRequestNode, me: string): ReviewRequestView {
+  const state = node.reviewers.nodes.find((r) => r.username === me)?.mergeRequestInteraction?.reviewState
   return {
     url: node.webUrl,
     title: node.title,
@@ -68,18 +70,17 @@ function toView(node: ReviewRequestNode, me: string): ReviewRequestView {
     // Filled in from the optional approvals query (approvals.ts), which CE may not answer.
     approvals: null,
     comments: openThreadsOf(node),
-    myReview: myReviewOf(node.reviewers.nodes.find((r) => r.username === me)?.mergeRequestInteraction?.reviewState)
+    myReview: myReviewOf(state),
+    awaitingReview: state === undefined || state === 'UNREVIEWED'
   }
 }
 
 /**
- * What the user's reviewer state says they did: REVIEWED is a submitted review or comment,
- * REQUESTED_CHANGES a review that asked for changes. REVIEW_STARTED only means unpublished drafts.
+ * What the user's reviewer state says they did: REVIEWED is a submitted review or comment.
+ * REVIEW_STARTED only means unpublished drafts; REQUESTED_CHANGES is never a Review Request (#78).
  */
 function myReviewOf(state: ReviewState | undefined): MyReview | null {
-  if (state === 'REVIEWED') return 'commented'
-  if (state === 'REQUESTED_CHANGES') return 'changes-requested'
-  return null
+  return state === 'REVIEWED' ? 'commented' : null
 }
 
 /** Passed, failed or running; nothing for no pipeline or one that was canceled, skipped or manual. */

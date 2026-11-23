@@ -172,9 +172,25 @@ function merge(draft: ReviewDraft, sources: Sources, now: number): ReviewDraft {
       const what = uncommitted.length === 1 ? '1 diff-view note' : `${uncommitted.length} diff-view notes`
       warnings.push(`${what} on uncommitted changes skipped: GitLab only has committed code.`)
     }
-    notes = diffNotes
-      .filter((n) => !uncommitted.includes(n))
-      .map((n) => fromNote(n, previous.get(`note:${n.id}`), sources))
+    // #81: a note dismissed by posting stays out until it is edited; then it is back, unchecked.
+    const dismissed = { ...draft.dismissedNotes }
+    notes = []
+    for (const n of diffNotes) {
+      if (uncommitted.includes(n)) continue
+      const id = `note:${n.id}`
+      const at = dismissed[id]
+      if (at !== undefined) {
+        if (at === (n.updatedAt ?? n.createdAt)) continue
+        delete dismissed[id]
+        notes.push({ ...fromNote(n, undefined, sources), checked: false })
+        continue
+      }
+      notes.push(fromNote(n, previous.get(id), sources))
+    }
+    // Notes deleted in Orca need no entry any more.
+    const present = new Set(diffNotes.map((n) => `note:${n.id}`))
+    for (const id of Object.keys(dismissed)) if (!present.has(id)) delete dismissed[id]
+    draft = Object.keys(dismissed).length === 0 ? withoutDismissed(draft) : { ...draft, dismissedNotes: dismissed }
   }
 
   const findings = draft.comments.filter((c) => c.origin === 'agent-finding')
@@ -229,6 +245,11 @@ function fromNote(
     updatedAt,
     posted: before?.posted ?? null
   }
+}
+
+function withoutDismissed(draft: ReviewDraft): ReviewDraft {
+  const { dismissedNotes: _none, ...rest } = draft
+  return rest
 }
 
 /** A finding's identity: what the Agent Review wrote, so a re-import doesn't add it twice. */

@@ -45,6 +45,11 @@ export function resetBranchArgs(worktreePath: string, ref: string): string[] {
   return ['-C', worktreePath, 'reset', '--hard', ref, '--']
 }
 
+/** The arguments that delete a local branch, merged or not. */
+export function deleteBranchArgs(repoPath: string, branch: string): string[] {
+  return ['-C', repoPath, 'branch', '-D', branch]
+}
+
 /** The arguments that drop the upstream of a worktree's branch. */
 export function unsetUpstreamArgs(worktreePath: string): string[] {
   return ['-C', worktreePath, 'branch', '--unset-upstream']
@@ -212,6 +217,11 @@ export const systemGit: Git = {
     // Orca adds new branches with --no-track, so there is usually no upstream to drop.
     await run(unsetUpstreamArgs(worktreePath), 'git branch --unset-upstream').catch((error: unknown) => {
       if (!/no upstream/i.test(String(error))) throw error
+    })
+  },
+  async deleteBranch(repoPath, branch) {
+    await run(deleteBranchArgs(repoPath, branch), `git branch -D ${branch}`).catch((error: unknown) => {
+      if (!/not found/i.test(String(error))) throw error
     })
   },
   async resolveRef(path, ref) {

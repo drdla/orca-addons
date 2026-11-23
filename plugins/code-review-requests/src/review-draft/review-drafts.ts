@@ -3,6 +3,8 @@
 //   - the drill-in panel view curates it (worker.ts `rr.draft` / `rr.updateDraftComment`),
 //   - posting (#30) reads `toPost(url)` and records `markPosted(url, marks)`,
 //   - workspace removal (#28) and posting ask `hasUnposted(url)`.
+//   - each poll tick, `sweep` deletes the drafts whose Review Workspace is gone, however it went
+//     (removed in Orca or by the CLI, or ended while workspaces couldn't be listed).
 //
 // "Posted" is tracked here, by comment id plus the `updatedAt` it had when posted (#12): Orca's
 // diff-view notes can't be written, and an edit in Orca after posting changes `updatedAt`, which
@@ -66,6 +68,12 @@ export type ReviewDraft = {
    * findings.json still has them. Absent means none.
    */
   deletedFindings?: string[]
+  /**
+   * Diff-view notes posting dismissed because they weren't checked (#81), by id, with the
+   * `updatedAt` they had then. An import leaves one out until it is edited in Orca; then it comes
+   * back unchecked. Absent means none.
+   */
+  dismissedNotes?: Record<string, number>
 }
 
 /** A Review Comment whose GitLab draft didn't publish. */
@@ -144,6 +152,29 @@ export function createReviewDrafts(storage: DraftStorage, clock: Pick<Clock, 'no
       }))
     },
     /**
+     * After a review was posted (#81): drops what wasn't checked for it, so the next round starts
+     * clean. Unchecked Agent Findings are deleted (imports skip them from then on); unchecked
+     * diff-view notes are dismissed (they stay in Orca's diff view, which the plugin can't write).
+     * Posted comments stay, as the record of what was said.
+     */
+    clearUnchecked(url: string): Promise<ReviewDraft> {
+      return update(url, (draft) => {
+        const dropped = draft.comments.filter((c) => !c.checked && !isPosted(c))
+        if (dropped.length === 0) return draft
+        const findings = dropped.filter((c) => c.origin === 'agent-finding').map((c) => c.id)
+        const notes = dropped.filter((c) => c.origin === 'diff-note')
+        const deleted = draft.deletedFindings ?? []
+        return {
+          ...draft,
+          comments: draft.comments.filter((c) => !dropped.includes(c)),
+          ...(findings.length === 0 ? {} : { deletedFindings: [...deleted, ...findings.filter((id) => !deleted.includes(id))] }),
+          ...(notes.length === 0
+            ? {}
+            : { dismissedNotes: { ...draft.dismissedNotes, ...Object.fromEntries(notes.map((c) => [c.id, c.updatedAt])) } })
+        }
+      })
+    },
+    /**
      * Update workspace moved the Review Workspace away from commit `sha` (#58): what the next
      * import adds was written against it. An earlier one not yet applied is kept, being older.
      */
@@ -165,6 +196,21 @@ export function createReviewDrafts(storage: DraftStorage, clock: Pick<Clock, 'no
     async remove(url: string): Promise<void> {
       await storage.delete(draftKey(url))
       await storage.delete(`${WRITTEN_AT_PREFIX}${url}`)
+    },
+    /**
+     * Deletes the drafts no Review Workspace belongs to any more; answers their URLs. Only with a
+     * complete workspace list: `hasWorkspace` must know every workspace. A draft whose URL isn't
+     * a merge request URL is kept. Whether the MR is listed doesn't matter: one made draft keeps
+     * its workspace, and its Review Draft with it.
+     */
+    async sweep(hasWorkspace: (url: string) => boolean | null): Promise<string[]> {
+      const gone: string[] = []
+      for (const url of await this.urls()) {
+        if (hasWorkspace(url) !== false) continue
+        await this.remove(url)
+        gone.push(url)
+      }
+      return gone
     },
     /** The MR URLs that have a Review Draft. */
     async urls(): Promise<string[]> {

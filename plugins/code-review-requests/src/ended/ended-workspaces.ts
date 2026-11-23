@@ -8,12 +8,16 @@
 // `workspace.removed` event, or missing from a later `orca worktree list`). One that becomes a
 // Review Request again leaves the tab, which also cancels its auto-removal.
 //
+// The same removal serves a review in progress (#80): `removeWorkspace` takes any Review Request
+// with its workspace, and needs no entry.
+//
 // Removal checks three things: uncommitted changes (`git status --porcelain`), running agents or
 // open terminals (host `workspace.list {includeStatus}`), and unposted Review Comments (a hook
-// #30 fills: `unpostedReviewComments`). Manual removal lists them for the confirmation and forces
-// only for the first two; auto-removal never forces and skips (and retries next tick) on any.
-import type { EndedCard, EndedReason, RemovalCheck, ReviewRequestView } from '../protocol'
+// #30 fills: `unpostedReviewComments`). Auto-removal never forces and skips (and retries next
+// tick) on any. Manual removal checks nothing: the person asked for it, so it always forces.
+import type { EndedCard, EndedReason, RemovalCheck, ReviewRequestView, ReviewWorkspaceView } from '../protocol'
 import { isEnded, type Dropped } from '../notify/changes'
+import { removeReviewWorkspace } from '../workspaces/remove-review-workspace'
 import { findReviewWorkspace } from '../workspaces/review-workspaces'
 import type { WorkspaceContext } from '../workspaces/workspace-context'
 import { messageOf } from '../errors'
@@ -21,6 +25,9 @@ import { messageOf } from '../errors'
 export const ENDED_KEY = 'ended.entries'
 
 const DAY = 24 * 60 * 60_000
+
+/** A Review Request and the workspace removal would delete: an Ended entry, or a review in progress (#80). */
+export type RemovalTarget = { url: string; workspace: ReviewWorkspaceView }
 
 type Storage = { get(key: string): Promise<unknown>; set(key: string, value: never): Promise<void> }
 
@@ -32,9 +39,9 @@ export type EndedWorkspacesDeps = WorkspaceContext & {
    * How many Review Comments of this Review Request's Review Draft are not posted yet (#14, #30).
    * Any makes manual removal ask first and auto-removal skip. Until #30 wires it, none.
    */
-  unpostedReviewComments?: (entry: EndedCard) => Promise<number>
+  unpostedReviewComments?: (target: RemovalTarget) => Promise<number>
   /** After its workspace is gone, whoever removed it (#30: discard the Review Draft). */
-  onRemoved?: (entry: EndedCard) => void | Promise<void>
+  onRemoved?: (target: RemovalTarget) => void | Promise<void>
   /**
    * The configured GitLab host. Entries are scoped to it: those of another host (the instance
    * URL changed) are neither listed nor auto-removed, and come back when the URL does. Null
@@ -132,16 +139,21 @@ export function createEndedWorkspaces(deps: EndedWorkspacesDeps) {
       return gone.length > 0
     },
 
-    /** What removing this entry's workspace would lose. */
-    async checkRemoval(url: string): Promise<RemovalCheck> {
-      return checkOf(entryOf(url))
+    /** Manual removal: forced, whatever the workspace still holds. */
+    async remove(url: string): Promise<void> {
+      const entry = entryOf(url)
+      await removeReviewWorkspace(deps, { id: entry.workspace.id }, { force: true })
+      await forget([entry])
+      await deps.workspaces.refresh()
     },
 
-    /** Manual removal, after the person confirmed (`force` only when the check asked for it). */
-    async remove(url: string, force: boolean): Promise<void> {
-      const entry = entryOf(url)
-      await deps.cli().removeWorktree(`id:${entry.workspace.id}`, { deleteBranch: true, ...(force ? { force } : {}) })
-      await forget([entry])
+    /**
+     * Removes a review in progress's workspace (#80), forced. Its Review Request stays listed,
+     * back under Todo; its Review Draft goes with the workspace.
+     */
+    async removeWorkspace(target: RemovalTarget): Promise<void> {
+      await removeReviewWorkspace(deps, { id: target.workspace.id }, { force: true })
+      await deps.onRemoved?.(target)
       await deps.workspaces.refresh()
     },
 
@@ -177,7 +189,7 @@ export function createEndedWorkspaces(deps: EndedWorkspacesDeps) {
       if (check.problems.length > 0) {
         skipped = `Not removed automatically: ${check.problems.join(', ')}.`
       } else {
-        await deps.cli().removeWorktree(`id:${entry.workspace.id}`, { deleteBranch: true })
+        await removeReviewWorkspace(deps, { id: entry.workspace.id })
         await forget([entry])
         return true
       }
@@ -191,7 +203,7 @@ export function createEndedWorkspaces(deps: EndedWorkspacesDeps) {
     return false
   }
 
-  async function checkOf(entry: EndedCard): Promise<RemovalCheck> {
+  async function checkOf(entry: RemovalTarget): Promise<RemovalCheck> {
     const problems: string[] = []
     let force = false
     try {

@@ -7,7 +7,14 @@ import type { ReviewRequestView } from '../protocol'
  * the MR to the user: deleted or access lost, so whether it ended is unknown) are not Ended
  * Review Requests.
  */
-export type DropReason = 'approved' | 'merged' | 'closed' | 'unassigned' | 'not-visible' | 'draft'
+export type DropReason =
+  | 'approved'
+  | 'changes-requested'
+  | 'merged'
+  | 'closed'
+  | 'unassigned'
+  | 'not-visible'
+  | 'draft'
 
 export type Dropped = ReviewRequestView & { reason: DropReason }
 

@@ -29,14 +29,22 @@ export type ReviewRequestView = {
   /** The comments badge: unresolved threads on the MR. */
   comments?: number
   /**
-   * The user's own review so far, from their reviewer state on GitLab: they commented or
-   * requested changes. Null while they haven't (or GitLab reset it on a new review request);
-   * absent in views stored before it existed.
+   * The user's own review so far, from their reviewer state on GitLab: they commented. Null while
+   * they haven't (or GitLab reset it on a re-request); absent in views stored before it existed.
+   * Approving or requesting changes ends the Review Request instead (#78).
    */
   myReview?: MyReview | null
+  /**
+   * The user's reviewer state is UNREVIEWED: GitLab is waiting for their review, as on a new or a
+   * re-requested review (#79). Absent in views stored before it existed.
+   */
+  awaitingReview?: boolean
 }
 
-export type MyReview = 'commented' | 'changes-requested'
+export type MyReview = 'commented'
+
+/** What the user did in the last round of a review that was re-requested (#79). */
+export type PreviousOutcome = 'approved' | 'changes-requested' | 'commented'
 
 export type CiStatus = 'passed' | 'failed' | 'running'
 
@@ -57,7 +65,7 @@ export type ReviewWorkspaceView = {
 }
 
 /** Why a Review Request ended (#28); a Review Request made draft is not Ended. */
-export type EndedReason = 'approved' | 'merged' | 'closed' | 'unassigned'
+export type EndedReason = 'approved' | 'changes-requested' | 'merged' | 'closed' | 'unassigned'
 
 /** An Ended Review Request that still has its Review Workspace (#7, #28): the Ended tab's cards. */
 export type EndedCard = ReviewRequestView & {
@@ -69,7 +77,7 @@ export type EndedCard = ReviewRequestView & {
   autoRemoveSkipped: string | null
 }
 
-/** What removing a Review Workspace would lose (#28), for the confirmation. */
+/** What removing a Review Workspace would lose (#28): auto-removal skips it when there is anything. */
 export type RemovalCheck = {
   /** One line each, for example "2 uncommitted changes". Empty when it's clean. */
   problems: string[]
@@ -81,8 +89,16 @@ export type RemovalCheck = {
 export type ReviewRequestCard = ReviewRequestView & {
   /** Waiting longer than the "Overdue after" setting, counting working days only (#22). */
   overdue: boolean
-  /** Its Review Workspace, or null (#27). Cards with one go under In review. */
+  /**
+   * Its Review Workspace, or null (#27). Cards with one go under Reviewing, unless re-requested:
+   * a re-requested card stays under Todo with its old workspace until Start review reuses it (#79).
+   */
   workspace?: ReviewWorkspaceView | null
+  /**
+   * The author re-requested the review after the user approved, requested changes or commented,
+   * and the user hasn't started reviewing again (#79): what they did last round. Null otherwise.
+   */
+  reRequested?: PreviousOutcome | null
   /** Why Start review can't run for it (no Orca repo, the orca CLI is broken), or null (#27). */
   startBlocked?: string | null
   /** Appeared since the panel was opened before this time (#10): the New badge and accent border. */
@@ -272,7 +288,8 @@ declare module 'orca' {
     'rr.useHost': { input: { host: string }; output: ReviewRequestsSnapshot }
     /**
      * Creates the Review Workspace for a Review Request through the orca CLI, linked to its MR,
-     * then starts an Agent Review in it if `withAgent` (#27). Answers the new snapshot.
+     * then starts an Agent Review in it if `withAgent` (#27). A re-requested one (#79) reuses its
+     * old workspace, moved to the merge request's new commits first. Answers the new snapshot.
      */
     'rr.startReview': { input: { url: string; withAgent: boolean }; output: ReviewRequestsSnapshot }
     /** Shows a Review Request's (or an Ended Review Request's) Review Workspace in Orca. */
@@ -298,13 +315,13 @@ declare module 'orca' {
     'rr.updateWorkspace': { input: { url: string }; output: ReviewRequestsSnapshot }
     /** Starts an Agent Review in a Review Request's existing Review Workspace. */
     'rr.runAgentReview': { input: { url: string }; output: { started: true } }
-    /** What removing an Ended Review Request's Review Workspace would lose (#28). */
-    'rr.checkRemoval': { input: { url: string }; output: RemovalCheck }
     /**
-     * Removes an Ended Review Request's Review Workspace (`orca worktree rm --delete-branch`, plus
-     * `--force` only when `force`, after the person confirmed). Answers the new snapshot.
+     * Removes an Ended Review Request's (#28) or a review in progress's (#80) Review Workspace
+     * (`orca worktree rm --delete-branch --force`, without asking: uncommitted changes and
+     * terminals go with it), and its Review Draft. A review in progress goes back to Todo. Answers
+     * the new snapshot.
      */
-    'rr.removeWorkspace': { input: { url: string; force: boolean }; output: ReviewRequestsSnapshot }
+    'rr.removeWorkspace': { input: { url: string }; output: ReviewRequestsSnapshot }
     /**
      * Imports the Review Request's diff-view notes and Agent Findings into its Review Draft, then
      * answers the draft (#29). Import is cheap and has no side effects outside plugin storage.

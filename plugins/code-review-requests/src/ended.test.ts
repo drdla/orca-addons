@@ -3,6 +3,7 @@
 // auto-removal. GitLab, the orca CLI, git and the clock are fakes; Orca's host is the kit's mock.
 import { assert, mockHost, test } from 'orca/testing'
 import { fakeDeps, FakeGitLab, type Fakes } from './fakes'
+import { OrcaCliError } from './seams/orca-cli'
 import { CONFIGURED, MINUTE, startWorker } from './testing/worker-harness'
 
 const DAY = 24 * 60 * MINUTE
@@ -73,6 +74,31 @@ test('an Ended Review Request with a Review Workspace is listed under Ended, wit
     'only the one with a Review Workspace; !8 only notifies'
   )
   assert.equal(snapshot.reviewRequests.length, 0)
+  await worker.deactivate()
+})
+
+test('requesting changes ends a Review Request as approving does; a comment-only review does not (#78)', async () => {
+  const fakes = fakeDeps()
+  arrange(fakes)
+  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 9, title: 'Tidy up', author: 'cy' })
+  const { worker } = await start(fakes)
+
+  fakes.gitlab.setReviewState('acme/api', 7, 'REQUESTED_CHANGES')
+  fakes.gitlab.setReviewState('acme/api', 8, 'REQUESTED_CHANGES')
+  fakes.gitlab.setReviewState('acme/api', 9, 'REVIEWED')
+  await fakes.clock.advance(5 * MINUTE)
+
+  const snapshot = await worker.request('rr.snapshot')
+  assert.deepEqual(
+    snapshot.ended?.map((e) => [e.iid, e.reason]),
+    [[7, 'changes-requested']],
+    'only the one with a Review Workspace becomes a Done entry; !8 just drops off'
+  )
+  assert.deepEqual(
+    snapshot.reviewRequests.map((r) => [r.iid, r.myReview]),
+    [[9, 'commented']],
+    'a comment-only review is still a Review Request'
+  )
   await worker.deactivate()
 })
 
@@ -222,68 +248,54 @@ test('an entry goes when its workspace is no longer listed (deleted outside Orca
   await worker.deactivate()
 })
 
-test('checking a clean workspace finds nothing to lose', async () => {
-  const fakes = fakeDeps()
-  const { worker } = await startEnded(fakes)
-
-  assert.deepEqual(await worker.request('rr.checkRemoval', { url: MR_URL }), { problems: [], force: false })
-  await worker.deactivate()
-})
-
-test('the check lists uncommitted changes and open terminals, and asks for force', async () => {
+test('Remove workspace removes at once, forced, with uncommitted changes and open terminals', async () => {
   const fakes = fakeDeps()
   const { worker } = await startEnded(fakes, hostWith(() => ({ state: 'active', terminalCount: 2 })))
-  fakes.git.setStatus(WT_PATH, [' M src/login.ts', '?? notes.md'])
+  fakes.cli.setDirty(WT_ID)
 
-  assert.deepEqual(await worker.request('rr.checkRemoval', { url: MR_URL }), {
-    problems: ['2 uncommitted changes', '2 open terminals'],
-    force: true
-  })
-  await worker.deactivate()
-})
+  const snapshot = await worker.request('rr.removeWorkspace', { url: MR_URL })
 
-test('the check says when an agent is running', async () => {
-  const fakes = fakeDeps()
-  const { worker } = await startEnded(fakes, hostWith(() => ({ state: 'working', terminalCount: 1 })))
-
-  assert.deepEqual(await worker.request('rr.checkRemoval', { url: MR_URL }), {
-    problems: ['an agent is running'],
-    force: true
-  })
-  await worker.deactivate()
-})
-
-test('removing a clean workspace deletes it (and its merged branch) without force', async () => {
-  const fakes = fakeDeps()
-  const { worker } = await startEnded(fakes)
-
-  const snapshot = await worker.request('rr.removeWorkspace', { url: MR_URL, force: false })
-
-  assert.deepEqual(removals(fakes), [{ selector: `id:${WT_ID}`, deleteBranch: true }])
+  assert.deepEqual(removals(fakes), [{ selector: `id:${WT_ID}`, deleteBranch: true, force: true }])
+  assert.deepEqual(fakes.git.deletedBranches, [{ repoPath: REPO.path, branch: 'review-api-7' }], 'its branch too, merged or not')
   assert.equal(snapshot.ended, undefined)
   await worker.deactivate()
 })
 
-test('Remove anyway forces the removal of a dirty workspace', async () => {
+test('a failed branch delete after the workspace is gone does not fail the removal', async () => {
   const fakes = fakeDeps()
   const { worker } = await startEnded(fakes)
-  fakes.cli.setDirty(WT_ID)
+  fakes.git.failNextOf('deleteBranch', new Error('git branch -D review-api-7 failed: locked'))
 
-  await worker.request('rr.removeWorkspace', { url: MR_URL, force: true })
+  const snapshot = await worker.request('rr.removeWorkspace', { url: MR_URL })
 
-  assert.deepEqual(removals(fakes), [{ selector: `id:${WT_ID}`, deleteBranch: true, force: true }])
-  assert.equal((await worker.request('rr.snapshot')).ended, undefined)
+  assert.equal(removals(fakes).length, 1)
+  assert.equal(snapshot.ended, undefined)
   await worker.deactivate()
 })
 
 test("a failed removal answers Orca's error and keeps the entry", async () => {
   const fakes = fakeDeps()
   const { worker } = await startEnded(fakes)
-  fakes.cli.setDirty(WT_ID)
+  fakes.cli.failNext(new OrcaCliError('action_failed', 'worktree has local-only ignored files: .env'))
 
-  await assert.rejects(worker.request('rr.removeWorkspace', { url: MR_URL, force: false }), /uncommitted changes/)
+  await assert.rejects(worker.request('rr.removeWorkspace', { url: MR_URL }), /local-only ignored files/)
   assert.deepEqual((await worker.request('rr.snapshot')).ended?.map((e) => e.iid), [7])
   await worker.deactivate()
+})
+
+test('auto-removal skips a workspace with open terminals or a running agent, and says why', async () => {
+  for (const [status, why] of [
+    [{ state: 'active', terminalCount: 2 }, '2 open terminals'],
+    [{ state: 'working', terminalCount: 1 }, 'an agent is running']
+  ] as const) {
+    const fakes = fakeDeps()
+    const { worker } = await startEnded(fakes, hostWith(() => status))
+
+    await fakes.clock.advance(2 * DAY)
+    assert.deepEqual(removals(fakes), [])
+    assert.equal((await worker.request('rr.snapshot')).ended?.[0]?.autoRemoveSkipped, `Not removed automatically: ${why}.`)
+    await worker.deactivate()
+  }
 })
 
 test("Open workspace opens an Ended Review Request's workspace", async () => {
@@ -324,6 +336,7 @@ test('auto-removal skips an unclean workspace, says why, and retries on later ti
   fakes.git.setStatus(WT_PATH, [])
   await fakes.clock.advance(5 * MINUTE)
   assert.deepEqual(removals(fakes), [{ selector: `id:${WT_ID}`, deleteBranch: true }])
+  assert.deepEqual(fakes.git.deletedBranches, [{ repoPath: REPO.path, branch: 'review-api-7' }])
   await worker.deactivate()
 })
 

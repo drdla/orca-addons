@@ -34,20 +34,22 @@ export const MANUAL_SECTIONS: readonly { title?: string; paragraphs: readonly st
     paragraphs: [
       '"Start Review" creates an Orca workspace on the merge request branch and starts the review agent.',
       'The card buttons open the workspace, the changed files and the merge request summary.',
-      'When the merge request gets new commits, "Update Workspace" pulls them in.'
+      'When the merge request gets new commits, "Pull Changes" brings them into the workspace; until then "Finish Review" is disabled.',
+      'To drop a review you started, the bin at the end of the card deletes its workspace and Review Draft at once, uncommitted changes and open terminals included; the review goes back to Todo.'
     ]
   },
   {
     title: 'Write and post the review',
     paragraphs: [
       'Comments you add in Orca\'s diff view and the agent\'s findings collect under "Finish Review".',
-      'Select, edit or drop them, add a summary if you like, and press Post Review. They go to GitLab as one review. The outcome is Request changes when comments are selected and Approve when none are; pick another one if you like. Once GitLab accepts an approval, the merge request moves to Done.'
+      'Select, edit or drop them, add a summary if you like, and press Post Review. They go to GitLab as one review. The outcome is Request changes when comments are selected and Approve when none are; pick another one if you like. Approve and Request changes both finish your part: the merge request moves to Done. Comment keeps it in Reviewing. Whatever you left unchecked is cleared from the Review Draft once the review is posted.'
     ]
   },
   {
     title: 'Clean up after review',
     paragraphs: [
-      'Ended reviews move to Done. "Remove Workspace" deletes the workspace and its branch.',
+      'Ended reviews move to Done. "Delete Workspace" deletes the workspace and its branch at once, without asking.',
+      'When the author re-requests your review, it goes back to Todo marked "Re-requested", with what you did last time. "Start Review" reuses its workspace if it still has one, moved to the new commits.',
       'Clean workspaces are removed automatically after 2 days.'
     ]
   }

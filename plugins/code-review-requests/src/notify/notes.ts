@@ -25,6 +25,8 @@ function added(r: ReviewRequestView): string {
 const DROPPED: Record<DropReason, (title: string) => string> = {
   // Never sent (notifier.ts): the user approved it themselves.
   approved: (title) => `You approved ${title}`,
+  // Never sent either: the user requested the changes themselves (#78).
+  'changes-requested': (title) => `You requested changes on ${title}`,
   merged: (title) => `${title} was merged`,
   closed: (title) => `${title} was closed`,
   unassigned: (title) => `You were removed as reviewer of ${title}`,
@@ -52,24 +54,39 @@ export function firstRunNote(waiting: ReviewRequestView[], overdue = 0): Note | 
   }
 }
 
+/** "Ada Lovelace re-requested your review of Add login" (#79). */
+function again(r: ReviewRequestView): string {
+  return `${authorNameOf(r)} re-requested your review of ${r.title}`
+}
+
 /** Catch-up: one summary of what changed while away. Null when nothing did. */
-export function catchUpNote(addedItems: ReviewRequestView[], droppedItems: Dropped[]): Note | null {
+export function catchUpNote(
+  addedItems: ReviewRequestView[],
+  droppedItems: Dropped[],
+  reRequestedItems: ReviewRequestView[] = []
+): Note | null {
   const ended = droppedItems.filter(isEnded).length
   const drafts = droppedItems.filter((d) => d.reason === 'draft').length
   const hidden = droppedItems.filter((d) => d.reason === 'not-visible').length
   const parts: string[] = []
   if (addedItems.length > 0) parts.push(`${addedItems.length} new`)
+  if (reRequestedItems.length > 0) parts.push(`${reRequestedItems.length} re-requested`)
   if (ended > 0) parts.push(`${ended} ended`)
   if (drafts > 0) parts.push(`${drafts} made draft`)
   if (hidden > 0) parts.push(`${hidden} no longer visible`)
   if (parts.length === 0) return null
-  const lines = listed([...addedItems.map(added), ...droppedItems.map(dropped)])
+  const lines = listed([...addedItems.map(added), ...reRequestedItems.map(again), ...droppedItems.map(dropped)])
   return { title: `While you were away: ${parts.join(', ')}`, body: lines.join('\n') }
 }
 
 /** Live poll: one Review Request appeared: "Ada Lovelace asked you to review Add login". */
 export function newNote(r: ReviewRequestView): Note {
   return { title: added(r), body: where(r) }
+}
+
+/** Live poll: the author re-requested a review: "Ada Lovelace re-requested your review of Add login" (#79). */
+export function reRequestedNote(r: ReviewRequestView): Note {
+  return { title: again(r), body: where(r) }
 }
 
 /** Live poll: one Review Request dropped off the list: "Add login was merged". */

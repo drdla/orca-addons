@@ -1,10 +1,10 @@
-// The panel's Ended tab (#28): Ended cards, Remove workspace with its confirmation, and the
+// The panel's Ended tab (#28): Ended cards, Remove workspace, and the
 // banner while the orca CLI is broken. The worker is stubbed through `requests`.
 import { assert, hostError, mockHost, test } from 'orca/testing'
 import { mount } from './testing/mount'
 import * as panel from './panel'
 import { headingCounts } from './testing/panel-heading'
-import type { EndedCard, RemovalCheck, ReviewRequestsSnapshot } from './protocol'
+import type { EndedCard, ReviewRequestsSnapshot } from './protocol'
 
 const HOUR = 3_600_000
 const NOW = Date.UTC(2026, 10, 16, 9, 0)
@@ -38,12 +38,20 @@ test('the Ended tab counts and draws Ended Review Requests with their reason', a
 
   assert.ok(view.find({ type: 'Tab', label: 'Done · 2' }))
   assert.ok(view.find({ text: 'Merge request 7' }))
-  assert.equal(view.find({ type: 'Badge', text: 'Merged' })?.props.tone, 'neutral', 'a toned Badge draws a dot')
-  assert.ok(view.find({ type: 'Badge', text: 'Removed as reviewer' }))
+  assert.equal(view.find({ type: 'Badge', text: 'Merged' })?.props.tone, 'success', 'with a status dot')
+  assert.equal(view.find({ type: 'Badge', text: 'Removed as reviewer' })?.props.tone, 'neutral')
   assert.equal(view.find({ type: 'Button', text: 'Finish Review' }), null)
-  assert.equal(view.findAll({ type: 'Button', text: 'Remove Workspace' }).length, 2)
+  assert.equal(view.findAll({ type: 'Button', text: 'Delete Workspace' }).length, 2)
   assert.deepEqual(headingCounts(view), [['0', 'dim']], 'Ended cards do not count as Review Requests')
   assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('Changes requested has the warning status dot, after Open workspace', async () => {
+  const host = mockHost({ requests: { 'rr.snapshot': snapshot({ ended: [ended(7, { reason: 'changes-requested' })] }) } })
+  const view = await mount(panel, { host, persisted: ON_ENDED })
+
+  assert.equal(view.find({ type: 'Badge', text: 'Changes requested' })?.props.tone, 'warning')
   await view.unmount()
 })
 
@@ -75,69 +83,25 @@ test('a card says why auto-removal skipped it', async () => {
   await view.unmount()
 })
 
-function removalHost(check: RemovalCheck, remove: (input: { url: string; force: boolean }) => ReviewRequestsSnapshot) {
-  return mockHost({
+test('Delete Workspace removes at once, without asking', async () => {
+  const removed: { url: string }[] = []
+  const host = mockHost({
     requests: {
       'rr.snapshot': snapshot({ ended: [ended(7)] }),
-      'rr.checkRemoval': () => check,
-      'rr.removeWorkspace': remove
+      'rr.removeWorkspace': (input) => {
+        removed.push(input)
+        return snapshot()
+      }
     }
   })
-}
-
-test('Remove workspace confirms first, then removes without force when clean', async () => {
-  const removed: { url: string; force: boolean }[] = []
-  const host = removalHost({ problems: [], force: false }, (input) => {
-    removed.push(input)
-    return snapshot()
-  })
   const view = await mount(panel, { host, persisted: ON_ENDED })
 
-  await view.press(view.find({ type: 'Button', text: 'Remove Workspace' })!)
-  assert.deepEqual(removed, [], 'nothing removed before confirming')
-  assert.ok(view.find({ text: /Remove review-api-7\?/ }))
+  await view.press(view.find({ type: 'Button', text: 'Delete Workspace' })!)
 
-  await view.press(view.find({ type: 'Button', text: 'Remove' })!)
-
-  assert.deepEqual(removed, [{ url: ended(7).url, force: false }])
+  assert.deepEqual(removed, [{ url: ended(7).url }])
+  assert.equal(view.find({ type: 'Button', text: 'Cancel' }), null, 'no confirmation')
   assert.ok(view.find({ type: 'Tab', label: 'Done' }))
   assert.deepEqual(view.errors, [])
-  await view.unmount()
-})
-
-test('with something to lose, the confirmation lists it and offers Remove anyway (forced)', async () => {
-  const removed: { url: string; force: boolean }[] = []
-  const host = removalHost({ problems: ['2 uncommitted changes', 'an agent is running'], force: true }, (input) => {
-    removed.push(input)
-    return snapshot()
-  })
-  const view = await mount(panel, { host, persisted: ON_ENDED })
-
-  await view.press(view.find({ type: 'Button', text: 'Remove Workspace' })!)
-  assert.ok(view.find({ text: /2 uncommitted changes/ }))
-  assert.ok(view.find({ text: /an agent is running/ }))
-  assert.equal(view.find({ type: 'Button', text: 'Remove' }), null)
-
-  await view.press(view.find({ type: 'Button', text: 'Remove anyway' })!)
-
-  assert.deepEqual(removed, [{ url: ended(7).url, force: true }])
-  await view.unmount()
-})
-
-test('Cancel closes the confirmation without removing', async () => {
-  const removed: unknown[] = []
-  const host = removalHost({ problems: [], force: false }, (input) => {
-    removed.push(input)
-    return snapshot()
-  })
-  const view = await mount(panel, { host, persisted: ON_ENDED })
-
-  await view.press(view.find({ type: 'Button', text: 'Remove Workspace' })!)
-  await view.press(view.find({ type: 'Button', text: 'Cancel' })!)
-
-  assert.deepEqual(removed, [])
-  assert.equal(view.find({ type: 'Button', text: 'Remove' }), null)
-  assert.ok(view.find({ type: 'Button', text: 'Remove Workspace' }))
   await view.unmount()
 })
 
@@ -146,7 +110,6 @@ test("a failed removal shows Orca's error; Open workspace stays on the card", as
   const host = mockHost({
     requests: {
       'rr.snapshot': snapshot({ ended: [ended(7)] }),
-      'rr.checkRemoval': { problems: [], force: false },
       'rr.removeWorkspace': () => {
         throw hostError('action_failed', 'worktree has local-only ignored files: .env')
       },
@@ -158,8 +121,7 @@ test("a failed removal shows Orca's error; Open workspace stays on the card", as
   })
   const view = await mount(panel, { host, persisted: ON_ENDED })
 
-  await view.press(view.find({ type: 'Button', text: 'Remove Workspace' })!)
-  await view.press(view.find({ type: 'Button', text: 'Remove' })!)
+  await view.press(view.find({ type: 'Button', text: 'Delete Workspace' })!)
 
   assert.ok(view.find({ text: /Couldn't remove the workspace: .*local-only ignored files/ }))
   await view.press(view.find({ type: 'IconButton', label: 'Open workspace' })!)
@@ -168,7 +130,7 @@ test("a failed removal shows Orca's error; Open workspace stays on the card", as
   await view.unmount()
 })
 
-test('while the orca CLI is broken, a banner says so and Remove workspace is disabled', async () => {
+test('while the orca CLI is broken, a banner says so and Delete Workspace is disabled', async () => {
   const host = mockHost({
     requests: {
       'rr.snapshot': snapshot({ ended: [ended(7)], workspacesUnavailable: 'The orca CLI failed: Orca is not running' })
@@ -179,7 +141,7 @@ test('while the orca CLI is broken, a banner says so and Remove workspace is dis
   const banner = view.find({ type: 'Callout' })
   assert.equal(banner?.props.title, 'Orca CLI unavailable: workspace actions disabled')
   assert.ok(view.find({ text: 'The orca CLI failed: Orca is not running' }) === null, 'the reason sits under Details')
-  assert.equal(view.find({ type: 'Button', text: 'Remove Workspace' })!.disabled, true)
+  assert.equal(view.find({ type: 'Button', text: 'Delete Workspace' })!.disabled, true)
   assert.equal(view.find({ type: 'IconButton', label: 'Open workspace' })!.disabled, true)
   assert.deepEqual(view.errors, [])
   await view.unmount()

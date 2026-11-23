@@ -210,6 +210,17 @@ export class FakeGitLab implements GitLabTransport {
     this.#touch(mr)
   }
 
+  /**
+   * The author re-requests a review, as GitLab's RequestReviewService does (16.10+): the
+   * reviewer's approval is removed and their state reset to UNREVIEWED.
+   */
+  reRequestReview(projectPath: string, iid: number, username = this.me): void {
+    const mr = this.#find(projectPath, iid)
+    mr.approvedBy = mr.approvedBy.filter((u) => u !== username)
+    mr.reviewStates[username] = 'UNREVIEWED'
+    this.#touch(mr)
+  }
+
   merge(projectPath: string, iid: number): void {
     this.#touch(Object.assign(this.#find(projectPath, iid), { state: 'merged' as const }))
   }
@@ -456,7 +467,12 @@ export class FakeGitLab implements GitLabTransport {
           state: mr.state,
           draft: mr.draft,
           approvedBy: { nodes: mr.approvedBy.map((username) => ({ username })) },
-          reviewers: { nodes: mr.reviewers.map((username) => ({ username })) }
+          reviewers: {
+            nodes: mr.reviewers.map((username) => ({
+              username,
+              mergeRequestInteraction: { reviewState: mr.reviewStates[username] ?? 'UNREVIEWED' }
+            }))
+          }
         }
       }
     }

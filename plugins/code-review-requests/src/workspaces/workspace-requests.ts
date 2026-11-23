@@ -1,5 +1,6 @@
 // The Review Workspace panel requests (#27, #28): Start review, Open workspace, Run Agent Review,
-// Update workspace (#57), and the Ended tab's removal check and Remove workspace, plus Orca's
+// Update workspace (#57), and the removal check and Remove workspace of the Ended tab (#28) and
+// of a review in progress (#80), plus Orca's
 // `workspace.removed` event.
 // worker.ts calls registerWorkspaceRequests once in activate.
 import type { OrcaWorkerApi } from 'orca/worker'
@@ -10,6 +11,7 @@ import type { ReviewRequestsSnapshot, ReviewRequestView } from '../protocol'
 import type { Disposable } from '../seams/clock'
 import type { Files } from '../seams/files'
 import type { GitLabAccess } from '../seams/gitlab'
+import type { ReviewRounds } from '../review-rounds'
 import type { Settings } from '../settings'
 import { hostWorkspaceIdOf } from './host-workspace'
 import { createReviewActions, type WorkspaceUpdate } from './review-actions'
@@ -37,6 +39,8 @@ export function registerWorkspaceRequests(
      * A rejection is logged: the workspace did move, so it only costs the outdated flags.
      */
     onMoved?: (update: WorkspaceUpdate) => Promise<void>
+    /** Review rounds (#79): Start review on a re-requested review begins its next round. */
+    rounds?: Pick<ReviewRounds, 'reRequested' | 'started'>
   }
 ): Disposable {
   const { context, ended } = options
@@ -66,8 +70,21 @@ export function registerWorkspaceRequests(
     return options.snapshot()
   }
 
+  // A re-requested review (#79) reuses its old workspace: moved to the merge request's new
+  // commits first (as Update workspace does, refusing while that would lose changes), then
+  // started like any existing one. Once it is at the new commits, the new round has begun.
   orca.panels.handle('rr.startReview', async ({ url, withAgent }) =>
-    changing(() => reviewActions.startReview(url, withAgent))
+    changing(async () => {
+      if (options.rounds?.reRequested(url) != null) {
+        const rr = options.reviewRequest(url)
+        const workspace = await reviewActions.reviewWorkspace(url).catch(() => null)
+        if (rr && workspace && options.heads.isBehind(workspace.path, rr.mergeRequestHead ?? null)) {
+          await reviewActions.updateWorkspace(url)
+        }
+        await options.rounds.started(url)
+      }
+      await reviewActions.startReview(url, withAgent)
+    })
   )
   orca.panels.handle('rr.openWorkspace', async ({ url }) => {
     if (ended.has(url)) {
@@ -114,8 +131,16 @@ export function registerWorkspaceRequests(
     await reviewActions.runAgentReview(url)
     return { started: true as const }
   })
-  orca.panels.handle('rr.checkRemoval', async ({ url }) => ended.checkRemoval(url))
-  orca.panels.handle('rr.removeWorkspace', async ({ url, force }) => changing(() => ended.remove(url, force)))
+  // Remove workspace: an Ended Review Request's (#28), or a review in progress's (#80).
+  async function removalTarget(url: string) {
+    return { url, workspace: await reviewActions.reviewWorkspace(url) }
+  }
+  orca.panels.handle('rr.removeWorkspace', async ({ url }) =>
+    changing(async () => {
+      if (ended.has(url)) await ended.remove(url)
+      else await ended.removeWorkspace(await removalTarget(url))
+    })
+  )
 
   // A workspace removed anywhere (here, in Orca, by the CLI): its Ended entry goes (#7).
   return orca.events.on('workspace.removed', async ({ path }) => {

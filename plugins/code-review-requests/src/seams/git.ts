@@ -49,6 +49,11 @@ export interface Git {
    * upstream, so a pull can't merge the target branch in and a push can't go to it (#54).
    */
   resetBranch(worktreePath: string, ref: string): Promise<void>
+  /**
+   * Deletes the local branch `branch` (short name) of the repo at `repoPath`, merged or not
+   * (`git branch -D`); a branch that is already gone is no error.
+   */
+  deleteBranch(repoPath: string, branch: string): Promise<void>
   /** The commit `ref` names, seen from `path` (`git rev-parse --verify`); null if it doesn't resolve. */
   resolveRef(path: string, ref: string): Promise<string | null>
   /**

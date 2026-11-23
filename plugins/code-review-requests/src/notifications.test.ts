@@ -3,7 +3,7 @@
 import { assert, mockHost, test } from 'orca/testing'
 import { fakeDeps, FakeGitLab, type Fakes } from './fakes'
 import { GitLabError } from './seams/gitlab'
-import { CONFIGURED, MINUTE, startWorker as startHarness } from './testing/worker-harness'
+import { CONFIGURED, lastStatusBar, MINUTE, startWorker as startHarness } from './testing/worker-harness'
 
 type Note = { title: string; body?: string }
 
@@ -72,6 +72,20 @@ test('live poll: nothing changed, nothing sent', async () => {
   await fakes.clock.advance(5 * MINUTE)
 
   assert.equal(notes().length, 1)
+  await worker.deactivate()
+})
+
+test('live poll: requesting changes ends a Review Request silently, like approving (#78)', async () => {
+  const fakes = fakeDeps()
+  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 1, title: 'One' })
+  fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid: 2, title: 'Two' })
+  const { worker, notes, host } = await startWorker(fakes)
+
+  fakes.gitlab.setReviewState('acme/api', 1, 'REQUESTED_CHANGES')
+  await fakes.clock.advance(5 * MINUTE)
+
+  assert.deepEqual(notes().slice(1), [], 'no notification for my own request for changes')
+  assert.equal(lastStatusBar(host)?.text, '1')
   await worker.deactivate()
 })
 

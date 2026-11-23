@@ -41,7 +41,7 @@ test('cards carry the CI status, approvals given/required and the open comment c
   await worker.deactivate()
 })
 
-test("cards carry the user's own review on GitLab: commented or requested changes, nothing for a started draft", async () => {
+test("cards carry the user's own review on GitLab: commented, nothing for a started draft; requested changes ends it (#78)", async () => {
   const fakes = fakeDeps()
   for (const iid of [1, 2, 3, 4]) fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', iid })
   fakes.gitlab.setReviewState('acme/api', 1, 'REVIEWED')
@@ -50,7 +50,7 @@ test("cards carry the user's own review on GitLab: commented or requested change
   const { worker } = await startWorker(fakes)
 
   assert.equal((await cardOf(worker, 1))?.myReview, 'commented')
-  assert.equal((await cardOf(worker, 2))?.myReview, 'changes-requested')
+  assert.equal(await cardOf(worker, 2), undefined, 'requesting changes ends the Review Request')
   assert.equal((await cardOf(worker, 3))?.myReview, null, 'unpublished drafts are not a review yet')
   assert.equal((await cardOf(worker, 4))?.myReview, null)
   await worker.deactivate()
