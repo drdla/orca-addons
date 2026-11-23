@@ -28,6 +28,8 @@ export const DEFAULT_SETTINGS = {
     "Review the GitLab merge request {mrUrl} (\"{title}\" by {author}, {sourceBranch} into {targetBranch}) in {project}. The workspace has the MR's head checked out. Read .orca-review/merge-request.md for the MR's description and context; if that file is missing, read the description on GitLab. Review the MR's changes as `git diff {baseRef}...HEAD`. Don't post anything to GitLab. Write your findings to .orca-review/findings.json as JSON like `{\"headSha\": \"<output of git rev-parse HEAD>\", \"findings\": [{\"path\": \"src/file.ts\", \"line\": 42, \"body\": \"What is wrong and how to fix it.\"}, {\"body\": \"A comment on the merge request as a whole.\"}]}`. \"line\" is the line in the new version of the file; add \"startLine\" for a range of lines.",
   /** Optional custom command that replaces the agent launch (#27). */
   reviewCommand: '',
+  /** Optional command run in a new or updated Review Workspace, for example `pnpm install`. */
+  setupCommand: '',
   /** Days after a Review Request ends before its Review Workspace is removed; 0 turns it off (#28). */
   autoRemoveDays: 2
 }
@@ -116,6 +118,14 @@ export const SETTING_FIELDS: readonly SettingField[] = [
     title: 'Custom review command',
     description:
       'Optional. A command to run in the review workspace instead of launching the review agent, for example claude --model opus {prompt}. {prompt} is the filled Review Prompt; the Review Prompt\'s placeholders work too.',
+    control: 'text'
+  },
+  {
+    key: 'setupCommand',
+    title: 'Review workspace setup command',
+    description:
+      'Optional. A command to run in a new review workspace once it shows the merge request, and again after Update workspace, for example pnpm install. It runs in a terminal of the workspace, named Setup. Blank runs nothing.',
+    placeholder: 'pnpm install',
     control: 'text'
   },
   {

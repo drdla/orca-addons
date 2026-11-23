@@ -387,3 +387,28 @@ test('when the merge request fetch fails after the target branch was fetched, Up
   assert.equal((await card(worker)).mergeRequestUpdated, true)
   await worker.deactivate()
 })
+
+test('Update workspace runs the setup command again: the new head may change the dependencies', async () => {
+  const fakes = fakeDeps()
+  reviewingAtHead(fakes)
+  const settings = { ...CONFIGURED, setupCommand: 'pnpm install' }
+  const host = mockHost({
+    settings,
+    results: {
+      'workspace.list': {
+        workspaces: [{ id: 'ws-0', kind: 'worktree' as const, name: 'review-api-7', path: WORKTREE, branch: null, hostId: 'local' }],
+        truncated: false
+      },
+      'workspace.open': { opened: true },
+      'editor.open': { opened: true },
+      'terminal.create': { terminalId: 'term-setup' }
+    }
+  })
+  const { worker } = await startHarness(fakes, settings, host)
+  fakes.gitlab.push('acme/api', 7)
+
+  await worker.request('rr.updateWorkspace', { url: MR_URL })
+
+  assert.deepEqual(host.callsOf('terminal.create'), [{ workspaceId: 'ws-0', title: 'Setup', command: 'pnpm install' }])
+  await worker.deactivate()
+})
