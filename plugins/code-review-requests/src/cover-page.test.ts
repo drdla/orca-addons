@@ -14,23 +14,30 @@ const PAGE = `${WORKTREE}/.orca-review/merge-request.md`
 const EXCLUDE = `${WORKTREE}/.git/info/exclude`
 
 /** Whether the cover page was on disk at each agent launch: the agent reads it (#56). */
-function pageAtLaunch(fakes: Fakes): { seen: boolean[]; result: () => { terminalId: string } } {
+/**
+ * Records, at each `orca agent launch`, whether the cover page was there and how many editor tabs
+ * had opened (from `editorOpens`, set once the host exists).
+ */
+function pageAtLaunch(fakes: Fakes) {
   const seen: boolean[] = []
-  return {
-    seen,
-    result: () => {
-      seen.push(fakes.files.peek(PAGE) !== null)
-      return { terminalId: 'term-agent' }
-    }
+  const editorOpensAtLaunch: number[] = []
+  const state = { editorOpens: () => 0 }
+  const launch = fakes.cli.launchAgent.bind(fakes.cli)
+  fakes.cli.launchAgent = async (input) => {
+    seen.push(fakes.files.peek(PAGE) !== null)
+    editorOpensAtLaunch.push(state.editorOpens())
+    return launch(input)
   }
+  return { seen, editorOpensAtLaunch, state }
+}
+
+function agentLaunches(fakes: Fakes): number {
+  return fakes.cli.calls.filter((c) => c.command === 'agent launch').length
 }
 
 async function startWorker(
   fakes: Fakes,
-  {
-    workspaces = ['/src/api', WORKTREE],
-    agentLaunch = { terminalId: 'term-agent' }
-  }: { workspaces?: string[]; agentLaunch?: unknown } = {}
+  { workspaces = ['/src/api', WORKTREE] }: { workspaces?: string[] } = {}
 ) {
   const host = mockHost({
     settings: CONFIGURED,
@@ -46,7 +53,6 @@ async function startWorker(
         })),
         truncated: false
       },
-      'agent.launch': agentLaunch,
       'workspace.open': { opened: true },
       'editor.open': { opened: true },
       'commands.run': { ran: true }
@@ -92,13 +98,14 @@ test('with an Agent Review, the page is built before the agent launches, and ope
   addReviewRequest(fakes)
   fakes.cli.addRepo(REPO)
   const launch = pageAtLaunch(fakes)
-  const { host, worker } = await startWorker(fakes, { agentLaunch: launch.result })
+  const { host, worker } = await startWorker(fakes)
+  launch.state.editorOpens = () => host.callsOf('editor.open').length
 
   await worker.request('rr.startReview', { url: MR_URL, withAgent: true })
 
   assert.deepEqual(launch.seen, [true])
-  const order = host.calls.map((c) => c.method).filter((m) => m === 'agent.launch' || m === 'editor.open')
-  assert.deepEqual(order, ['agent.launch', 'editor.open'])
+  assert.deepEqual(launch.editorOpensAtLaunch, [0], 'the page opens after the agent launch')
+  assert.equal(host.callsOf('editor.open').length, 1)
   assert.match(fakes.files.peek(PAGE) ?? '', /^# Add login\n/)
   await worker.deactivate()
 })
@@ -109,7 +116,7 @@ test('Run Agent Review builds a missing cover page before the agent launches, wi
   fakes.cli.addRepo(REPO)
   fakes.cli.addWorktree({ name: 'review-api-7', repoId: REPO.repoId, path: WORKTREE, references: [MR_URL] })
   const launch = pageAtLaunch(fakes)
-  const { host, worker } = await startWorker(fakes, { agentLaunch: launch.result })
+  const { host, worker } = await startWorker(fakes)
 
   assert.deepEqual(await worker.request('rr.runAgentReview', { url: MR_URL }), { started: true })
 
@@ -127,7 +134,7 @@ test("when GitLab can't give the page, Run Agent Review still launches the agent
   fakes.gitlab.failNext(new GitLabError('rejected', '404 Not Found', { status: 404 }))
 
   assert.deepEqual(await worker.request('rr.runAgentReview', { url: MR_URL }), { started: true })
-  assert.equal(host.callsOf('agent.launch').length, 1)
+  assert.equal(agentLaunches(fakes), 1)
   assert.equal(fakes.files.peek(PAGE), null)
   await worker.deactivate()
 })
@@ -252,7 +259,7 @@ test("when GitLab can't give the page, the Agent Review still starts and Start r
   await assert.rejects(worker.request('rr.startReview', { url: MR_URL, withAgent: true }), (error) =>
     /Review Workspace is ready, but the Review Cover Page didn't open: .*404/.test(String(error))
   )
-  assert.equal(host.callsOf('agent.launch').length, 1)
+  assert.equal(agentLaunches(fakes), 1)
   assert.equal(fakes.files.peek(PAGE), null)
   assert.equal(host.callsOf('editor.open').length, 0)
   await worker.deactivate()

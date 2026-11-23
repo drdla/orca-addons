@@ -5,6 +5,7 @@ import {
   OrcaCliError,
   type CreateWorktreeInput,
   type DiffComment,
+  type LaunchAgentInput,
   type OrcaCli,
   type RemoveWorktreeOptions,
   type Worktree,
@@ -153,6 +154,11 @@ export class FakeOrcaCli implements OrcaCli {
   async setDisplayName(selector: string, name: string): Promise<void> {
     this.#record('worktree set', { selector, displayName: name })
     this.#select(selector).displayName = name
+  }
+
+  async launchAgent(input: LaunchAgentInput): Promise<void> {
+    this.#record('agent launch', input)
+    this.#select(input.worktree)
   }
 
   async removeWorktree(selector: string, options: RemoveWorktreeOptions = {}): Promise<void> {

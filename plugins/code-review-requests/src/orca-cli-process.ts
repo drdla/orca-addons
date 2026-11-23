@@ -65,6 +65,10 @@ export function createOrcaCli(run: RunOrca): OrcaCli {
     async setDisplayName(selector, name) {
       await call(['worktree', 'set', '--worktree', selector, '--display-name', name])
     },
+    async launchAgent(input) {
+      await call(['agent', 'launch', '--agent', input.agent, '--worktree', input.worktree, '--surface', 'terminal',
+        '--prompt', input.prompt, ...(input.focus ? ['--focus'] : [])])
+    },
     async removeWorktree(selector, options = {}) {
       await call(['worktree', 'rm', '--worktree', selector, ...(options.force ? ['--force'] : []),
         ...(options.deleteBranch ? ['--delete-branch'] : [])])
