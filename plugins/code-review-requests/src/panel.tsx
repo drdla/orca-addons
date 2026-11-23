@@ -675,17 +675,21 @@ const MY_REVIEW: Record<MyReview, { icon: IconName; tone: Tone; label: string; t
     icon: 'edit',
     tone: 'neutral',
     label: 'You commented',
-    tooltip: 'You already commented on this merge request. Open it in GitLab'
+    tooltip: 'You already commented on this merge request'
   },
   'changes-requested': {
     icon: 'flag',
     tone: 'warning',
     label: 'You requested changes',
-    tooltip: 'You requested changes on this merge request. Open it in GitLab'
+    tooltip: 'You requested changes on this merge request'
   }
 }
 
-/** After the agent button: whether the user already commented or requested changes on GitLab. */
+/**
+ * After the agent button: whether the user already commented or requested changes on GitLab. Only
+ * an icon with a tooltip; Orca has no tooltip outside buttons, so it is an IconButton that does
+ * nothing (the MR id button opens the MR).
+ */
 function MyReviewMark({ card }: { card: ReviewRequestCard }) {
   if (card.myReview == null) return null
   const mark = MY_REVIEW[card.myReview]
@@ -697,7 +701,6 @@ function MyReviewMark({ card }: { card: ReviewRequestCard }) {
       tooltip={mark.tooltip}
       variant="ghost"
       size="xs"
-      onPress={() => openInGitLab(card.url)}
     />
   )
 }

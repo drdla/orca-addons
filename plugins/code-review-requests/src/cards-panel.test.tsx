@@ -110,7 +110,7 @@ test('a running Agent Review replaces the agent button with a spinner; a done on
   await view.unmount()
 })
 
-test('an In review card says when the user already commented or requested changes, and the mark opens the MR', async () => {
+test('an In review card says when the user already commented or requested changes, with an icon that opens nothing', async () => {
   const host = mockHost({
     requests: {
       'rr.markSeen': { seen: true },
@@ -119,19 +119,18 @@ test('an In review card says when the user already commented or requested change
         card(8, { workspace: { ...WORKSPACE, id: 'w8' }, myReview: 'changes-requested' }),
         card(9, { workspace: { ...WORKSPACE, id: 'w9' }, myReview: null })
       )
-    } as never,
-    results: { 'shell.openExternal': { opened: true } }
+    } as never
   })
   const view = await mount(panel, { host, persisted: { plugin: { 'rr.tab': 'in' } } })
 
   const commented = view.find({ type: 'IconButton', label: 'You commented' })
-  assert.equal(commented?.props.tooltip, 'You already commented on this merge request. Open it in GitLab')
+  assert.equal(commented?.props.tooltip, 'You already commented on this merge request')
   const requested = view.find({ type: 'IconButton', label: 'You requested changes' })
   assert.equal(requested?.props.tone, 'warning')
   assert.equal(view.findAll({ type: 'IconButton', label: /^You / }).length, 2, 'nothing on a card not yet reviewed')
 
-  await view.press(commented!)
-  assert.deepEqual(host.callsOf('shell.openExternal'), [{ url: card(7).url }])
+  assert.equal(commented?.props.onPress, undefined, 'just an icon: the MR id button opens the MR')
+  assert.equal(requested?.props.onPress, undefined)
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })
