@@ -1,6 +1,40 @@
 # Code Review Requests
 
-An Orca plugin that lists your GitLab **Review Requests** (open, non-draft merge requests where you are a Reviewer and haven't approved): a count in the status bar, a panel, and review workspaces. See `GLOSSARY.md` at the repo root for the vocabulary.
+An Orca plugin that lists your GitLab **Review Requests** (open, non-draft merge requests where you are a Reviewer and have neither approved nor requested changes): a count in the status bar, a panel, and review workspaces. See `GLOSSARY.md` at the repo root for the vocabulary.
+
+## Review lifecycle
+
+Each Review Request sits in one of the panel's tabs: **Todo**, **Reviewing** or **Done**. The tab follows the review round, not just whether a Review Workspace exists ([ADR 2](../../docs/adr/0002-code-review-requests-tab-follows-review-round.md)): a re-requested review goes back to Todo even while its old workspace is still there.
+
+```mermaid
+stateDiagram-v2
+    state "Todo" as Todo
+    state "Todo, re-requested<br/>(shows what you did last round;<br/>old workspace may still be there)" as ReRequested
+    state "Reviewing" as Reviewing
+    state "Done<br/>(still has its workspace)" as Done
+    state "Off the list<br/>(last outcome remembered)" as Finished
+
+    [*] --> Todo: added as Reviewer
+    Todo --> Reviewing: Start Review (creates the workspace)
+    ReRequested --> Reviewing: Start Review (reuses the workspace,<br/>moved to the new commits)
+    Reviewing --> Todo: Delete workspace<br/>(Review Draft discarded)
+    Reviewing --> Reviewing: post Comment
+    Reviewing --> Done: post Approve or Request changes;<br/>merged, closed, removed as Reviewer
+    Reviewing --> ReRequested: author re-requests (after a comment)
+    Todo --> Finished: Approve or Request changes<br/>on gitlab.com
+    Done --> ReRequested: author re-requests
+    Finished --> ReRequested: author re-requests
+    Done --> [*]: workspace removed<br/>(by hand, or automatically after N days)
+    Todo --> [*]: merged, closed, removed as Reviewer
+    Finished --> [*]: merged or closed (looked up hourly)
+```
+
+- **Done** lists only Ended Review Requests that still have their Review Workspace. Without one, an ended review drops off the list; the plugin still remembers your last outcome so a re-request can say what it was.
+- **Approve** and **Request changes** end your part of the review. **Comment** keeps the card under Reviewing.
+- **Posting** any outcome clears the Agent Findings and diff-view notes you left unchecked from the Review Draft. Posted comments stay as history.
+- **Re-requesting** doesn't restart the overdue clock: it counts from when you were first added as Reviewer.
+- **Made draft** hides a Review Request without ending it. It comes back where it was once it's ready again.
+- **Stored data stays bounded.** A Review Draft is deleted as soon as no workspace belongs to its MR, however the workspace went (from the panel, in Orca, or with the CLI); this check only runs while the worktree list can be read. Done entries go with their workspace. A remembered last outcome goes once its MR is merged or closed. The notifier's and the New badge's lists only ever hold what is listed now.
 
 ## Layout
 

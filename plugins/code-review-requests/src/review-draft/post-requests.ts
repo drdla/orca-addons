@@ -17,10 +17,10 @@ export function registerPostRequests(
     /** After posting or deleting failed drafts changed a Review Draft. */
     onChanged?: () => Promise<void>
     /**
-     * After GitLab accepted an approval: polls at once, so the Review Request ends (Done) now
-     * instead of at the next interval.
+     * After GitLab accepted an approval or a request for changes (#78): polls at once, so the
+     * Review Request ends (Done) now instead of at the next interval.
      */
-    onApproved?: () => Promise<void>
+    onEnded?: () => Promise<void>
   }
 ): void {
   const { drafts } = options
@@ -52,7 +52,8 @@ export function registerPostRequests(
   orca.panels.handle('rr.postReview', async ({ url, summary, outcome }) => {
     const card = cardOf(url)
     const result = await poster.post(card, { summary, outcome })
-    if (outcome === 'approve' && result.approveError === null) await options.onApproved?.()
+    const ended = outcome === 'requested_changes' || (outcome === 'approve' && result.approveError === null)
+    if (ended) await options.onEnded?.()
     await options.onChanged?.()
     return { ...result, draft: await draftView(card) }
   })

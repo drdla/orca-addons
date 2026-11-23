@@ -207,6 +207,67 @@ test('an approved review moves to Done right away, without waiting for the next 
   await worker.deactivate()
 })
 
+test('a review posted as Request changes moves to Done right away (#78)', async () => {
+  const arranged = arrange([note('n1')])
+  const { worker } = await start(arranged)
+
+  await worker.request('rr.postReview', { url: MR_URL, summary: 'Two things.', outcome: 'requested_changes' })
+
+  const snapshot = await worker.request('rr.snapshot')
+  assert.deepEqual(snapshot.reviewRequests.map((rr) => rr.iid), [])
+  assert.deepEqual(snapshot.ended?.map((e) => [e.iid, e.reason]), [[7, 'changes-requested']])
+  await worker.deactivate()
+})
+
+test('posting clears what was not checked; imports keep it out until a note is edited in Orca (#81)', async () => {
+  const arranged = arrange([note('kept'), note('left', { body: 'not for GitLab' })])
+  const { fakes } = arranged
+  fakes.files.write(FINDINGS_PATH, JSON.stringify([{ body: 'Split this MR.' }, { body: 'Rename this.' }]))
+  const { worker } = await start(arranged)
+  const draft = await worker.request('rr.draft', { url: MR_URL })
+  const split = draft.comments.find((c) => c.body === 'Split this MR.')!
+  await worker.request('rr.updateDraftComment', { url: MR_URL, id: split.id, checked: true })
+  await worker.request('rr.updateDraftComment', { url: MR_URL, id: 'note:left', checked: false })
+
+  const result = await worker.request('rr.postReview', { url: MR_URL, summary: '', outcome: 'comment' })
+
+  assert.equal(result.posted, 2)
+  const after = (d: { comments: { id: string; body: string; posted: boolean; checked: boolean }[] }) =>
+    d.comments.map((c) => [c.body, c.posted, c.checked])
+  assert.deepEqual(
+    after(result.draft),
+    [
+      ['note kept', true, true],
+      ['Split this MR.', true, true]
+    ],
+    'the unchecked note and finding are gone; the posted ones stay'
+  )
+  assert.deepEqual(after(await worker.request('rr.draft', { url: MR_URL })), after(result.draft), 'a re-import keeps them out')
+
+  fakes.cli.setDiffComments(WT_ID, [note('kept'), note('left', { body: 'reworded', updatedAt: 5_000 })])
+  const edited = await worker.request('rr.draft', { url: MR_URL })
+  assert.deepEqual(
+    edited.comments.find((c) => c.id === 'note:left')?.checked,
+    false,
+    'an edited note is back, unchecked'
+  )
+  assert.equal(edited.comments.some((c) => c.body === 'Rename this.'), false, 'a deleted finding stays deleted')
+  await worker.deactivate()
+})
+
+test('a post where some comments did not publish clears nothing (#81)', async () => {
+  const arranged = arrange([note('n1', { body: 'never publishes' }), note('n2'), note('n3')])
+  arranged.fakes.gitlab.refuseToPublish('acme/api', 7, 'never')
+  const { worker } = await start(arranged)
+  await worker.request('rr.updateDraftComment', { url: MR_URL, id: 'note:n3', checked: false })
+
+  const result = await worker.request('rr.postReview', { url: MR_URL, summary: '', outcome: 'comment' })
+
+  assert.equal(result.failed.length, 1)
+  assert.equal(result.draft.comments.find((c) => c.id === 'note:n3')?.checked, false, 'still there, unchecked')
+  await worker.deactivate()
+})
+
 test('a review posted as Comment stays a Review Request', async () => {
   const arranged = arrange([note('n1')])
   const { worker } = await start(arranged)
@@ -423,22 +484,33 @@ test('an Ended Review Request still opens and posts its Review Draft', async () 
   await worker.deactivate()
 })
 
-test('unposted Review Comments are a removal problem that does not force; posting clears it', async () => {
-  const { worker } = await endedWithDraft([note('n1'), note('n2')])
-
-  const check = await worker.request('rr.checkRemoval', { url: MR_URL })
-  assert.deepEqual(check, { problems: ['2 unposted Review Comments'], force: false })
-
-  await worker.request('rr.postReview', { url: MR_URL, summary: '', outcome: 'comment' })
-  assert.deepEqual(await worker.request('rr.checkRemoval', { url: MR_URL }), { problems: [], force: false })
-  await worker.deactivate()
-})
-
 test('removing the Review Workspace discards its Review Draft', async () => {
   const { host, worker } = await endedWithDraft([note('n1')])
 
-  await worker.request('rr.removeWorkspace', { url: MR_URL, force: false })
+  await worker.request('rr.removeWorkspace', { url: MR_URL })
 
+  const keys = await (async () => {
+    let storage: { keys(): Promise<string[]> } | undefined
+    await mountWorker({ default: (api: OrcaWorkerApi) => void (storage = api.storage) }, { host })
+    return storage!.keys()
+  })()
+  assert.equal(keys.some((k) => k.startsWith('reviewDraft:')), false)
+  await worker.deactivate()
+})
+
+test('removing the workspace of a review in progress: forced, then the card is back in Todo without a draft (#80)', async () => {
+  const arranged = arrange([note('n1')])
+  const idle = mockHost({ settings: CONFIGURED, results: { 'workspace.list': { workspaces: [], truncated: false } } })
+  const { host, worker } = await start(arranged, idle)
+
+  const snapshot = await worker.request('rr.removeWorkspace', { url: MR_URL })
+
+  assert.deepEqual(
+    arranged.fakes.cli.calls.filter((c) => c.command === 'worktree rm').map((c) => c.args),
+    [{ selector: `id:${WT_ID}`, deleteBranch: true, force: true }]
+  )
+  assert.deepEqual(snapshot.reviewRequests.map((c) => [c.iid, c.workspace ?? null]), [[7, null]], 'a Review Request again, under Todo')
+  assert.equal(snapshot.ended, undefined, 'not a Done entry')
   const keys = await (async () => {
     let storage: { keys(): Promise<string[]> } | undefined
     await mountWorker({ default: (api: OrcaWorkerApi) => void (storage = api.storage) }, { host })
@@ -456,5 +528,54 @@ test('nothing checked, no summary and Comment: refused, nothing written', async 
 
   await assert.rejects(worker.request('rr.postReview', { url: MR_URL, summary: '  ', outcome: 'comment' }), /Nothing to post/)
   assert.equal(fakes.gitlab.requests.slice(before).some((r) => !r.operation.startsWith('GET')), false)
+  await worker.deactivate()
+})
+
+/** The Review Draft URLs in the plugin's storage on `host`, as another worker of the plugin sees them. */
+async function draftUrls(host: ReturnType<typeof mockHost>): Promise<string[]> {
+  let storage: { keys(): Promise<string[]> } | undefined
+  await mountWorker({ default: (api: OrcaWorkerApi) => void (storage = api.storage) }, { host })
+  return (await storage!.keys()).filter((k) => k.startsWith('reviewDraft:')).map((k) => k.slice('reviewDraft:'.length))
+}
+
+const POLL = 5 * 60_000
+
+test('a Review Draft whose workspace was deleted outside the plugin is swept on the next poll', async () => {
+  const arranged = arrange([note('n1')])
+  const { host, worker } = await start(arranged)
+  assert.deepEqual(await draftUrls(host), [MR_URL])
+
+  // Deleted in Orca's UI or with the CLI, not through the panel.
+  await arranged.fakes.cli.removeWorktree(`id:${WT_ID}`)
+  await arranged.fakes.clock.advance(POLL)
+
+  assert.deepEqual(await draftUrls(host), [])
+  await worker.deactivate()
+})
+
+test('a merge request made draft drops off the list but keeps its Review Draft while its workspace is there', async () => {
+  const arranged = arrange([note('n1')])
+  const { host, worker } = await start(arranged)
+
+  arranged.fakes.gitlab.markDraft('acme/api', 7)
+  await arranged.fakes.clock.advance(POLL)
+
+  assert.deepEqual((await worker.request('rr.snapshot')).reviewRequests, [])
+  assert.deepEqual(await draftUrls(host), [MR_URL])
+  await worker.deactivate()
+})
+
+test('while workspaces cannot be listed, no Review Draft is swept', async () => {
+  const arranged = arrange([note('n1')])
+  const { host, worker } = await start(arranged)
+  const cli = arranged.fakes.cli
+  await cli.removeWorktree(`id:${WT_ID}`)
+  cli.listWorktrees = async () => {
+    throw new Error('Orca is not running')
+  }
+
+  await arranged.fakes.clock.advance(POLL)
+
+  assert.deepEqual(await draftUrls(host), [MR_URL])
   await worker.deactivate()
 })

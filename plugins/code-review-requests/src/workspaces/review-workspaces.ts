@@ -65,6 +65,22 @@ export function normalizeMergeRequestUrl(url: string): string | null {
   return `${parsed.protocol}//${parsed.host.toLowerCase()}${match[1]!.toLowerCase()}`
 }
 
+/**
+ * The lookup's view of a merge request URL alone (`…/<project path>/-/merge_requests/<iid>`), for
+ * what is stored by URL only, such as a Review Draft; null when the URL isn't one.
+ */
+export function mergeRequestRefOf(url: string): MergeRequestRef | null {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return null
+  }
+  const match = /^\/(.+?)\/-\/merge_requests\/(\d+)(?:\/.*)?$/.exec(parsed.pathname)
+  if (!match) return null
+  return { url, projectPath: match[1]!, iid: Number(match[2]) }
+}
+
 /** Orca's project id for the MR's project: `git:<host>/<project path>`. */
 function projectIdOf(mr: MergeRequestRef): string | null {
   try {

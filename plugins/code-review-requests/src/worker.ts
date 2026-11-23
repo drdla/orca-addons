@@ -29,6 +29,7 @@ import type { ReviewRequestCard, ReviewRequestsSnapshot, ReviewRequestView } fro
 import { registerDraftRequests } from './review-draft/draft-requests'
 import { registerPostRequests } from './review-draft/post-requests'
 import { createReviewDrafts, isPosted, isUnposted } from './review-draft/review-drafts'
+import { createReviewRounds } from './review-rounds'
 import { GitLabError, type GitLabAccess, type GitLabConnection } from './seams/gitlab'
 import { createSeenTracker, seenRefiner } from './seen'
 import { DEFAULT_SETTINGS, readSettings, type Settings } from './settings'
@@ -37,6 +38,7 @@ import { overdueRefiner, type OverdueContext } from './to-review'
 import type { WorkspaceContext } from './workspaces/workspace-context'
 import { createWorkspaceHeads } from './workspaces/workspace-heads'
 import { registerWorkspaceRequests } from './workspaces/workspace-requests'
+import { findReviewWorkspace, mergeRequestRefOf } from './workspaces/review-workspaces'
 import {
   createWorkspaceTracker,
   hasWorkspace,
@@ -118,6 +120,9 @@ export function createWorker(deps: Deps) {
       forgeHost: () => host
     })
     await ended.load()
+    // What the user did last round, so a re-requested review goes back to Todo (#79).
+    const rounds = createReviewRounds(orca.storage)
+    await rounds.load()
 
     async function poll(): Promise<void> {
       const at = deps.clock.now()
@@ -177,8 +182,12 @@ export function createWorker(deps: Deps) {
       },
       isShown,
       isOverdue: (view) => isOverdue(view.requestedAt, deps.clock.now(), overdueHours),
-      // The Ended tab (#28) keeps the Ended ones that have a Review Workspace.
-      onDropped: (dropped, at) => ended.onDropped(dropped, at),
+      // The Ended tab (#28) keeps the Ended ones that have a Review Workspace; the review rounds
+      // (#79) record an approval or a request for changes, and forget merge requests that are over.
+      onDropped: async (dropped, at) => {
+        await ended.onDropped(dropped, at)
+        await rounds.onDropped(dropped)
+      },
       log
     })
 
@@ -191,9 +200,30 @@ export function createWorker(deps: Deps) {
     state.onSucceeded(failures.onSucceeded)
     // The notifier diffs the whole list (shown and hidden), so changing a filter never looks like
     // a new or an Ended Review Request; isShown keeps hidden ones out of the notifications.
-    state.onSucceeded((_previous, next) =>
-      notifier.onGoodPoll([...next.reviewRequests, ...next.hidden], next.lastSuccessAt!, next.host!)
-    )
+    // Review rounds (#79) first: the notifier words a re-requested review as such.
+    state.onSucceeded(async (_previous, next) => {
+      const all = [...next.reviewRequests, ...next.hidden]
+      const reRequested = await rounds.onListed(all)
+      await notifier.onGoodPoll(all, next.lastSuccessAt!, next.host!, reRequested)
+      await forgetFinishedRounds(all, next.host!)
+    })
+
+    /**
+     * Approved merge requests are off the list, so their merge is no drop the notifier sees: look
+     * the remembered ones up (each at most hourly) and forget those that are over (#79). Best effort.
+     */
+    async function forgetFinishedRounds(listed: ReviewRequestView[], forHost: string): Promise<void> {
+      const due = rounds.toCheck(listed, deps.clock.now())
+      if (due.length === 0) return
+      try {
+        const connection = await currentConnection()
+        if (connection.host !== forHost) return
+        const reasons = await gitLab.explainDropped(connection, due)
+        await rounds.onDropped(due.flatMap((r) => (reasons.has(r.url) ? [{ ...r, reason: reasons.get(r.url)! }] : [])))
+      } catch (error) {
+        log(`looking up finished reviews failed: ${messageOf(error)}`)
+      }
+    }
     // Ended tab (#28): Review Requests listed again leave it; each tick (good poll or not) forgets
     // entries whose workspace is gone and auto-removes the clean ones past the deadline.
     state.onSucceeded((_previous, next) => ended.onListed([...next.reviewRequests, ...next.hidden]))
@@ -202,7 +232,27 @@ export function createWorker(deps: Deps) {
     state.onSucceeded((_previous, next) => heads.check(next.reviewRequests, workspaces.current()))
     state.onChange(async () => {
       await ended.tick()
+      await sweepDrafts()
     })
+
+    /**
+     * Review Drafts whose workspace is gone, however it went, are deleted: they would otherwise
+     * pile up (removed in Orca, or ended while workspaces couldn't be listed, so no Done entry).
+     * Only while the workspace list is known.
+     */
+    async function sweepDrafts(): Promise<void> {
+      const current = workspaces.current()
+      if (current.kind !== 'listed') return
+      try {
+        const gone = await drafts.sweep((url) => {
+          const ref = mergeRequestRefOf(url)
+          return ref === null ? null : findReviewWorkspace(current.index, ref) !== null
+        })
+        if (gone.length > 0) log(`deleted ${gone.length} Review Draft(s) without a workspace`)
+      } catch (error) {
+        log(`sweeping Review Drafts failed: ${messageOf(error)}`)
+      }
+    }
     state.onChange((current) => statusBar.render(current))
     state.onChange(() => postChanged())
 
@@ -269,7 +319,11 @@ export function createWorker(deps: Deps) {
       return withWorkspaces(
         {
           ...base,
-          reviewRequests: base.reviewRequests.map((card) => ({ ...card, isNew: seen.isNew(current.host, card.url) })),
+          reviewRequests: base.reviewRequests.map((card) => {
+            const reRequested = rounds.reRequested(card.url)
+            // Re-requested says more than New about a review the user knows (#79).
+            return { ...card, isNew: reRequested === null && seen.isNew(current.host, card.url), reRequested }
+          }),
           ...(problem === undefined ? {} : { gitlab: problem }),
           ...(filters.invalid.length === 0 ? {} : { invalidFilterEntries: filters.invalid }),
           // The Ended tab, and whether workspace actions are off (#28).
@@ -320,14 +374,15 @@ export function createWorker(deps: Deps) {
       gitLab: gitLabAccess,
       heads,
       // #58: what was written before the update keeps the commit it was written on.
-      onMoved: (update) => draftRequests.workspaceMoved(update.url, update.from)
+      onMoved: (update) => draftRequests.workspaceMoved(update.url, update.from),
+      rounds
     })
     registerPostRequests(orca, {
       drafts,
       cards: draftCards,
       connection: gitLabAccess,
       onChanged: postChanged,
-      onApproved: async () => {
+      onEnded: async () => {
         if (failures.rateLimitedUntil() === null) await poller.pollNow()
       }
     })

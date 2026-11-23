@@ -4,6 +4,7 @@
 import { assert, mockHost, test } from 'orca/testing'
 import { fakeDeps, type Fakes } from './fakes'
 import { OrcaCliError } from './seams/orca-cli'
+import { mergeRequestRefOf } from './workspaces/review-workspaces'
 import { CONFIGURED, lastStatusBar, MINUTE, startWorker as startHarness } from './testing/worker-harness'
 const MR_URL = 'https://gitlab.example.com/acme/api/-/merge_requests/7'
 const REPO = { repoId: 'repo-api', projectId: 'git:gitlab.example.com/acme/api', path: '/src/api' }
@@ -578,4 +579,14 @@ test("when the setup command can't start, Start review says the workspace is rea
     /Review Workspace is ready, but .*the setup command didn't start: Orca doesn't list the workspace/.test(String(error))
   )
   await worker.deactivate()
+})
+
+test('a merge request URL alone gives the lookup its project path (subgroups too) and iid', () => {
+  assert.deepEqual(mergeRequestRefOf('https://gitlab.example.com/acme/team/api/-/merge_requests/7'), {
+    url: 'https://gitlab.example.com/acme/team/api/-/merge_requests/7',
+    projectPath: 'acme/team/api',
+    iid: 7
+  })
+  assert.equal(mergeRequestRefOf('https://gitlab.example.com/acme/api/-/issues/7'), null)
+  assert.equal(mergeRequestRefOf('not a url'), null)
 })

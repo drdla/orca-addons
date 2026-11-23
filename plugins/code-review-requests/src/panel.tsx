@@ -12,7 +12,6 @@
 // tabs narrows all three (search.ts); the ⓘ next to Refresh opens the Manual (manual-view.tsx).
 import {
   atom,
-  Badge,
   Box,
   Callout,
   EmptyState,
@@ -39,10 +38,11 @@ import {
   type PanelContext,
 } from 'orca'
 import { authorNameOf } from './author'
+import { Badge } from './badge'
 import { Button } from './button'
 import { isManualOpen, ManualScreen, openManual } from './manual-view'
 import { MergeRequestTitle } from './merge-request-link'
-import type { CiStatus, MyReview, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
+import type { CiStatus, MyReview, PreviousOutcome, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
 import { connectionProblem, loadConnection } from './connection-section'
 import { messageOf } from './errors'
 import { MinuteTime, minuteTimeText, setupClock } from './minute-time'
@@ -52,6 +52,7 @@ import { shortTitle } from './short-title'
 import { RefreshProblem } from './refresh-problem'
 import { headline, type NeedsYouView } from './setup-checklist'
 import { EndedList, WorkspacesUnavailable } from './ended-tab'
+import { isRemoving, RemovalError, removeWorkspace } from './workspace-removal'
 import {
   isReviewDraftOpen,
   openReviewDraft,
@@ -421,6 +422,14 @@ function cardStage(id: TabId, title: string, cards: ReviewRequestCard[], empty: 
 }
 
 /**
+ * Under Reviewing: the review has a Review Workspace and the user is reviewing this round. A
+ * re-requested card stays under Todo with its old workspace until Start review reuses it (#79).
+ */
+function inReview(card: ReviewRequestCard): boolean {
+  return card.workspace != null && card.reRequested == null
+}
+
+/**
  * The tabs, each narrowed to the cards matching the search. While a search finds nothing on a tab,
  * its empty state says so, worded like the tab's usual one.
  */
@@ -432,7 +441,6 @@ function stagesOf(current: ReviewRequestsSnapshot, query: string): Stage[] {
   const noMatch = (icon: IconName, what: string) => (
     <EmptyState icon={icon} title={`No ${what} matching "${query.trim()}"`} />
   )
-  const inReview = (c: ReviewRequestCard) => c.workspace != null
   const cards = matching(current.reviewRequests)
   const ended = matching(current.ended ?? [])
   return [
@@ -558,52 +566,86 @@ function When({ at }: { at: number }) {
  * nothing on a Todo card.
  */
 function WorkspaceNavigation({ card }: { card: ReviewRequestCard }) {
-  if (card.workspace == null) return null
+  if (!inReview(card)) return null
   const busy = read(busyCards)[card.url] === true
-  // Two groups, further apart than the buttons within them.
+  // Two groups, further apart than the buttons within them; Remove workspace (#80) on its own at
+  // the far end, away from the ways in and from Finish Review.
   return (
-    <Row gap="md" align="center" wrap>
-      <Row gap="xs" align="center">
-        <IconButton
-          icon="folder"
-          label="Open workspace"
-          variant="ghost"
-          size="xs"
-          disabled={busy}
-          onPress={() => openWorkspace(card.url)}
-        />
-        <IconButton
-          icon="branch"
-          label="View changes"
-          variant="ghost"
-          size="xs"
-          disabled={busy}
-          onPress={() => showChanges(card.url)}
-        />
-        <IconButton
-          icon="file-text"
-          label="View MR summary"
-          variant="ghost"
-          size="xs"
-          disabled={busy}
-          onPress={() => openCoverPage(card.url)}
-        />
-      </Row>
-      {blockers(card).length > 0 && (
+    <Row justify="between" align="center" gap="md">
+      <Row gap="md" align="center" wrap>
         <Row gap="xs" align="center">
-          <Blockers card={card} />
+          <IconButton
+            icon="folder"
+            label="Open workspace"
+            variant="ghost"
+            size="xs"
+            disabled={busy}
+            onPress={() => openWorkspace(card.url)}
+          />
+          <IconButton
+            icon="branch"
+            label="View changes"
+            variant="ghost"
+            size="xs"
+            disabled={busy}
+            onPress={() => showChanges(card.url)}
+          />
+          <IconButton
+            icon="file-text"
+            label="View MR summary"
+            variant="ghost"
+            size="xs"
+            disabled={busy}
+            onPress={() => openCoverPage(card.url)}
+          />
         </Row>
-      )}
+        {blockers(card).length > 0 && (
+          <Row gap="xs" align="center">
+            <Blockers card={card} />
+          </Row>
+        )}
+      </Row>
+      <RemoveWorkspaceButton card={card} />
     </Row>
+  )
+}
+
+/** A review in progress's Remove workspace (#80): removes at once, as on Done. */
+function RemoveWorkspaceButton({ card }: { card: ReviewRequestCard }) {
+  const unavailable = read(snapshot)?.workspacesUnavailable !== undefined
+  const busy = read(busyCards)[card.url] === true || isRemoving(card.url)
+  return (
+    <IconButton
+      icon="delete"
+      label="Delete workspace"
+      tooltip="Delete workspace and cancel review"
+      variant="ghost"
+      size="xs"
+      disabled={busy || unavailable}
+      onPress={() => removeWorkspace(card.url, received)}
+    />
   )
 }
 
 /** Start review, or Finish Review (the Review Draft) and the other actions on the Review Workspace (#6). */
 function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
   const busy = read(busyCards)[card.url] === true
-  if (card.workspace != null) {
+  if (inReview(card)) {
     return (
       <Row gap="xs" align="center" wrap>
+        {/* New commits on the merge request: Pull Changes comes first; it is the notice too. */}
+        {card.mergeRequestUpdated === true && (
+          <Button
+            size="xs"
+            variant="outline"
+            icon="refresh"
+            disabled={busy}
+            tooltip="Update workspace with changes from MR"
+            onPress={() => updateWorkspace(card.url)}
+          >
+            Pull Changes
+          </Button>
+        )}
         <Button
           size="xs"
           variant="outline"
@@ -613,18 +655,6 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
         >
           Finish Review
         </Button>
-        {card.mergeRequestUpdated === true && (
-          <Button
-            size="xs"
-            variant="outline"
-            icon="refresh"
-            disabled={busy}
-            tooltip="Move the workspace to the merge request's new commits and rebuild its Review Cover Page"
-            onPress={() => updateWorkspace(card.url)}
-          >
-            Update Workspace
-          </Button>
-        )}
         {/* While an Agent Review works, a spinner takes the agent button's place. Orca gives a
             Spinner no tooltip and a Button only text, so its label is for screen readers only. */}
         {card.agentReview?.state === 'running' ? (
@@ -647,11 +677,17 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
       </Row>
     )
   }
-  const blocked = card.startBlocked ?? null
+  // A re-requested card may still have its old workspace (#79): Start review reuses it.
+  const reuse = card.workspace != null
+  const blocked = reuse ? null : (card.startBlocked ?? null)
   // With a Review Prompt set, every Start review also starts an Agent Review.
   const withAgent = hasReviewPrompt()
-  const hint = withAgent
-    ? 'Create the Review Workspace for this merge request and start an Agent Review in it'
+  const hint =
+    reuse ?
+      withAgent ?
+        "Move the Review Workspace to the merge request's new commits and start an Agent Review in it"
+      : "Move the Review Workspace to the merge request's new commits"
+    : withAgent ? 'Create the Review Workspace for this merge request and start an Agent Review in it'
     : 'Create a Review Workspace for this merge request'
   return (
     <Row gap="xs" align="center" wrap>
@@ -664,18 +700,35 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
       >
         Start Review
       </Button>
-      {busy && <Spinner label="Creating the Review Workspace" labelHidden />}
+      <PreviousOutcomeBadge card={card} />
+      {reuse && <RemoveWorkspaceButton card={card} />}
+      {busy && <Spinner label={reuse ? 'Updating the Review Workspace' : 'Creating the Review Workspace'} labelHidden />}
     </Row>
   )
 }
 
 /**
- * The user's own review so far, as a Badge after the agent button. No "Approved": approving ends
- * the Review Request, and the Done tab's card says so.
+ * What the user did last round, on a re-requested card (#79), with the status dot every review
+ * outcome uses: approved success, changes requested warning, commented accent.
+ */
+const PREVIOUS_OUTCOME: Record<PreviousOutcome, { tone: Tone; text: string }> = {
+  approved: { tone: 'success', text: 'You approved' },
+  'changes-requested': { tone: 'warning', text: 'You requested changes' },
+  commented: { tone: 'accent', text: 'You commented' }
+}
+
+function PreviousOutcomeBadge({ card }: { card: ReviewRequestCard }) {
+  if (card.reRequested == null) return null
+  const badge = PREVIOUS_OUTCOME[card.reRequested]
+  return <Badge tone={badge.tone}>{badge.text}</Badge>
+}
+
+/**
+ * The user's own review so far, as a Badge after the agent button. Only "Commented": approving or
+ * requesting changes ends the Review Request (#78), and the Done tab's card says so.
  */
 const MY_REVIEW: Record<MyReview, { tone: Tone; text: string }> = {
-  commented: { tone: 'neutral', text: 'Commented' },
-  'changes-requested': { tone: 'warning', text: 'Changes requested' }
+  commented: { tone: 'accent', text: 'Commented' }
 }
 
 function MyReviewBadge({ card }: { card: ReviewRequestCard }) {
@@ -738,8 +791,8 @@ function Approvals({ card }: { card: ReviewRequestCard }) {
 function Card({ card }: { card: ReviewRequestCard }) {
   const error = read(cardErrors)[card.url]
   const blocked = card.workspace == null ? (card.startBlocked ?? null) : null
-  // Overdue takes precedence over New (#10).
-  const isNew = card.isNew === true && !card.overdue
+  // Overdue takes precedence over New (#10), and so does Re-requested (#79).
+  const isNew = card.isNew === true && !card.overdue && card.reRequested == null
   return (
     <Box border radius="md" padding="sm" direction="column" gap="xs">
       <Row justify="between" align="start">
@@ -751,8 +804,8 @@ function Card({ card }: { card: ReviewRequestCard }) {
           onOpen={openInGitLab}
         />
         {card.overdue && <Badge tone="danger">Late</Badge>}
+        {card.reRequested != null && <Badge tone="accent">Re-requested</Badge>}
         {isNew && <Badge tone="accent">New</Badge>}
-        {card.mergeRequestUpdated === true && <Badge tone="warning">Merge request updated</Badge>}
       </Row>
       <Approvals card={card} />
       <WorkspaceNavigation card={card} />
@@ -763,7 +816,7 @@ function Card({ card }: { card: ReviewRequestCard }) {
           <Row gap="sm" align="center" wrap>
             <WorkspaceActions card={card} />
             {/* A Reviewing card shows them after its navigation buttons instead. */}
-            {card.workspace == null && <Blockers card={card} />}
+            {!inReview(card) && <Blockers card={card} />}
           </Row>
         </Box>
         <Box shrink={false}>
@@ -777,6 +830,7 @@ function Card({ card }: { card: ReviewRequestCard }) {
           {blocked}
         </Text>
       )}
+      <RemovalError url={card.url} />
       {error !== undefined && (
         <Text tone="danger" size="xs">
           {error}

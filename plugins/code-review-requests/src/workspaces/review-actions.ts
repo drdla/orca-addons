@@ -5,7 +5,7 @@
 // Update workspace (#57) moves a Review Workspace to the merge request's new head. Every failure
 // rejects with a message the panel shows on the card.
 import { coverPageTargetOf, type CoverPages } from '../cover-page/cover-pages'
-import type { ReviewRequestView } from '../protocol'
+import type { ReviewRequestView, ReviewWorkspaceView } from '../protocol'
 import { mergeRequestHeadRef, targetBranchFullRef } from '../seams/git'
 import type { Worktree } from '../seams/orca-cli'
 import type { Settings } from '../settings'
@@ -42,6 +42,11 @@ export type ReviewActionsDeps = WorkspaceContext & {
 export type WorkspaceUpdate = { url: string; worktreePath: string; from: string; to: string }
 
 export type ReviewActions = {
+  /**
+   * A listed Review Request's Review Workspace, for removing it while the review is in progress
+   * (#80). Rejects while Start review or Update workspace runs for it.
+   */
+  reviewWorkspace(url: string): Promise<ReviewWorkspaceView>
   /** Creates (or reuses) the Review Workspace, then starts an Agent Review if `withAgent`. */
   startReview(url: string, withAgent: boolean): Promise<void>
   openWorkspace(url: string): Promise<void>
@@ -359,6 +364,13 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     coverPageTargetOf(rr, { ...worktree, name: worktree.displayName })
 
   return {
+    async reviewWorkspace(url) {
+      const rr = reviewRequestOf(url)
+      const change = running.get(normalizeMergeRequestUrl(rr.url) ?? rr.url)
+      if (change) throw new Error(`${change.action} is still running for this merge request. Try again when it's done.`)
+      const worktree = await existingWorkspace(rr)
+      return { id: worktree.id, name: worktree.displayName, path: worktree.path }
+    },
     async startReview(url, withAgent) {
       const rr = reviewRequestOf(url)
       return exclusive(rr, 'Start Review', () => startReview(rr, withAgent))
@@ -400,7 +412,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     },
     async updateWorkspace(url) {
       const rr = reviewRequestOf(url)
-      return exclusive(rr, 'Update Workspace', () => updateWorkspace(rr))
+      return exclusive(rr, 'Pull Changes', () => updateWorkspace(rr))
     }
   }
 }
@@ -414,7 +426,7 @@ function settle(work: Promise<unknown>): Promise<unknown> {
 }
 
 /** The workspace changes that never run at once for one merge request. */
-type WorkspaceChange = 'Start Review' | 'Update Workspace'
+type WorkspaceChange = 'Start Review' | 'Pull Changes'
 
 /**
  * An untracked entry of `git status --porcelain -z` in the plugin's own folder (when the exclude

@@ -5,12 +5,16 @@ Plugins that extend the Orca desktop app. Code Review Requests surfaces GitLab m
 ## Language
 
 **Review Request**:
-An open, non-draft GitLab merge request on which the user is listed as a Reviewer and has not yet approved.
+An open, non-draft GitLab merge request on which the user is listed as a Reviewer and has neither approved nor requested changes. A comment-only review keeps it a Review Request.
 _Avoid_: review, MR review, pending review, assigned MR
 
 **Ended Review Request**:
-A merge request that was a Review Request and no longer is, because the user approved it, it was merged or closed, or the user was removed as Reviewer. A merge request made draft drops off the list but is not an Ended Review Request.
+A merge request that was a Review Request and no longer is, because the user approved it or requested changes, it was merged or closed, or the user was removed as Reviewer. A merge request made draft drops off the list but is not an Ended Review Request.
 _Avoid_: finished review, closed review, stale review
+
+**Re-requested Review Request**:
+A Review Request whose author asked the user to review it again after the user approved, requested changes or commented, and that the user hasn't started reviewing again. It is listed under Todo, even while its old Review Workspace still exists; Start review reuses that workspace, moved to the merge request's new commits. Re-requesting does not restart the overdue clock.
+_Avoid_: re-review, second review, returned review
 
 **Overdue Review Request**:
 A Review Request that has waited longer than the overdue threshold (default 24 hours, counting working days Mon–Fri only) since the user was added as Reviewer.

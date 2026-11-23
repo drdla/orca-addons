@@ -110,21 +110,19 @@ test('a running Agent Review replaces the agent button with a spinner; a done on
   await view.unmount()
 })
 
-test('an In review card shows a badge when the user already commented or requested changes', async () => {
+test('an In review card shows a badge when the user already commented', async () => {
   const view = await mountWith(
     {
       'rr.snapshot': snapshot(
         card(7, { workspace: WORKSPACE, myReview: 'commented' }),
-        card(8, { workspace: { ...WORKSPACE, id: 'w8' }, myReview: 'changes-requested' }),
         card(9, { workspace: { ...WORKSPACE, id: 'w9' }, myReview: null })
       )
     },
     { 'rr.tab': 'in' }
   )
 
-  assert.ok(view.find({ type: 'Badge', text: 'Commented' }))
-  assert.equal(view.find({ type: 'Badge', text: 'Changes requested' })?.props.tone, 'warning')
-  assert.equal(view.findAll({ type: 'Badge', text: /^(Commented|Changes requested)$/ }).length, 2, 'nothing on a card not yet reviewed')
+  assert.equal(view.find({ type: 'Badge', text: 'Commented' })?.props.tone, 'accent')
+  assert.equal(view.findAll({ type: 'Badge', text: 'Commented' }).length, 1, 'nothing on a card not yet reviewed')
   assert.equal(view.find({ type: 'IconButton', label: /^You / }), null, 'a badge, not a button')
   assert.deepEqual(view.errors, [])
   await view.unmount()
@@ -140,7 +138,7 @@ test('an In review card has no Post button: posting is on its Review Draft', asy
   await view.unmount()
 })
 
-test('an In review card whose merge request moved on shows "Merge request updated" and Update workspace', async () => {
+test('an In review card whose merge request moved on shows Pull Changes first, before Finish Review, and no badge', async () => {
   const url = card(7).url
   const other = card(8, { workspace: { ...WORKSPACE, id: 'w8' } })
   const updates: string[] = []
@@ -155,18 +153,19 @@ test('an In review card whose merge request moved on shows "Merge request update
     { 'rr.tab': 'in' }
   )
 
-  assert.equal(view.findAll({ type: 'Badge', text: 'Merge request updated' }).length, 1)
-  assert.equal(view.findAll({ type: 'Button', text: 'Update Workspace' }).length, 1)
-  await view.press(view.find({ type: 'Button', text: 'Update Workspace' })!)
+  assert.equal(view.find({ type: 'Badge', text: 'Merge request updated' }), null)
+  assert.equal(view.findAll({ type: 'Button', text: 'Pull Changes' }).length, 1)
+  const buttons = view.findAll({ type: 'Button' }).map((b) => b.text)
+  assert.ok(buttons.indexOf('Pull Changes') < buttons.indexOf('Finish Review'), 'Pull Changes comes first')
+  await view.press(view.find({ type: 'Button', text: 'Pull Changes' })!)
 
   assert.deepEqual(updates, [url])
-  assert.equal(view.find({ type: 'Badge', text: 'Merge request updated' }), null)
-  assert.equal(view.find({ type: 'Button', text: 'Update Workspace' }), null)
+  assert.equal(view.find({ type: 'Button', text: 'Pull Changes' }), null)
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })
 
-test('a refused Update workspace shows why on the card and keeps the notice', async () => {
+test('a refused Update workspace shows why on the card and keeps the button', async () => {
   const view = await mountWith(
     {
       'rr.snapshot': snapshot(card(7, { workspace: WORKSPACE, mergeRequestUpdated: true })),
@@ -177,9 +176,70 @@ test('a refused Update workspace shows why on the card and keeps the notice', as
     { 'rr.tab': 'in' }
   )
 
-  await view.press(view.find({ type: 'Button', text: 'Update Workspace' })!)
+  await view.press(view.find({ type: 'Button', text: 'Pull Changes' })!)
 
   assert.ok(view.find({ text: /^Couldn't update the workspace: .*commit or stash them first/ }))
-  assert.ok(view.find({ type: 'Badge', text: 'Merge request updated' }))
+  assert.ok(view.find({ type: 'Button', text: 'Pull Changes' }))
+  await view.unmount()
+})
+
+test('a Reviewing card offers Remove workspace at the end of its navigation row, and removes at once (#80)', async () => {
+  const removed: { url: string }[] = []
+  const view = await mountWith(
+    {
+      'rr.snapshot': snapshot(card(7, { workspace: WORKSPACE })),
+      'rr.removeWorkspace': (input: { url: string }) => {
+        removed.push(input)
+        return snapshot(card(7))
+      }
+    },
+    { 'rr.tab': 'in' }
+  )
+
+  await view.press(view.find({ type: 'IconButton', label: 'Delete workspace' })!)
+
+  assert.deepEqual(removed, [{ url: card(7).url }])
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('a Todo card without a workspace has no Remove workspace', async () => {
+  const view = await mountWith({ 'rr.snapshot': snapshot(card(7)) }, { 'rr.tab': 'todo' })
+
+  assert.equal(view.find({ type: 'IconButton', label: 'Delete workspace' }), null)
+  await view.unmount()
+})
+
+test('a re-requested card is under Todo, even with its old workspace: Re-requested, what the user did before, Start Review and Remove workspace (#79)', async () => {
+  const started: unknown[] = []
+  const view = await mountWith(
+    {
+      'rr.snapshot': snapshot(
+        card(7, { workspace: WORKSPACE, reRequested: 'approved', isNew: true }),
+        card(8, { reRequested: 'changes-requested' }),
+        card(9, { workspace: { ...WORKSPACE, id: 'w9' } })
+      ),
+      'rr.startReview': (input: unknown) => {
+        started.push(input)
+        return snapshot(card(7, { workspace: WORKSPACE }))
+      }
+    },
+    { 'rr.tab': 'todo' }
+  )
+
+  assert.ok(view.find({ type: 'Tab', label: /^Todo · 2/ }), 'both re-requested cards count under Todo')
+  assert.ok(view.find({ type: 'Tab', label: /^Reviewing · 1/ }))
+  assert.equal(view.findAll({ type: 'Badge', text: 'Re-requested' }).length, 2)
+  assert.equal(view.find({ type: 'Badge', text: 'New' }), null, 'Re-requested instead of New')
+  assert.equal(view.find({ type: 'Badge', text: 'You approved' })?.props.tone, 'success')
+  assert.equal(view.find({ type: 'Badge', text: 'You requested changes' })?.props.tone, 'warning')
+  assert.equal(view.findAll({ type: 'Button', text: 'Start Review' }).length, 2)
+  assert.equal(view.findAll({ type: 'IconButton', label: 'Delete workspace' }).length, 1, 'only on the one with a workspace')
+  assert.equal(view.find({ type: 'Button', text: 'Finish Review' }), null)
+  assert.equal(view.find({ type: 'IconButton', label: 'View changes' }), null, 'no Reviewing navigation row')
+
+  await view.press(view.findAll({ type: 'Button', text: 'Start Review' })[0]!)
+  assert.deepEqual(started, [{ url: card(7).url, withAgent: true }], 'with the default Review Prompt')
+  assert.deepEqual(view.errors, [])
   await view.unmount()
 })

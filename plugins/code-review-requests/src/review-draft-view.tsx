@@ -8,7 +8,6 @@
 // outdated" and Agent Findings for an older commit "Stale"; both stay curatable.
 import {
   atom,
-  Badge,
   Box,
   Callout,
   Checkbox,
@@ -30,6 +29,7 @@ import {
   type PanelContext
 } from 'orca'
 import { authorNameOf } from './author'
+import { Badge } from './badge'
 import { Button } from './button'
 import { BackButton } from './back-button'
 import { MergeRequestTitle } from './merge-request-link'

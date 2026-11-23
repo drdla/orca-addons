@@ -1,10 +1,8 @@
 // The panel's Ended tab (#7, #28): one card per Ended Review Request that still has its Review
-// Workspace. It offers Open workspace and Remove workspace: the worker checks what removal would
-// lose, the card asks to confirm (Remove, or Remove anyway when it would force), and on failure
-// shows Orca's error. Also the banner shown while the orca CLI is broken (#15).
+// Workspace. It offers Open workspace and Delete Workspace (workspace-removal.tsx, shared with a
+// review in progress). Also the banner shown while the orca CLI is broken (#15).
 import {
   atom,
-  Badge,
   Box,
   Callout,
   host,
@@ -16,63 +14,36 @@ import {
   Stack,
   Text,
   update,
+  type BadgeProps
 } from 'orca'
 import { authorNameOf } from './author'
+import { Badge } from './badge'
 import { Button } from './button'
 import { MergeRequestLink } from './merge-request-link'
-import type { EndedCard, EndedReason, RemovalCheck, ReviewRequestsSnapshot } from './protocol'
+import type { EndedCard, EndedReason, ReviewRequestsSnapshot } from './protocol'
 import { ErrorDetails } from './setup-checklist'
 import { messageOf } from './errors'
 import { shortTitle } from './short-title'
+import { isRemoving, RemovalError, removeWorkspace } from './workspace-removal'
 
-/** Open confirmations, by Review Request URL: what removal would lose. */
-const confirming = atom<Record<string, RemovalCheck>>({})
-/** Cards with a check or removal under way. */
-const busy = atom<Record<string, true>>({})
-/** Per-card errors. */
+/** Per-card errors of Open workspace and the GitLab link. */
 const errors = atom<Record<string, { message: string; detail?: string }>>({})
 
 const REASONS: Record<EndedReason, string> = {
   approved: 'Approved',
+  'changes-requested': 'Changes requested',
   merged: 'Merged',
   closed: 'Closed',
   unassigned: 'Removed as reviewer'
 }
 
-function patch<T>(store: typeof confirming | typeof busy | typeof errors, url: string, value: T | null): void {
+function patch<T>(store: typeof errors, url: string, value: T | null): void {
   update(store as never, (all: Record<string, T>) => {
     const next = { ...all }
     if (value === null) delete next[url]
     else next[url] = value
     return next
   })
-}
-
-/** Removing a workspace waits for Orca's own checks; 120 s is a panel request's maximum. */
-const REMOVE_TIMEOUT_MS = 120_000
-
-function askToRemove(url: string): void {
-  patch(busy, url, true)
-  patch(errors, url, null)
-  plugin
-    .request('rr.checkRemoval', { url }, { timeoutMs: 60_000 })
-    .then((check) => patch(confirming, url, check))
-    .catch((error: unknown) =>
-      patch(errors, url, { message: "Couldn't check the workspace", detail: messageOf(error) })
-    )
-    .finally(() => patch(busy, url, null))
-}
-
-function remove(url: string, force: boolean, received: (snapshot: ReviewRequestsSnapshot) => void): void {
-  patch(confirming, url, null)
-  patch(busy, url, true)
-  plugin
-    .request('rr.removeWorkspace', { url, force }, { timeoutMs: REMOVE_TIMEOUT_MS })
-    .then(received)
-    .catch((error: unknown) =>
-      patch(errors, url, { message: `Couldn't remove the workspace: ${messageOf(error)}` })
-    )
-    .finally(() => patch(busy, url, null))
 }
 
 function openWorkspace(url: string): void {
@@ -125,23 +96,19 @@ function EndedCardView(props: {
   received: (snapshot: ReviewRequestsSnapshot) => void
 }) {
   const { card } = props
-  const working = read(busy)[card.url] === true
-  const check = read(confirming)[card.url]
+  const working = isRemoving(card.url)
   const error = read(errors)[card.url]
   return (
     <Box border radius="md" padding="sm" direction="column" gap="xs">
-      <Row justify="between" align="start">
-        <Row gap="sm" align="start">
-          <MergeRequestLink url={card.url} iid={card.iid} onOpen={openInGitLab} />
-          {/* Nudged down 2px so the title's first line sits level with the button's text; the
-              author sits under the title, at its indent, as on the other cards. */}
-          <Box direction="column">
-            <Box height={2} />
-            <Text weight="semibold">{shortTitle(card.title)}</Text>
-            <Text muted size="xs">{`by ${authorNameOf(card)}`}</Text>
-          </Box>
-        </Row>
-        <ReasonPill reason={card.reason} />
+      <Row gap="sm" align="start">
+        <MergeRequestLink url={card.url} iid={card.iid} onOpen={openInGitLab} />
+        {/* Nudged down 2px so the title's first line sits level with the button's text; the
+            author sits under the title, at its indent, as on the other cards. */}
+        <Box direction="column">
+          <Box height={2} />
+          <Text weight="semibold">{shortTitle(card.title)}</Text>
+          <Text muted size="xs">{`by ${authorNameOf(card)}`}</Text>
+        </Box>
       </Row>
       {/* Like a Reviewing card: the way into the workspace on its own row, above the action. */}
       <Row gap="xs" align="center">
@@ -153,80 +120,52 @@ function EndedCardView(props: {
           disabled={props.disabled || working}
           onPress={() => openWorkspace(card.url)}
         />
+        {/* Why it ended, after the workspace button: in the header it squeezed the title. */}
+        <ReasonPill reason={card.reason} />
       </Row>
-      {check === undefined && (
-        <Row gap="xs">
-          <Button
-            size="xs"
-            icon="delete"
-            disabled={props.disabled || working}
-            tooltip="Remove this Review Workspace from Orca"
-            onPress={() => askToRemove(card.url)}
-          >
-            Remove Workspace
-          </Button>
-          {working && <Spinner label="Working" labelHidden />}
-        </Row>
-      )}
-      {check !== undefined && (
-        <Confirmation card={card} check={check} disabled={props.disabled} received={props.received} />
-      )}
+      <Row gap="xs" align="center" wrap>
+        <Button
+          size="xs"
+          icon="delete"
+          disabled={props.disabled || working}
+          tooltip="Delete workspace"
+          onPress={() => removeWorkspace(card.url, props.received)}
+        >
+          Delete Workspace
+        </Button>
+        {working && <Spinner label="Working" labelHidden />}
+      </Row>
       {card.autoRemoveSkipped !== null && (
         <Text muted size="xs">
           {card.autoRemoveSkipped}
         </Text>
       )}
+      <RemovalError url={card.url} />
       {error !== undefined && (
-        <Stack gap="xs">
-          <Text tone="danger" size="xs">
-            {error.message}
-          </Text>
-          {error.detail !== undefined && <ErrorDetails message={error.detail} />}
-        </Stack>
+        <Text tone="danger" size="xs">
+          {error.message}
+        </Text>
       )}
     </Box>
   )
 }
 
 /** Why the review ended, in a neutral Badge: a toned one would draw a status dot. */
-function ReasonPill({ reason }: { reason: EndedReason }) {
-  return <Badge tone="neutral">{REASONS[reason] ?? 'Ended'}</Badge>
+/**
+ * Each reason's status dot: the user's own outcome as everywhere (approved success, changes
+ * requested warning); merged success; closed and removed as reviewer neutral, without a dot.
+ */
+const REASON_TONES: Record<EndedReason, BadgeTone> = {
+  approved: 'success',
+  'changes-requested': 'warning',
+  merged: 'success',
+  closed: 'neutral',
+  unassigned: 'neutral'
 }
 
-function Confirmation(props: {
-  card: EndedCard
-  check: RemovalCheck
-  disabled: boolean
-  received: (snapshot: ReviewRequestsSnapshot) => void
-}) {
-  const { card, check } = props
-  const clean = check.problems.length === 0
-  return (
-    <Callout
-      tone={clean ? 'neutral' : 'warning'}
-      icon={clean ? 'delete' : 'warning'}
-      title={`Remove ${card.workspace.name}?`}
-    >
-      <Stack gap="xs">
-        <Text size="xs">
-          {clean
-            ? 'Orca removes the workspace and deletes its branch if it was merged.'
-            : `This would lose: ${check.problems.join(', ')}. Removing stops its terminals and agents.`}
-        </Text>
-        <Row gap="xs">
-          <Button
-            size="xs"
-            tone="danger"
-            disabled={props.disabled}
-            onPress={() => remove(card.url, check.force, props.received)}
-          >
-            {clean ? 'Remove' : 'Remove anyway'}
-          </Button>
-          <Button size="xs" variant="ghost" onPress={() => patch(confirming, card.url, null)}>
-            Cancel
-          </Button>
-        </Row>
-      </Stack>
-    </Callout>
-  )
+/** Why it ended, with a status dot; the Badge wrapper spaces the label from the dot. */
+function ReasonPill({ reason }: { reason: EndedReason }) {
+  return <Badge tone={REASON_TONES[reason] ?? 'neutral'}>{REASONS[reason] ?? 'Ended'}</Badge>
 }
+
+type BadgeTone = NonNullable<BadgeProps['tone']>
