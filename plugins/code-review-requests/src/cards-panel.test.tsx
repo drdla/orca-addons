@@ -104,7 +104,6 @@ test('a running Agent Review replaces the agent button with a spinner; a done on
   )
 
   assert.equal(view.findAll({ type: 'Spinner', label: 'Agent Review in progress' }).length, 1, 'only the running one')
-  assert.equal(view.findAll({ type: 'IconButton', label: 'Run Agent Review' }).length <= 1, true, 'the spinner replaces the agent button')
   assert.equal(view.find({ text: /Agent Review (running|done)/ }), null, 'no text line')
   assert.deepEqual(view.errors, [])
   await view.unmount()
@@ -138,7 +137,7 @@ test('an In review card has no Post button: posting is on its Review Draft', asy
   await view.unmount()
 })
 
-test('an In review card whose merge request moved on shows Pull Changes first, before Finish Review, and no badge', async () => {
+test('an In review card whose merge request moved on offers Pull Changes first, Finish Review disabled until pulled, no badge', async () => {
   const url = card(7).url
   const other = card(8, { workspace: { ...WORKSPACE, id: 'w8' } })
   const updates: string[] = []
@@ -155,12 +154,15 @@ test('an In review card whose merge request moved on shows Pull Changes first, b
 
   assert.equal(view.find({ type: 'Badge', text: 'Merge request updated' }), null)
   assert.equal(view.findAll({ type: 'Button', text: 'Pull Changes' }).length, 1)
+  const finish = () => view.findAll({ type: 'Button', text: 'Finish Review' }).map((b) => b.disabled === true)
+  assert.deepEqual(finish(), [true, false], 'disabled on the card behind, enabled on the other')
   const buttons = view.findAll({ type: 'Button' }).map((b) => b.text)
   assert.ok(buttons.indexOf('Pull Changes') < buttons.indexOf('Finish Review'), 'Pull Changes comes first')
   await view.press(view.find({ type: 'Button', text: 'Pull Changes' })!)
 
   assert.deepEqual(updates, [url])
   assert.equal(view.find({ type: 'Button', text: 'Pull Changes' }), null)
+  assert.deepEqual(finish(), [false, false], 'enabled once pulled')
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })

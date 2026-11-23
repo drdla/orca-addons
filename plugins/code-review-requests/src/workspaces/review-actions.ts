@@ -7,6 +7,7 @@
 import { coverPageTargetOf, type CoverPages } from '../cover-page/cover-pages'
 import type { ReviewRequestView, ReviewWorkspaceView } from '../protocol'
 import { mergeRequestHeadRef, targetBranchFullRef } from '../seams/git'
+import { removeReviewWorkspace } from './remove-review-workspace'
 import type { Worktree } from '../seams/orca-cli'
 import type { Settings } from '../settings'
 import { reviewCommandFor, reviewPromptFor } from './review-prompt'
@@ -158,7 +159,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     } catch (error) {
       const reason = `Couldn't check out the merge request in the new Review Workspace ${worktree.displayName}: ${sentence(error)}`
       try {
-        await deps.cli().removeWorktree(`id:${worktree.id}`, { force: true, deleteBranch: true })
+        await removeReviewWorkspace(deps, { id: worktree.id, branch: worktree.branch, repoPath }, { force: true })
       } catch (removeError) {
         throw new Error(
           `${reason}. Removing it failed too (${sentence(removeError)}); remove it in Orca before you start the review again.`
@@ -251,9 +252,20 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     )
   }
 
-  /** Refuses unless `head` is (in) `mergeRequestHead`: the reviewer has no commits of their own. */
-  async function refuseLocalCommits(worktree: Worktree, head: string, mergeRequestHead: string | null): Promise<void> {
+  /**
+   * Refuses unless `head` is (in) `mergeRequestHead` or the target branch: the reviewer has no
+   * commits of their own. A workspace still at the target branch (a Start review cut off between
+   * creating the worktree and the reset) has only the target's commits, none of its own.
+   */
+  async function refuseLocalCommits(
+    worktree: Worktree,
+    rr: ReviewRequestView,
+    head: string,
+    mergeRequestHead: string | null
+  ): Promise<void> {
     if (mergeRequestHead !== null && (await deps.git.isAncestor(worktree.path, head, mergeRequestHead))) return
+    const target = rr.targetBranch ? await deps.git.resolveRef(worktree.path, targetBranchFullRef(rr.targetBranch)) : null
+    if (target !== null && (await deps.git.isAncestor(worktree.path, head, target))) return
     throw new Error(
       `The Review Workspace ${worktree.displayName} has local commits that aren't in the merge request; ` +
         'nothing was changed.'
@@ -277,7 +289,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     // Own commits: HEAD is not in the MR head fetched last time. Comparing with the new head would
     // refuse every force-push (a rebased merge request), so the check runs before fetching it.
     const fetchedBefore = await deps.git.resolveRef(worktree.path, mergeRequestHeadRef(rr.iid))
-    if (fetchedBefore !== null) await refuseLocalCommits(worktree, from, fetchedBefore)
+    if (fetchedBefore !== null) await refuseLocalCommits(worktree, rr, from, fetchedBefore)
     // The base moves too: after a rebase onto a newer target, a stale remote-tracking target
     // branch would put the target's commits into "Committed on Branch" and the Agent Review's diff.
     try {
@@ -297,7 +309,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
       )
     }
     // Never fetched before: nothing to tell own commits by but the new head itself.
-    if (fetchedBefore === null) await refuseLocalCommits(worktree, from, await deps.git.resolveRef(worktree.path, head))
+    if (fetchedBefore === null) await refuseLocalCommits(worktree, rr, from, await deps.git.resolveRef(worktree.path, head))
     // Edits made while fetching would be lost too.
     await refuseUncommitted(worktree)
     let failure: unknown = null

@@ -256,6 +256,19 @@ test('Remove workspace removes at once, forced, with uncommitted changes and ope
   const snapshot = await worker.request('rr.removeWorkspace', { url: MR_URL })
 
   assert.deepEqual(removals(fakes), [{ selector: `id:${WT_ID}`, deleteBranch: true, force: true }])
+  assert.deepEqual(fakes.git.deletedBranches, [{ repoPath: REPO.path, branch: 'review-api-7' }], 'its branch too, merged or not')
+  assert.equal(snapshot.ended, undefined)
+  await worker.deactivate()
+})
+
+test('a failed branch delete after the workspace is gone does not fail the removal', async () => {
+  const fakes = fakeDeps()
+  const { worker } = await startEnded(fakes)
+  fakes.git.failNextOf('deleteBranch', new Error('git branch -D review-api-7 failed: locked'))
+
+  const snapshot = await worker.request('rr.removeWorkspace', { url: MR_URL })
+
+  assert.equal(removals(fakes).length, 1)
   assert.equal(snapshot.ended, undefined)
   await worker.deactivate()
 })
@@ -323,6 +336,7 @@ test('auto-removal skips an unclean workspace, says why, and retries on later ti
   fakes.git.setStatus(WT_PATH, [])
   await fakes.clock.advance(5 * MINUTE)
   assert.deepEqual(removals(fakes), [{ selector: `id:${WT_ID}`, deleteBranch: true }])
+  assert.deepEqual(fakes.git.deletedBranches, [{ repoPath: REPO.path, branch: 'review-api-7' }])
   await worker.deactivate()
 })
 

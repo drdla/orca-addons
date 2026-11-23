@@ -343,6 +343,7 @@ test('when the reset to the MR head fails, Start review removes the new workspac
     force: true,
     deleteBranch: true
   })
+  assert.deepEqual(fakes.git.deletedBranches, [{ repoPath: REPO.path, branch: 'review-api-7' }])
   const [card] = (await worker.request('rr.snapshot')).reviewRequests
   assert.equal(card!.workspace, null)
   assert.equal(agentLaunches(fakes).length, 0)

@@ -188,12 +188,6 @@ function updateWorkspace(url: string): void {
   )
 }
 
-function runAgentReview(url: string): void {
-  cardAction(url, "Couldn't start the Agent Review", () =>
-    plugin.request('rr.runAgentReview', { url }, { timeoutMs: 120_000 })
-  )
-}
-
 export default function Panel() {
   // #29: an open Review Draft takes the whole panel; its Back button returns here.
   if (isReviewDraftOpen()) return <ReviewDraftScreen />
@@ -618,7 +612,7 @@ function RemoveWorkspaceButton({ card }: { card: ReviewRequestCard }) {
     <IconButton
       icon="delete"
       label="Delete workspace"
-      tooltip="Delete workspace and cancel review"
+      tooltip="Delete workspace"
       variant="ghost"
       size="xs"
       disabled={busy || unavailable}
@@ -631,10 +625,12 @@ function RemoveWorkspaceButton({ card }: { card: ReviewRequestCard }) {
 function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
   const busy = read(busyCards)[card.url] === true
   if (inReview(card)) {
+    // New commits on the merge request: Pull Changes comes first and is the notice too; Finish
+    // Review stays disabled until they are pulled, as a review of the old commits is out of date.
+    const behind = card.mergeRequestUpdated === true
     return (
       <Row gap="xs" align="center" wrap>
-        {/* New commits on the merge request: Pull Changes comes first; it is the notice too. */}
-        {card.mergeRequestUpdated === true && (
+        {behind && (
           <Button
             size="xs"
             variant="outline"
@@ -650,28 +646,19 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
           size="xs"
           variant="outline"
           icon="check"
-          tooltip="Pick the comments, the outcome and a summary, then post them to GitLab as one review"
+          disabled={behind}
+          tooltip={
+            behind
+              ? 'Pull the changes first'
+              : 'Pick the comments, the outcome and a summary, then post them to GitLab as one review'
+          }
           onPress={() => openReviewDraft(card.url)}
         >
           Finish Review
         </Button>
-        {/* While an Agent Review works, a spinner takes the agent button's place. Orca gives a
-            Spinner no tooltip and a Button only text, so its label is for screen readers only. */}
-        {card.agentReview?.state === 'running' ? (
-          <Spinner label="Agent Review in progress" labelHidden />
-        ) : (
-          hasReviewPrompt() && (
-            <IconButton
-              icon="agent"
-              label="Run Agent Review"
-              tooltip="Start an agent review"
-              variant="ghost"
-              size="xs"
-              disabled={busy}
-              onPress={() => runAgentReview(card.url)}
-            />
-          )
-        )}
+        {/* Another Agent Review runs from the Finish Review page; the card only shows one at work.
+            Orca gives a Spinner no tooltip, so its label is for screen readers only. */}
+        {card.agentReview?.state === 'running' && <Spinner label="Agent Review in progress" labelHidden />}
         <MyReviewBadge card={card} />
         {busy && <Spinner label="Working" labelHidden />}
       </Row>

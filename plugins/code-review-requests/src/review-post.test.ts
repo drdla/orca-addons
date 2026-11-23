@@ -509,6 +509,7 @@ test('removing the workspace of a review in progress: forced, then the card is b
     arranged.fakes.cli.calls.filter((c) => c.command === 'worktree rm').map((c) => c.args),
     [{ selector: `id:${WT_ID}`, deleteBranch: true, force: true }]
   )
+  assert.deepEqual(arranged.fakes.git.deletedBranches.map((d) => d.branch), ['review-api-7'])
   assert.deepEqual(snapshot.reviewRequests.map((c) => [c.iid, c.workspace ?? null]), [[7, null]], 'a Review Request again, under Todo')
   assert.equal(snapshot.ended, undefined, 'not a Done entry')
   const keys = await (async () => {

@@ -247,7 +247,7 @@ test('a Review Request with a Review Workspace is under In review, not To review
   await view.select(view.find({ type: 'Tabs' })!, 'in')
   assert.ok(view.find({ text: 'Reviewing' }))
   assert.ok(view.find({ type: 'IconButton', label: 'Open workspace' }))
-  assert.ok(view.find({ type: 'IconButton', label: 'Run Agent Review' }))
+  assert.equal(view.find({ type: 'IconButton', label: 'Run Agent Review' }), null, 'another Agent Review runs from Finish Review')
   assert.equal(view.find({ type: 'Button', text: 'Start Review' }), null)
   assert.deepEqual(view.errors, [])
   await view.unmount()
@@ -373,9 +373,8 @@ test('says on the card why Start review failed', async () => {
   await view.unmount()
 })
 
-test('Open workspace and Run Agent Review go to the worker; navigation sits in its own row above Review draft', async () => {
+test('Open workspace goes to the worker; navigation sits in its own row above Review draft', async () => {
   const opened: string[] = []
-  const reviewed: string[] = []
   const host = mockHost({
     requests: {
       'rr.snapshot': snapshot(card(1, { workspace: WORKSPACE })),
@@ -383,10 +382,6 @@ test('Open workspace and Run Agent Review go to the worker; navigation sits in i
         opened.push(url)
         return { opened: true }
       },
-      'rr.runAgentReview': ({ url }) => {
-        reviewed.push(url)
-        return { started: true }
-      }
     }
   })
   const view = await mount(panel, { host, persisted: { plugin: { 'rr.tab': 'in' } } })
@@ -408,10 +403,8 @@ test('Open workspace and Run Agent Review go to the worker; navigation sits in i
   assert.equal(inRow(rowOf(draft))[0]?.text, 'Finish Review')
   assert.ok(open.path.localeCompare(draft.path, undefined, { numeric: true }) < 0, 'navigation comes first')
   await view.press(view.find({ type: 'IconButton', label: 'Open workspace' })!)
-  await view.press(view.find({ type: 'IconButton', label: 'Run Agent Review' })!)
 
   assert.deepEqual(opened, [card(1).url])
-  assert.deepEqual(reviewed, [card(1).url])
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })
@@ -451,19 +444,6 @@ test('updates when the worker pushes a new snapshot', async () => {
 
   assert.ok(view.find({ text: 'Pushed' }))
   assert.ok(view.find({ type: 'Tab', label: 'Todo · 1' }))
-  assert.deepEqual(view.errors, [])
-  await view.unmount()
-})
-
-test('without a Review Prompt, a Reviewing card has no Run Agent Review button', async () => {
-  const host = mockHost({
-    settings: { reviewPrompt: '' },
-    requests: { 'rr.snapshot': snapshot(card(1, { workspace: WORKSPACE })) }
-  })
-  const view = await mount(panel, { host, persisted: { plugin: { 'rr.tab': 'in' } } })
-
-  assert.ok(view.find({ type: 'IconButton', label: 'Open workspace' }))
-  assert.equal(view.find({ type: 'IconButton', label: 'Run Agent Review' }), null)
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })

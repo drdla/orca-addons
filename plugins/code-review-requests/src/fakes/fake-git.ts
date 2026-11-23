@@ -5,11 +5,13 @@
 // call fail; failNextOf() the next call of one method only; onNextOf() runs something as it starts.
 import { mergeRequestHeadRef, targetBranchRef, type FileChange, type Git } from '../seams/git'
 
-type Method = 'fetchMergeRequestHead' | 'fetchBranch' | 'resetBranch' | 'statusPorcelain' | 'headSha' | 'fileChanges'
+type Method = 'fetchMergeRequestHead' | 'fetchBranch' | 'resetBranch' | 'deleteBranch' | 'statusPorcelain' | 'headSha' | 'fileChanges'
 
 export class FakeGit implements Git {
   readonly fetches: ({ repoPath: string; iid: number } | { repoPath: string; branch: string })[] = []
   readonly resets: { worktreePath: string; ref: string }[] = []
+  /** Every branch deleteBranch deleted, in order. */
+  readonly deletedBranches: { repoPath: string; branch: string }[] = []
   /** Every worktree `headSha` was asked about, in order. */
   readonly headReads: string[] = []
   #failures: Error[] = []
@@ -103,6 +105,11 @@ export class FakeGit implements Git {
     else this.#heads.set(worktreePath, sha)
     const after = this.#failAfterReset.shift()
     if (after) throw after
+  }
+
+  async deleteBranch(repoPath: string, branch: string): Promise<void> {
+    this.#fail('deleteBranch')
+    this.deletedBranches.push({ repoPath, branch })
   }
 
   async isAncestor(_path: string, ancestor: string, descendant: string): Promise<boolean> {

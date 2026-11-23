@@ -34,7 +34,7 @@ export const MANUAL_SECTIONS: readonly { title?: string; paragraphs: readonly st
     paragraphs: [
       '"Start Review" creates an Orca workspace on the merge request branch and starts the review agent.',
       'The card buttons open the workspace, the changed files and the merge request summary.',
-      'When the merge request gets new commits, "Pull Changes" brings them into the workspace.',
+      'When the merge request gets new commits, "Pull Changes" brings them into the workspace; until then "Finish Review" is disabled.',
       'To drop a review you started, the bin at the end of the card deletes its workspace and Review Draft at once, uncommitted changes and open terminals included; the review goes back to Todo.'
     ]
   },

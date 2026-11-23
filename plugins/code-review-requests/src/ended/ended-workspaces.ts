@@ -17,6 +17,7 @@
 // tick) on any. Manual removal checks nothing: the person asked for it, so it always forces.
 import type { EndedCard, EndedReason, RemovalCheck, ReviewRequestView, ReviewWorkspaceView } from '../protocol'
 import { isEnded, type Dropped } from '../notify/changes'
+import { removeReviewWorkspace } from '../workspaces/remove-review-workspace'
 import { findReviewWorkspace } from '../workspaces/review-workspaces'
 import type { WorkspaceContext } from '../workspaces/workspace-context'
 import { messageOf } from '../errors'
@@ -141,7 +142,7 @@ export function createEndedWorkspaces(deps: EndedWorkspacesDeps) {
     /** Manual removal: forced, whatever the workspace still holds. */
     async remove(url: string): Promise<void> {
       const entry = entryOf(url)
-      await deps.cli().removeWorktree(`id:${entry.workspace.id}`, { deleteBranch: true, force: true })
+      await removeReviewWorkspace(deps, { id: entry.workspace.id }, { force: true })
       await forget([entry])
       await deps.workspaces.refresh()
     },
@@ -151,7 +152,7 @@ export function createEndedWorkspaces(deps: EndedWorkspacesDeps) {
      * back under Todo; its Review Draft goes with the workspace.
      */
     async removeWorkspace(target: RemovalTarget): Promise<void> {
-      await deps.cli().removeWorktree(`id:${target.workspace.id}`, { deleteBranch: true, force: true })
+      await removeReviewWorkspace(deps, { id: target.workspace.id }, { force: true })
       await deps.onRemoved?.(target)
       await deps.workspaces.refresh()
     },
@@ -188,7 +189,7 @@ export function createEndedWorkspaces(deps: EndedWorkspacesDeps) {
       if (check.problems.length > 0) {
         skipped = `Not removed automatically: ${check.problems.join(', ')}.`
       } else {
-        await deps.cli().removeWorktree(`id:${entry.workspace.id}`, { deleteBranch: true })
+        await removeReviewWorkspace(deps, { id: entry.workspace.id })
         await forget([entry])
         return true
       }

@@ -310,7 +310,7 @@ export default defineCheck({
   allOverdue: { requests: { 'rr.snapshot': allOverdue } },
   /** The person left the panel on In review, with nothing there. */
   inReviewTab: { requests: { 'rr.snapshot': toReview }, persisted: { plugin: { 'rr.tab': 'in' } } },
-  /** In review: a card with a Review Workspace, Open workspace and Run Agent Review (#27). */
+  /** In review: a card with a Review Workspace, Open workspace (#27). */
   inReview: { requests: { 'rr.snapshot': inReview }, persisted: { plugin: { 'rr.tab': 'in' } } },
   /** Todo next to a Reviewing card: Start review and its Agent Review button (#27). */
   startReview: { requests: { 'rr.snapshot': inReview } },

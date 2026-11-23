@@ -4,6 +4,7 @@
 // the orca CLI, git, files and the clock are fakes; Orca's host is the kit's mock host.
 import { assert, mockHost, mountWorker, test } from 'orca/testing'
 import type { OrcaWorkerApi } from 'orca/worker'
+import { targetBranchFullRef } from './seams/git'
 import { fakeDeps, type Fakes } from './fakes'
 import { createReviewDrafts } from './review-draft/review-drafts'
 import type { DiffComment } from './seams/orca-cli'
@@ -296,6 +297,23 @@ test("Update workspace refuses a workspace with commits of the reviewer's own, b
   )
   assert.deepEqual(fakes.git.fetches, [])
   assert.deepEqual(fakes.git.resets, [])
+  await worker.deactivate()
+})
+
+test('Update workspace moves a workspace stuck at the target branch (a Start review cut off before its reset)', async () => {
+  const fakes = fakeDeps()
+  const { worker, newHead } = await behind(fakes)
+  // Created from main, never reset to the MR; main has moved on since.
+  const mainThen = 'da1a000000000000000000000000000000000000'
+  const mainNow = 'da1b000000000000000000000000000000000000'
+  fakes.git.setHead(WORKTREE, mainThen)
+  fakes.git.setRef(WORKTREE, targetBranchFullRef('main'), mainNow)
+  fakes.git.addAncestor(mainThen, mainNow)
+
+  await worker.request('rr.updateWorkspace', { url: MR_URL })
+
+  assert.equal(fakes.git.resets.length, 1, 'the target branch has no commits of the reviewer')
+  assert.ok((fakes.files.peek(PAGE) ?? '').includes(`head=${newHead}`))
   await worker.deactivate()
 })
 
