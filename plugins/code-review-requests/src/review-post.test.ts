@@ -195,6 +195,28 @@ test('Approve publishes the review, then approves the current head', async () =>
   await worker.deactivate()
 })
 
+test('an approved review moves to Done right away, without waiting for the next poll', async () => {
+  const arranged = arrange([note('n1')])
+  const { worker } = await start(arranged)
+
+  await worker.request('rr.postReview', { url: MR_URL, summary: '', outcome: 'approve' })
+
+  const snapshot = await worker.request('rr.snapshot')
+  assert.deepEqual(snapshot.reviewRequests.map((rr) => rr.iid), [])
+  assert.deepEqual(snapshot.ended?.map((e) => [e.iid, e.reason]), [[7, 'approved']])
+  await worker.deactivate()
+})
+
+test('a review posted as Comment stays a Review Request', async () => {
+  const arranged = arrange([note('n1')])
+  const { worker } = await start(arranged)
+
+  await worker.request('rr.postReview', { url: MR_URL, summary: '', outcome: 'comment' })
+
+  assert.deepEqual((await worker.request('rr.snapshot')).reviewRequests.map((rr) => rr.iid), [7])
+  await worker.deactivate()
+})
+
 test('a comment whose commit is no MR version posts as a general path:line comment', async () => {
   const arranged = arrange([note('n1', { lineNumber: 4, body: 'Off by one.' })])
   const { fakes } = arranged
