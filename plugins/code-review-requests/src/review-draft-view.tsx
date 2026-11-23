@@ -49,7 +49,7 @@ let lastImportAt = 0
 const edits = atom<Record<string, string>>({})
 /** Per-comment errors, by comment id. */
 const commentErrors = atom<Record<string, string>>({})
-/** Which section button waits for the worker: "Go to diff view" or "Run Agent Review". */
+/** Which section button waits for the worker: "View changes" or "Start Agent Review". */
 const acting = atom<'changes' | 'agent' | null>(null)
 /** Why the last of those didn't work. */
 const actionError = atom<string | null>(null)
@@ -285,8 +285,9 @@ export function ReviewDraftScreen() {
                 <SectionButton
                   which="agent"
                   icon="agent"
-                  label="Run Agent Review"
-                  tooltip="Start an agent review"
+                  label="Start Agent Review"
+                  text
+                  tooltip="Have an agent review the changes and write Agent Findings"
                   onPress={() => runAgentReview(url)}
                 />
               )
