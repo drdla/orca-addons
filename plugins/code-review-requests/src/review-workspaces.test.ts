@@ -511,3 +511,51 @@ test('an Agent Review refuses a Review Request without a target branch: its diff
   assert.equal(agentLaunches(fakes).length, 0)
   await worker.deactivate()
 })
+
+test('with a setup command, Start review runs it in a Setup terminal of the new workspace, at the MR head', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  const { host, worker } = await startWorker(fakes, {
+    settings: { setupCommand: ' pnpm install ' },
+    workspaces: ['/src/api', '/worktrees/review-api-7']
+  })
+
+  await worker.request('rr.startReview', { url: MR_URL, withAgent: false })
+
+  assert.deepEqual(host.callsOf('terminal.create'), [{ workspaceId: 'ws-1', title: 'Setup', command: 'pnpm install' }])
+  assert.equal(fakes.git.resets.length, 1, 'the workspace was moved to the MR head first')
+  await worker.deactivate()
+})
+
+test('the setup command runs only in a workspace Start review makes, and not when blank', async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  fakes.cli.addWorktree({ name: 'by-hand', repoId: REPO.repoId, path: '/wt/by-hand', references: [MR_URL] })
+  const existing = await startWorker(fakes, { settings: { setupCommand: 'pnpm install' }, workspaces: ['/wt/by-hand'] })
+  await existing.worker.request('rr.startReview', { url: MR_URL, withAgent: false })
+  assert.equal(existing.host.callsOf('terminal.create').length, 0)
+  await existing.worker.deactivate()
+
+  const blank = fakeDeps()
+  addReviewRequest(blank)
+  blank.cli.addRepo(REPO)
+  const created = await startWorker(blank, { workspaces: ['/src/api', '/worktrees/review-api-7'] })
+  await created.worker.request('rr.startReview', { url: MR_URL, withAgent: false })
+  assert.equal(created.host.callsOf('terminal.create').length, 0)
+  await created.worker.deactivate()
+})
+
+test("when the setup command can't start, Start review says the workspace is ready anyway", async () => {
+  const fakes = fakeDeps()
+  addReviewRequest(fakes)
+  fakes.cli.addRepo(REPO)
+  // workspace.list does not know the new workspace (yet): no terminal can open in it.
+  const { worker } = await startWorker(fakes, { settings: { setupCommand: 'pnpm install' }, workspaces: ['/src/api'] })
+
+  await assert.rejects(worker.request('rr.startReview', { url: MR_URL, withAgent: false }), (error) =>
+    /Review Workspace is ready, but .*the setup command didn't start: Orca doesn't list the workspace/.test(String(error))
+  )
+  await worker.deactivate()
+})

@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "code-review-requests",
   "name": "Code Review Requests",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "Your GitLab Review Requests in Orca: a count in the status bar, a panel, and review workspaces.",
   "author": { "name": "Dominik Rodler" },
   "repository": "https://github.com/drdla/orca-addons",
@@ -140,6 +140,14 @@
         "title": "Custom review command",
         "type": "string",
         "description": "Optional. A command to run in the review workspace instead of launching the review agent, for example claude --model opus {prompt}. {prompt} is the filled Review Prompt; the Review Prompt's placeholders work too.",
+        "default": ""
+      },
+      {
+        "key": "setupCommand",
+        "title": "Review workspace setup command",
+        "type": "string",
+        "description": "Optional. A command to run in a new review workspace once it shows the merge request, and again after Update workspace, for example pnpm install. It runs in a terminal of the workspace, named Setup. Blank runs nothing.",
+        "placeholder": "pnpm install",
         "default": ""
       },
       {

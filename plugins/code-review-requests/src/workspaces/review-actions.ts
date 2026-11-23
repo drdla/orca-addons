@@ -188,6 +188,17 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     await deps.git.resetBranch(worktree.path, await deps.git.fetchMergeRequestHead(worktree.path, rr.iid))
   }
 
+  /**
+   * Runs the Review Workspace setup command, if one is set, in a terminal of the workspace: the
+   * plugin skips Orca's setup (see createReviewWorkspace), and nothing else installs a fresh
+   * worktree's dependencies. It runs once the workspace shows the merge request.
+   */
+  async function runSetup(worktree: Worktree): Promise<void> {
+    const command = (await deps.settings()).setupCommand.trim()
+    if (command === '') return
+    await deps.host.call('terminal.create', { workspaceId: await hostWorkspaceId(worktree), title: 'Setup', command })
+  }
+
   /** Switches Orca to the workspace. */
   async function openIn(worktree: Worktree): Promise<void> {
     await deps.host.call('workspace.open', { workspaceId: await hostWorkspaceId(worktree) })
@@ -206,6 +217,8 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     }
     // The workspace opens right away, so the reviewer lands in it while the page builds.
     const opened = await settle(openIn(worktree))
+    // Only a workspace made here: an existing one was set up when it was made.
+    const setup = existed ? null : await settle(runSetup(worktree))
     // The Review Cover Page (#55) is built first, because the Agent Review reads it (#56); a page
     // that fails doesn't hold the agent back. The page opens last: the tab in front.
     const target = coverPageTarget(worktree, rr)
@@ -214,6 +227,7 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
     const agent = withAgent ? await settle(agentReview(worktree, rr, existed, false)) : null
     const problems: string[] = []
     if (opened !== null) problems.push(`it didn't open: ${messageOf(opened)}`)
+    if (setup !== null) problems.push(`the setup command didn't start: ${messageOf(setup)}`)
     if (agent !== null) problems.push(`the Agent Review didn't start: ${messageOf(agent)}`)
     const shown = page ?? (await settle(deps.coverPages.reveal(target)))
     if (shown !== null) problems.push(`the Review Cover Page didn't open: ${messageOf(shown)}`)
@@ -310,6 +324,12 @@ export function createReviewActions(deps: ReviewActionsDeps): ReviewActions {
       await deps.coverPages.reveal(target)
     } catch (error) {
       throw new Error(`The workspace is updated, but its Review Cover Page didn't open: ${messageOf(error)}`)
+    }
+    // The new head may change the dependencies.
+    try {
+      await runSetup(worktree)
+    } catch (error) {
+      throw new Error(`The workspace is updated, but the setup command didn't start: ${messageOf(error)}`)
     }
     return { url: rr.url, worktreePath: worktree.path, from, to: to ?? from }
   }
