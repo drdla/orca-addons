@@ -24,12 +24,18 @@ import type { PostPreview, PostResult, ReviewDraftView, ReviewOutcome } from './
 import { messageOf } from './errors'
 import { plural } from './plural'
 
+/** What a post did, as kept for the result shown on the page. */
+type PostOutcomeView = Omit<PostResult, 'draft' | 'snapshot'>
+
+/** Called with every answer to a post: the fresh draft and lists. */
+export type OnPosted = (result: PostResult) => void
+
 export type PostStep =
   | { kind: 'idle' }
   | { kind: 'loading' }
   /** `postingSince`: when posting started (ms), while the worker posts; else null. */
   | { kind: 'confirm'; preview: PostPreview; postingSince: number | null }
-  | { kind: 'done'; result: Omit<PostResult, 'draft'> }
+  | { kind: 'done'; result: PostOutcomeView }
 
 /** The post request's timeout: a "posting" step older than this lost its answer (a reload). */
 const POST_TIMEOUT_MS = 120_000
@@ -95,13 +101,13 @@ export function setupPosting(): void {
  * Post Review: asks GitLab what the post would publish. With nothing to warn about it posts right
  * away; otherwise the warnings show above the button, which becomes Post Anyway.
  */
-function startPost(draft: ReviewDraftView, onDraft: (draft: ReviewDraftView) => void): void {
+function startPost(draft: ReviewDraftView, onPosted: OnPosted): void {
   set(step, { kind: 'loading' })
   set(failure, null)
   plugin
     .request('rr.postPreview', { url: draft.url }, { timeoutMs: 60_000 })
     .then((preview) => {
-      if (preview.warnings.length === 0 && preview.leftoverDrafts.length === 0) post(preview, outcomeFor(draft), onDraft)
+      if (preview.warnings.length === 0 && preview.leftoverDrafts.length === 0) post(preview, outcomeFor(draft), onPosted)
       else set(step, { kind: 'confirm', preview, postingSince: null })
     })
     .catch((error: unknown) => {
@@ -110,18 +116,20 @@ function startPost(draft: ReviewDraftView, onDraft: (draft: ReviewDraftView) => 
     })
 }
 
-function post(preview: PostPreview, chosen: ReviewOutcome, onDraft: (draft: ReviewDraftView) => void): void {
+function post(preview: PostPreview, chosen: ReviewOutcome, onPosted: OnPosted): void {
   set(step, { kind: 'confirm', preview, postingSince: Date.now() })
   set(failure, null)
   plugin
     .request('rr.postReview', { url: preview.url, summary: read(summary), outcome: chosen }, { timeoutMs: POST_TIMEOUT_MS })
-    .then(({ draft, ...result }) => {
-      onDraft(draft)
+    .then((answer) => {
+      const { draft: _draft, snapshot: _snapshot, ...result } = answer
       set(step, { kind: 'done', result })
       if (result.failed.length === 0) {
         set(summary, '')
         set(outcome, null)
       }
+      // Last: it may close the Review Draft, which resets the form.
+      onPosted(answer)
     })
     .catch((error: unknown) => {
       set(step, { kind: 'idle' })
@@ -143,8 +151,8 @@ function deleteFailedDrafts(url: string, onDraft: (draft: ReviewDraftView) => vo
 }
 
 /** The outcome, the summary and Post Review for the open Review Draft, and what posting did. */
-export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: ReviewDraftView) => void }) {
-  const { draft, onDraft } = props
+export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: ReviewDraftView) => void; onPosted: OnPosted }) {
+  const { draft, onDraft, onPosted } = props
   const current = read(step)
   const error = read(failure)
   const posting = isPosting(current)
@@ -155,7 +163,7 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
   const blocked = canPostReviews() === false
   return (
     <Stack gap="sm">
-      {current.kind === 'done' && <Outcome result={current.result} draft={draft} onDraft={onDraft} />}
+      {current.kind === 'done' && <Outcome result={current.result} draft={draft} onDraft={onDraft} onPosted={onPosted} />}
       <Box border radius="md" padding="sm" direction="column" gap="sm">
         <Text weight="semibold">Your Review</Text>
         <RadioGroup
@@ -182,11 +190,11 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
         {current.kind === 'confirm' && <Warnings preview={current.preview} />}
         <Row gap="sm">
           {current.kind === 'confirm' && confirming ? (
-            <Button icon="upload" onPress={() => post(current.preview, outcomeFor(draft), onDraft)}>
+            <Button icon="upload" onPress={() => post(current.preview, outcomeFor(draft), onPosted)}>
               Post Anyway
             </Button>
           ) : (
-            <Button icon="upload" disabled={blocked || nothingToPost || busy} onPress={() => startPost(draft, onDraft)}>
+            <Button icon="upload" disabled={blocked || nothingToPost || busy} onPress={() => startPost(draft, onPosted)}>
               Post Review
             </Button>
           )}
@@ -248,7 +256,7 @@ function Warnings(props: { preview: PostPreview }) {
   )
 }
 
-function Outcome(props: { result: Omit<PostResult, 'draft'>; draft: ReviewDraftView; onDraft: (draft: ReviewDraftView) => void }) {
+function Outcome(props: { result: PostOutcomeView; draft: ReviewDraftView; onDraft: (draft: ReviewDraftView) => void; onPosted: OnPosted }) {
   const { result } = props
   return (
     <Stack gap="sm">
@@ -276,7 +284,7 @@ function Outcome(props: { result: Omit<PostResult, 'draft'>; draft: ReviewDraftV
               They stay in the Review Draft, and GitLab keeps their drafts. Retry replaces those drafts.
             </Text>
             <Row gap="sm">
-              <Button size="xs" icon="refresh" onPress={() => startPost(props.draft, props.onDraft)}>
+              <Button size="xs" icon="refresh" onPress={() => startPost(props.draft, props.onPosted)}>
                 Retry
               </Button>
               <Button

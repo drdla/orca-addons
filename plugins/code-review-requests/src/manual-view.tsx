@@ -42,14 +42,14 @@ export const MANUAL_SECTIONS: readonly { title?: string; paragraphs: readonly st
     title: 'Write and post the review',
     paragraphs: [
       'Comments you add in Orca\'s diff view and the agent\'s findings collect under "Finish Review".',
-      'Select, edit or drop them, add a summary if you like, and press Post Review. They go to GitLab as one review. The outcome is Request changes when comments are selected and Approve when none are; pick another one if you like. Approve and Request changes both finish your part: the merge request moves to Done. Comment keeps it in Reviewing. Whatever you left unchecked is cleared from the Review Draft once the review is posted.'
+      'Select, edit or drop them, add a summary if you like, and press Post Review. They go to GitLab as one review. The outcome is Request changes when comments are selected and Approve when none are; pick another one if you like. Approve and Request changes both finish your part: the merge request moves to Done, and the panel shows it there. Comment keeps it in Reviewing. Whatever you left unchecked is cleared from the Review Draft once the review is posted.'
     ]
   },
   {
     title: 'Clean up after review',
     paragraphs: [
       'Ended reviews move to Done. "Delete Workspace" deletes the workspace and its branch at once, without asking.',
-      'When the author re-requests your review, it goes back to Todo marked "Re-requested", with what you did last time. "Start Review" reuses its workspace if it still has one, moved to the new commits.',
+      'When the author re-requests your review, it goes back to Todo marked "Follow-up", with what you did last time. "Start Review" reuses its workspace if it still has one, moved to the new commits.',
       'Clean workspaces are removed automatically after 2 days.'
     ]
   }

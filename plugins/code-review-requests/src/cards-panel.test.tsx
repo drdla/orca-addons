@@ -212,7 +212,7 @@ test('a Todo card without a workspace has no Remove workspace', async () => {
   await view.unmount()
 })
 
-test('a re-requested card is under Todo, even with its old workspace: Re-requested, what the user did before, Start Review and Remove workspace (#79)', async () => {
+test('a re-requested card is under Todo, even with its old workspace: Follow-up, what the user did before, Start Review and Remove workspace (#79)', async () => {
   const started: unknown[] = []
   const view = await mountWith(
     {
@@ -231,10 +231,10 @@ test('a re-requested card is under Todo, even with its old workspace: Re-request
 
   assert.ok(view.find({ type: 'Tab', label: /^Todo · 2/ }), 'both re-requested cards count under Todo')
   assert.ok(view.find({ type: 'Tab', label: /^Reviewing · 1/ }))
-  assert.equal(view.findAll({ type: 'Badge', text: 'Re-requested' }).length, 2)
-  assert.equal(view.find({ type: 'Badge', text: 'New' }), null, 'Re-requested instead of New')
-  assert.equal(view.find({ type: 'Badge', text: 'You approved' })?.props.tone, 'success')
-  assert.equal(view.find({ type: 'Badge', text: 'You requested changes' })?.props.tone, 'warning')
+  assert.equal(view.findAll({ type: 'Badge', text: 'Follow-up' }).length, 2)
+  assert.equal(view.find({ type: 'Badge', text: 'New' }), null, 'Follow-up instead of New')
+  assert.equal(view.find({ type: 'Badge', text: 'Approved' })?.props.tone, 'success')
+  assert.equal(view.find({ type: 'Badge', text: 'Changes requested' })?.props.tone, 'warning')
   assert.equal(view.findAll({ type: 'Button', text: 'Start Review' }).length, 2)
   assert.equal(view.findAll({ type: 'IconButton', label: 'Delete workspace' }).length, 1, 'only on the one with a workspace')
   assert.equal(view.find({ type: 'Button', text: 'Finish Review' }), null)

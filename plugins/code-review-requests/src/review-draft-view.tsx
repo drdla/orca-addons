@@ -33,7 +33,7 @@ import { Badge } from './badge'
 import { Button } from './button'
 import { BackButton } from './back-button'
 import { MergeRequestTitle } from './merge-request-link'
-import type { ReviewCommentView, ReviewDraftView } from './protocol'
+import type { PostResult, ReviewCommentView, ReviewDraftView, ReviewRequestsSnapshot } from './protocol'
 import { isPostingNow, PostSection, resetPosting, setupPosting } from './review-post-view'
 import { messageOf } from './errors'
 import { plural } from './plural'
@@ -230,7 +230,29 @@ function byFile(comments: ReviewCommentView[]): { filePath: string | null; comme
   }))
 }
 
-export function ReviewDraftScreen() {
+/**
+ * After a post. A review that posted completely and is now listed under Done closes the draft and
+ * hands over to the panel's Done tab. Anything else stays here with its result: a Comment, a failed
+ * comment or approval, or a refresh that didn't get through yet.
+ */
+function posted(url: string, answer: PostResult, onDone: () => void, onSnapshot: (snapshot: ReviewRequestsSnapshot) => void): void {
+  onSnapshot(answer.snapshot)
+  // Left while it posted: don't pull the user away from where they went.
+  if (read(draftUrl) !== url) return
+  const ended = answer.snapshot.ended?.some((card) => card.url === url) ?? false
+  if (ended && answer.failed.length === 0 && answer.approveError === null) {
+    closeReviewDraft()
+    onDone()
+  } else {
+    set(draft, answer.draft)
+  }
+}
+
+export function ReviewDraftScreen(props: {
+  onSnapshot: (snapshot: ReviewRequestsSnapshot) => void
+  /** The posted review is under Done. */
+  onDone: () => void
+}) {
   const current = read(draft)
   const failure = read(draftFailure)
   const url = read(draftUrl)
@@ -265,7 +287,11 @@ export function ReviewDraftScreen() {
               author={authorNameOf(current)}
               onOpen={openInGitLab}
             />
-            <PostSection draft={current} onDraft={(answer) => set(draft, answer)} />
+            <PostSection
+              draft={current}
+              onDraft={(answer) => set(draft, answer)}
+              onPosted={(answer) => posted(current.url, answer, props.onDone, props.onSnapshot)}
+            />
           </Stack>
           {current.warnings.length > 0 && (
             <Callout tone="warning" icon="warning" title="Some things were not imported">

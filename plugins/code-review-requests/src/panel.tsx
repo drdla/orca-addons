@@ -190,7 +190,8 @@ function updateWorkspace(url: string): void {
 
 export default function Panel() {
   // #29: an open Review Draft takes the whole panel; its Back button returns here.
-  if (isReviewDraftOpen()) return <ReviewDraftScreen />
+  // A review posted to its end goes straight to the Done tab.
+  if (isReviewDraftOpen()) return <ReviewDraftScreen onSnapshot={received} onDone={() => set(selectedTab, 'ended')} />
   if (isManualOpen()) return <ManualScreen />
   if (isSettingsOpen()) {
     const current = read(snapshot)
@@ -699,9 +700,9 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
  * outcome uses: approved success, changes requested warning, commented accent.
  */
 const PREVIOUS_OUTCOME: Record<PreviousOutcome, { tone: Tone; text: string }> = {
-  approved: { tone: 'success', text: 'You approved' },
-  'changes-requested': { tone: 'warning', text: 'You requested changes' },
-  commented: { tone: 'accent', text: 'You commented' }
+  approved: { tone: 'success', text: 'Approved' },
+  'changes-requested': { tone: 'warning', text: 'Changes requested' },
+  commented: { tone: 'accent', text: 'Commented' }
 }
 
 function PreviousOutcomeBadge({ card }: { card: ReviewRequestCard }) {
@@ -791,7 +792,7 @@ function Card({ card }: { card: ReviewRequestCard }) {
           onOpen={openInGitLab}
         />
         {card.overdue && <Badge tone="danger">Late</Badge>}
-        {card.reRequested != null && <Badge tone="accent">Re-requested</Badge>}
+        {card.reRequested != null && <Badge tone="accent">Follow-up</Badge>}
         {isNew && <Badge tone="accent">New</Badge>}
       </Row>
       <Approvals card={card} />

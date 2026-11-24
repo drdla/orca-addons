@@ -30,6 +30,26 @@ const inReview: ReviewRequestCard = {
 }
 const snapshot: ReviewRequestsSnapshot = { reviewRequests: [inReview], refreshedAt: NOW }
 
+/** The review ended: off Reviewing, under Done. */
+const doneSnapshot: ReviewRequestsSnapshot = {
+  reviewRequests: [],
+  ended: [
+    {
+      url: URL,
+      title: 'Add login',
+      projectPath: 'acme/api',
+      iid: 7,
+      author: 'ada',
+      requestedAt: NOW - 3_600_000,
+      reason: 'changes-requested',
+      workspace: WORKSPACE,
+      endedAt: NOW,
+      autoRemoveSkipped: null
+    }
+  ],
+  refreshedAt: NOW
+}
+
 function comment(id: string, extra: Partial<ReviewCommentView> = {}): ReviewCommentView {
   return {
     id,
@@ -99,7 +119,8 @@ function posted(sent: unknown[]) {
       posted: 2,
       failed: [],
       approveError: null,
-      draft: draft([comment('note:n1', { posted: true }), comment('note:n2', { posted: true })])
+      draft: draft([comment('note:n1', { posted: true }), comment('note:n2', { posted: true })]),
+      snapshot
     }
   }
 }
@@ -116,7 +137,34 @@ test('the page has the outcome, the summary and Post Review', async () => {
   await view.unmount()
 })
 
-test('Post Review sends the summary and outcome, then shows the review posted', async () => {
+test('a posted review that is under Done opens the Done tab with its card', async () => {
+  const { view } = await openDraft({
+    'rr.postReview': (input: unknown): PostResult => ({ ...posted([])(input), snapshot: doneSnapshot })
+  })
+
+  await view.press(view.find(postReview)!)
+
+  assert.equal(view.find({ type: 'Heading', text: 'Finish Review' }), null)
+  assert.ok(view.find({ type: 'Heading', text: 'Review Requests' }))
+  assert.ok(view.find({ type: 'Button', text: 'Delete Workspace' }))
+  assert.ok(view.find({ text: 'Changes requested' }))
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('a refused approval stays on the page', async () => {
+  const { view } = await openDraft({
+    'rr.postReview': (input: unknown): PostResult => ({ ...posted([])(input), approveError: 'No', snapshot: doneSnapshot })
+  })
+
+  await view.press(view.find(postReview)!)
+
+  assert.ok(view.find({ type: 'Heading', text: 'Finish Review' }))
+  assert.ok(view.find({ type: 'Callout', label: 'Not approved' }))
+  await view.unmount()
+})
+
+test('Post Review sends the summary and outcome, then shows the review posted while it is not under Done', async () => {
   const sent: unknown[] = []
   const { view } = await openDraft({ 'rr.postReview': posted(sent) })
   await view.type(view.find({ type: 'Textarea', label: 'Summary' })!, 'Nearly there.')
@@ -191,7 +239,8 @@ test('a partial failure lists what did not post, with Retry and Delete failed dr
       draft: draft([
         comment('note:n1', { posted: true }),
         comment('note:n2', { failure: 'GitLab kept it as a draft: it did not publish.' })
-      ])
+      ]),
+      snapshot: doneSnapshot
     }),
     'rr.deleteFailedDrafts': (input: unknown) => {
       deleted.push(input)
@@ -222,7 +271,8 @@ test('Retry after a partial failure posts again', async () => {
         posted: 0,
         failed: [{ commentId: 'note:n2', location: 'src/login.ts:10', message: 'kept as a draft' }],
         approveError: null,
-        draft: draft([comment('note:n1'), comment('note:n2', { failure: 'kept as a draft' })])
+        draft: draft([comment('note:n1'), comment('note:n2', { failure: 'kept as a draft' })]),
+        snapshot
       }
     }
   })
