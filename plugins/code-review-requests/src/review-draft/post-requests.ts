@@ -1,7 +1,7 @@
 // The posting requests (#30): `rr.postPreview` (the confirm step), `rr.postReview` and
 // `rr.deleteFailedDrafts`. worker.ts calls registerPostRequests once in activate.
 import type { OrcaWorkerApi } from 'orca/worker'
-import type { ReviewRequestCard } from '../protocol'
+import type { ReviewRequestCard, ReviewRequestsSnapshot } from '../protocol'
 import { DraftChangeError, viewOf } from './draft-import'
 import type { GitLabAccess } from '../seams/gitlab'
 import { createReviewPoster } from './post-review'
@@ -14,6 +14,7 @@ export function registerPostRequests(
     /** The cards a Review Draft can belong to (Review Requests and Ended ones). */
     cards: () => ReviewRequestCard[]
     connection: () => Promise<GitLabAccess>
+    snapshot: () => Promise<ReviewRequestsSnapshot>
     /** After posting or deleting failed drafts changed a Review Draft. */
     onChanged?: () => Promise<void>
     /**
@@ -55,7 +56,7 @@ export function registerPostRequests(
     const ended = outcome === 'requested_changes' || (outcome === 'approve' && result.approveError === null)
     if (ended) await options.onEnded?.()
     await options.onChanged?.()
-    return { ...result, draft: await draftView(card) }
+    return { ...result, draft: await draftView(card), snapshot: await options.snapshot() }
   })
   orca.panels.handle('rr.deleteFailedDrafts', async ({ url }) => {
     const card = cardOf(url)

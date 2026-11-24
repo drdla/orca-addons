@@ -211,7 +211,8 @@ test('a review posted as Request changes moves to Done right away (#78)', async 
   const arranged = arrange([note('n1')])
   const { worker } = await start(arranged)
 
-  await worker.request('rr.postReview', { url: MR_URL, summary: 'Two things.', outcome: 'requested_changes' })
+  const answer = await worker.request('rr.postReview', { url: MR_URL, summary: 'Two things.', outcome: 'requested_changes' })
+  assert.deepEqual(answer.snapshot.ended?.map((e) => e.iid), [7], 'the answer already lists it under Done')
 
   const snapshot = await worker.request('rr.snapshot')
   assert.deepEqual(snapshot.reviewRequests.map((rr) => rr.iid), [])

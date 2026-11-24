@@ -96,7 +96,7 @@ export function createReviewPoster(options: {
       }
     },
 
-    async post(target: PostTarget, request: { summary: string; outcome: ReviewOutcome }): Promise<Omit<PostResult, 'draft'>> {
+    async post(target: PostTarget, request: { summary: string; outcome: ReviewOutcome }): Promise<Omit<PostResult, 'draft' | 'snapshot'>> {
       const { transport, token } = await options.connection()
       const summary = request.summary.trim()
       try {

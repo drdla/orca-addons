@@ -221,6 +221,8 @@ export type PostResult = {
   /** Why Approve didn't go through (the review itself is posted), or null. */
   approveError: string | null
   draft: ReviewDraftView
+  /** The lists after posting: the panel opens Done when the review is there. */
+  snapshot: ReviewRequestsSnapshot
 }
 
 /** A Review Request's Review Draft (#29): what the drill-in panel view curates. */

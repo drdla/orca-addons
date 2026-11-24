@@ -381,6 +381,7 @@ export function createWorker(deps: Deps) {
       drafts,
       cards: draftCards,
       connection: gitLabAccess,
+      snapshot,
       onChanged: postChanged,
       onEnded: async () => {
         if (failures.rateLimitedUntil() === null) await poller.pollNow()
