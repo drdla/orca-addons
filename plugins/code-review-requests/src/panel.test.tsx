@@ -103,7 +103,7 @@ test('an overdue card gets a Late badge; the tabs carry no icon', async () => {
   assert.equal(view.findAll({ type: 'Box' }).filter((box) => box.props.radius === 'md' && box.props.border === 'danger').length, 0, 'the Late badge is enough: no red border')
   const ages = view.findAll({ type: 'Text', text: /^\d+[mhd]$/ }).map((age) => age.props.tone)
   assert.deepEqual(ages, [undefined, undefined], 'the Late badge is enough: no red age')
-  assert.ok(view.find({ type: 'Tab', label: 'Todo · 1 | 1!' }))
+  assert.ok(view.find({ type: 'Tab', label: 'Todo · 1 + 1!' }))
   assert.equal(view.findAll({ type: 'Tab' }).some((tab) => tab.props.icon !== undefined), false)
   assert.deepEqual(view.errors, [])
   assert.deepEqual(view.warnings, [])
@@ -276,7 +276,7 @@ test('without a Review Prompt, Start review asks for a workspace without an agen
   await view.unmount()
 })
 
-test('Todo and Reviewing count like the status bar: in time | overdue!, just "N!" when all are late; Done counts plainly', async () => {
+test('Todo and Reviewing count like the status bar: in time + overdue!, just "N!" when all are late; Done counts plainly', async () => {
   const host = mockHost({
     requests: {
       'rr.snapshot': {
@@ -296,7 +296,7 @@ test('Todo and Reviewing count like the status bar: in time | overdue!, just "N!
 
   assert.deepEqual(
     view.findAll({ type: 'Tab' }).map((tab) => tab.props.label),
-    ['Todo · 2 | 1!', 'Reviewing · 1!', 'Done · 1']
+    ['Todo · 2 + 1!', 'Reviewing · 1!', 'Done · 1']
   )
   await view.unmount()
 })
