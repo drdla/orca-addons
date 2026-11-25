@@ -299,7 +299,7 @@ function HeadingCounts({ cards }: { cards: readonly ReviewRequestCard[] }) {
       )}
       {showInTime && overdue > 0 && (
         <Text muted size="sm">
-          |
+          +
         </Text>
       )}
       {overdue > 0 && (
@@ -401,7 +401,7 @@ function Body() {
   )
 }
 
-/** A tab: `count` is how many cards it has; `countLabel` writes it like the status bar ("2 | 3!"). */
+/** A tab: `count` is how many cards it has; `countLabel` writes it like the status bar ("2 + 3!"). */
 type Stage = { id: TabId; title: string; count: number; countLabel: string; body: OrcaNode }
 
 function cardStage(id: TabId, title: string, cards: ReviewRequestCard[], empty: OrcaNode): Stage {
@@ -503,7 +503,7 @@ function SearchInput() {
   )
 }
 
-/** A tab's name and its count, for example "Todo · 3" or "Todo · 2 | 3!"; just the name at 0. */
+/** A tab's name and its count, for example "Todo · 3" or "Todo · 2 + 3!"; just the name at 0. */
 function labelOf(stage: Stage): string {
   return stage.count === 0 ? stage.title : `${stage.title} · ${stage.countLabel}`
 }

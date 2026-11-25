@@ -183,7 +183,7 @@ svg.i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width:
   <div style="position:absolute;left:50%;top:430px;transform:translateX(-50%) scale(1.9);transform-origin:top center;display:flex;flex-direction:column;align-items:flex-start;gap:18px">
     <div class="tip" style="align-self:flex-start">6 Review Requests, 3 overdue. Click to open.</div>
     <div class="statusbar" style="border:1px solid #2a2a2a;border-radius:10px;height:36px;box-shadow:0 20px 50px rgba(70,50,25,.35)">
-      <span class="item">REFRESH Linear</span><span class="item hot">CHECK 3 | 3!</span><span class="item">CUP Agent <span style="color:#ddd">●</span></span><span class="item">MEM TERM</span><span class="item">PLUG 14</span><span class="item">SERVER 0 hosts</span>
+      <span class="item">REFRESH Linear</span><span class="item hot">CHECK 3 + 3!</span><span class="item">CUP Agent <span style="color:#ddd">●</span></span><span class="item">MEM TERM</span><span class="item">PLUG 14</span><span class="item">SERVER 0 hosts</span>
     </div>
   </div>
   <div style="position:absolute;right:70px;top:640px;width:360px" class="notif">
@@ -343,19 +343,19 @@ const card = (m, opts = {}) => `
   </div>`;
 
 const header = (tabs) => `
-  <div class="ph">Review Requests <span class="count-pill">3 | <b>3</b></span></div>
+  <div class="ph">Review Requests <span class="count-pill">3 + <b>3</b></span></div>
   <div class="search">Search title or URL</div>
   <div class="tabs">${tabs}</div>`;
 
 const foot = (t) => `<div class="foot">${ic('REFRESH')} ${t}<span class="sp"></span>${ic('INFO')}<span style="width:10px"></span>${ic('SETTINGS')}</div>`;
 
 document.getElementById('todo-panel').innerHTML =
-  header('<span class="on">Todo · 2 | 3!</span><span>Reviewing · 1</span><span>Done</span>') +
+  header('<span class="on">Todo · 2 + 3!</span><span>Reviewing · 1</span><span>Done</span>') +
   `<div class="cards">${MRS.map((m) => card(m)).join('')}</div>`;
 
 
 document.getElementById('ws-panel').innerHTML =
-  header('<span>Todo · 2 | 2!</span><span class="on">Reviewing · 1</span><span>Done</span>') +
+  header('<span>Todo · 2 + 2!</span><span class="on">Reviewing · 1</span><span>Done</span>') +
   `<div class="cards">${card({ ...MRS[1], late: false, meta: 'CI failed' }, { reviewing: true })}</div>`;
 
 const CARDS = [

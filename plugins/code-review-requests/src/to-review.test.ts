@@ -97,7 +97,7 @@ test('falls back to when the merge request was opened if GitLab cannot say, and 
   await second.worker.deactivate()
 })
 
-test('overdue Review Requests split the status bar item into "in time | overdue!", in one neutral item', async () => {
+test('overdue Review Requests split the status bar item into "in time + overdue!", in one neutral item', async () => {
   const fakes = fakeDeps()
   const now = fakes.clock.now()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', requestedAt: now - 6 * DAY })
@@ -106,7 +106,7 @@ test('overdue Review Requests split the status bar item into "in time | overdue!
 
   const { host, worker } = await startWorker(fakes)
 
-  assert.equal(lastStatusBar(host)?.text, '1 | 2!')
+  assert.equal(lastStatusBar(host)?.text, '1 + 2!')
   assert.equal(lastStatusBar(host)?.tone, 'neutral')
   assert.equal(lastStatusBar(host)?.tooltip, '3 Review Requests, 2 overdue. Click to open.')
   assert.deepEqual(new Set(host.callsOf('statusBar.update').map((call) => (call as { id: string }).id)), new Set(['review-requests']))
@@ -124,7 +124,7 @@ test('the panel heading counts in time and overdue the same as the status bar it
   const snapshot = await worker.request('rr.snapshot')
   const view = await mount(panel, { host: mockHost({ requests: { 'rr.snapshot': snapshot } }) })
 
-  assert.equal(lastStatusBar(host)?.text, '1 | 2!')
+  assert.equal(lastStatusBar(host)?.text, '1 + 2!')
   assert.deepEqual(headingCounts(view), [
     ['1', 'dim'],
     ['2', 'strong']
@@ -133,7 +133,7 @@ test('the panel heading counts in time and overdue the same as the status bar it
   await worker.deactivate()
 })
 
-test('only overdue Review Requests: the status bar item shows that count alone, "2!" with no "0 |"', async () => {
+test('only overdue Review Requests: the status bar item shows that count alone, "2!" with no "0 +"', async () => {
   const fakes = fakeDeps()
   const now = fakes.clock.now()
   fakes.gitlab.addMergeRequest({ projectPath: 'acme/api', requestedAt: now - 6 * DAY })
