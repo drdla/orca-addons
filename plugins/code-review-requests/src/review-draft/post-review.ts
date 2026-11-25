@@ -158,7 +158,10 @@ export function createReviewPoster(options: {
             const general = { ...c.planned, position: null, body: withLocation(c.planned.comment) }
             c.draftId = (await transport.rest<DraftNote>('POST', `${base}/draft_notes`, draftBody(general))).id
           }
-          await transport.rest('POST', `${base}/draft_notes/bulk_publish`)
+          // Creating those drafts set my reviewer state back to "review started": publish with the
+          // state again, or GitLab drops a Request changes the first publish recorded.
+          if (takesSummary) await transport.rest('POST', `${base}/draft_notes/bulk_publish`, { reviewer_state: state })
+          else await transport.rest('POST', `${base}/notes`, { body: `/submit_review ${state}` })
           pendingIds = new Set((await transport.rest<DraftNote[]>('GET', `${base}/draft_notes`)).map((d) => d.id))
         }
 

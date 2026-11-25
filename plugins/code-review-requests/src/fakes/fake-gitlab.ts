@@ -648,7 +648,8 @@ export class FakeGitLab implements GitLabTransport {
     mr.draftNotes = mr.draftNotes.filter((d) => !mine.includes(d))
     for (const d of mine) mr.published.push({ id: this.#nextId++, body: d.note, position: d.position })
     mr.reviews.push({ summary, reviewerState, notes: mine.map((d) => d.note) })
-    if (mr.reviewers.includes(this.me)) {
+    // Without a state GitLab leaves the one the drafts set (REVIEW_STARTED; seen on gitlab.com 19.7).
+    if (reviewerState !== null && mr.reviewers.includes(this.me)) {
       mr.reviewStates[this.me] = reviewerState === 'requested_changes' ? 'REQUESTED_CHANGES' : 'REVIEWED'
     }
     this.#touch(mr)

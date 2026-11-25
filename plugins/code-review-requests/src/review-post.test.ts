@@ -313,6 +313,24 @@ test('a line comment that does not publish is retried once as a general path:lin
   await worker.deactivate()
 })
 
+for (const version of ['19.7.0', '18.11.0']) {
+  test(`GitLab ${version}: the general-comment retry keeps Request changes, so the review still moves to Done`, async () => {
+    const arranged = arrange([note('n1'), note('n2', { filePath: 'src/untouched.ts', lineNumber: 3 })], { version })
+    const { fakes, mr } = arranged
+    fakes.gitlab.outsideDiff('acme/api', 7, 'src/untouched.ts', 3)
+    const { worker } = await start(arranged)
+
+    const answer = await worker.request('rr.postReview', { url: MR_URL, summary: 'Two things.', outcome: 'requested_changes' })
+
+    assert.equal(answer.posted, 2)
+    assert.deepEqual(answer.failed, [])
+    assert.equal(mr.reviewStates[fakes.gitlab.me], 'REQUESTED_CHANGES')
+    assert.deepEqual(mr.published.filter((n) => n.body === 'Two things.').length, 1, 'the summary posts once')
+    assert.deepEqual(answer.snapshot.ended?.map((e) => e.iid), [7])
+    await worker.deactivate()
+  })
+}
+
 test('what still fails stays in the Review Draft with its GitLab draft; posting again replaces that draft', async () => {
   const arranged = arrange([note('n1', { body: 'never publishes' }), note('n2')])
   const { fakes } = arranged
