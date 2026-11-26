@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "code-review-requests",
   "name": "Code Review Requests",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "Your GitLab Review Requests in Orca: a count in the status bar, a panel, and review workspaces.",
   "author": { "name": "Dominik Rodler" },
   "repository": "https://github.com/drdla/orca-addons",
@@ -78,7 +78,7 @@
         "type": "string",
         "description": "The full path of the glab command, for example /opt/homebrew/bin/glab. Blank looks for it on PATH and in the usual install folders (/opt/homebrew/bin, /usr/local/bin, ~/.local/bin).",
         "default": "",
-        "placeholder": "/opt/homebrew/bin/glab"
+        "placeholder": "e.g. /opt/homebrew/bin/glab"
       },
       {
         "key": "pollMinutes",
@@ -147,7 +147,7 @@
         "title": "Review workspace setup command",
         "type": "string",
         "description": "Optional. A command to run in a new review workspace once it shows the merge request, and again after Update workspace, for example pnpm install. It runs in a terminal of the workspace, named Setup. Blank runs nothing.",
-        "placeholder": "pnpm install",
+        "placeholder": "e.g. pnpm install",
         "default": ""
       },
       {
