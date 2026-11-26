@@ -69,7 +69,7 @@ export const SETTING_FIELDS: readonly SettingField[] = [
     title: 'glab path',
     description:
       'The full path of the glab command, for example /opt/homebrew/bin/glab. Blank looks for it on PATH and in the usual install folders (/opt/homebrew/bin, /usr/local/bin, ~/.local/bin).',
-    placeholder: '/opt/homebrew/bin/glab',
+    placeholder: 'e.g. /opt/homebrew/bin/glab',
     control: 'text'
   },
   { key: 'pollMinutes', title: 'Refresh every (minutes)', control: 'integer', minimum: 1, maximum: 1440 },
@@ -125,7 +125,7 @@ export const SETTING_FIELDS: readonly SettingField[] = [
     title: 'Review workspace setup command',
     description:
       'Optional. A command to run in a new review workspace once it shows the merge request, and again after Update workspace, for example pnpm install. It runs in a terminal of the workspace, named Setup. Blank runs nothing.',
-    placeholder: 'pnpm install',
+    placeholder: 'e.g. pnpm install',
     control: 'text'
   },
   {
