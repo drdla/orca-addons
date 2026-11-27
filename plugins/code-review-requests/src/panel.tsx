@@ -45,6 +45,7 @@ import { MergeRequestTitle } from './merge-request-link'
 import type { CiStatus, MyReview, PreviousOutcome, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
 import { connectionProblem, loadConnection } from './connection-section'
 import { messageOf } from './errors'
+import { cardFrame, setupFocusedWorkspace } from './focused-workspace'
 import { MinuteTime, minuteTimeText, setupClock } from './minute-time'
 import { countText, overdueSplit } from './overdue-split'
 import { matchesQuery, normalizeQuery, tabWithMatches } from './search'
@@ -96,6 +97,7 @@ export function setup(ctx: PanelContext): void {
   setupReviewDraft(ctx)
   setupSettings(ctx)
   setupClock(ctx)
+  setupFocusedWorkspace(ctx)
   void loadConnection()
 }
 
@@ -782,7 +784,7 @@ function Card({ card }: { card: ReviewRequestCard }) {
   // Overdue takes precedence over New (#10), and so does Re-requested (#79).
   const isNew = card.isNew === true && !card.overdue && card.reRequested == null
   return (
-    <Box border radius="md" padding="sm" direction="column" gap="xs">
+    <Box {...cardFrame(card.workspace)} radius="md" padding="sm" direction="column" gap="xs">
       <Row justify="between" align="start">
         <MergeRequestTitle
           url={card.url}

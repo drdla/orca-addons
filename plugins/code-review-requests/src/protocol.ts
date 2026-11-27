@@ -299,6 +299,11 @@ declare module 'orca' {
     /** Shows a Review Request's (or an Ended Review Request's) Review Workspace in Orca. */
     'rr.openWorkspace': { input: { url: string }; output: { opened: true } }
     /**
+     * The path of the workspace Orca's `workspace.changed` names, or null when Orca doesn't list
+     * it: the panel highlights the card whose Review Workspace has that path.
+     */
+    'rr.workspacePath': { input: { workspaceId: string }; output: { path: string | null } }
+    /**
      * Opens the Review Cover Page of a Review Request's (or an Ended Review Request's) Review
      * Workspace in Orca's main view, building it first if the workspace has none (#55).
      */

@@ -37,6 +37,7 @@ import { createStatusBar } from './status-bar'
 import { overdueRefiner, type OverdueContext } from './to-review'
 import type { WorkspaceContext } from './workspaces/workspace-context'
 import { createWorkspaceHeads } from './workspaces/workspace-heads'
+import { workspacePathOf } from './workspaces/host-workspace'
 import { registerWorkspaceRequests } from './workspaces/workspace-requests'
 import { findReviewWorkspace, mergeRequestRefOf } from './workspaces/review-workspaces'
 import {
@@ -337,6 +338,11 @@ export function createWorker(deps: Deps) {
     }
 
     orca.panels.handle('rr.snapshot', async () => snapshot())
+    // The focused workspace's path (Orca's workspace.changed names it by host id): the panel
+    // highlights the card of the review the user is in.
+    orca.panels.handle('rr.workspacePath', async ({ workspaceId }) => ({
+      path: await workspacePathOf(orca.host, workspaceId)
+    }))
     // Also the panel's Retry / Check again; it waits out a rate limit instead of polling.
     orca.panels.handle('rr.refresh', async () => {
       if ((await isConfigured(orca)) && failures.rateLimitedUntil() === null) await poller.pollNow()

@@ -12,3 +12,9 @@ export async function hostWorkspaceIdOf(
   if (!row) throw new Error(`Orca doesn't list the workspace ${workspace.name}.`)
   return row.id
 }
+
+/** The path of the workspace with this host id (`workspace.list`), or null when Orca doesn't list it. */
+export async function workspacePathOf(host: OrcaWorkerApi['host'], workspaceId: string): Promise<string | null> {
+  const { workspaces } = await host.call('workspace.list')
+  return workspaces.find((w) => w.id === workspaceId)?.path ?? null
+}

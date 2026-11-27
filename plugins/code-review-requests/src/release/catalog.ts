@@ -7,6 +7,9 @@ export type CatalogRelease = { version: string; commit: string; [key: string]: u
 /** The `result` of `orca plugin release-entry <dir> --json`. */
 export type ReleaseEntryResult = { pluginKey: string; sourcePath: string | null; entry: CatalogRelease }
 
+/** The most releases Orca accepts for one catalog plugin; older ones beyond it are dropped. */
+export const MAX_RELEASES = 32
+
 type CatalogPlugin = { id: string; source: { path?: string }; releases: CatalogRelease[] }
 type Catalog = { plugins: CatalogPlugin[] }
 
@@ -14,10 +17,14 @@ type Catalog = { plugins: CatalogPlugin[] }
  * Puts `result.entry` first in the releases of the catalog plugin whose `source.path` is
  * `result.sourcePath` and whose id ends in the same manifest id, dropping a release of the same
  * version (so a re-run replaces rather than duplicates; one with the same content hash is kept
- * as it is). Returns the catalog as text, printed
- * the way the committed file is, and the release it replaced.
+ * as it is), and dropping the oldest releases past MAX_RELEASES, which Orca would refuse. Returns
+ * the catalog as text, printed the way the committed file is, the release it replaced and the
+ * releases it dropped.
  */
-export function mergeRelease(catalogText: string, result: ReleaseEntryResult): { text: string; replaced: CatalogRelease | null } {
+export function mergeRelease(
+  catalogText: string,
+  result: ReleaseEntryResult
+): { text: string; replaced: CatalogRelease | null; dropped: CatalogRelease[] } {
   const catalog = JSON.parse(catalogText) as Catalog
   const { entry, sourcePath } = result
   const plugin = catalog.plugins.find((p) => (p.source.path ?? null) === sourcePath)
@@ -26,12 +33,13 @@ export function mergeRelease(catalogText: string, result: ReleaseEntryResult): {
   if (!plugin.id.endsWith(`.${manifestId}`)) throw new Error(`the catalog entry ${plugin.id} is not ${manifestId}`)
   const replaced = plugin.releases.find((r) => r.version === entry.version) ?? null
   // Same files under a later commit (say, the catalog commit itself): keep the original pin.
-  if (replaced !== null && replaced['contentHash'] === entry['contentHash']) return { text: catalogText, replaced }
+  if (replaced !== null && replaced['contentHash'] === entry['contentHash']) return { text: catalogText, replaced, dropped: [] }
   const rest = plugin.releases.filter((r) => r !== replaced)
   const newest = rest.find((r) => compareVersions(r.version, entry.version) > 0)
   if (newest) throw new Error(`${entry.version} is older than ${newest.version}, which the catalog already lists`)
-  plugin.releases = [entry, ...rest]
-  return { text: `${print(catalog, 0)}\n`, replaced }
+  const releases = [entry, ...rest]
+  plugin.releases = releases.slice(0, MAX_RELEASES)
+  return { text: `${print(catalog, 0)}\n`, replaced, dropped: releases.slice(MAX_RELEASES) }
 }
 
 /** Compares two x.y.z versions numerically (a pre-release suffix is ignored). */
