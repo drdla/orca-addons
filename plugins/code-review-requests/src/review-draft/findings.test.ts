@@ -7,17 +7,17 @@ test('reads line, range and general findings plus the reviewed commit', () => {
     JSON.stringify({
       headSha: 'abc123',
       findings: [
-        { path: 'src/login.ts', line: 12, body: 'Check the token expiry.' },
-        { path: 'src/login.ts', startLine: 20, line: 24, body: 'This block is duplicated.' },
+        { path: 'src/login.ts', line: 12, body: 'Check the token expiry.', blocking: true },
+        { path: 'src/login.ts', startLine: 20, line: 24, body: 'This block is duplicated.', blocking: 'yes' },
         { body: 'Consider splitting this MR.' }
       ]
     })
   )
   assert.equal(parsed.headSha, 'abc123')
   assert.deepEqual(parsed.findings, [
-    { filePath: 'src/login.ts', line: 12, body: 'Check the token expiry.' },
-    { filePath: 'src/login.ts', startLine: 20, line: 24, body: 'This block is duplicated.' },
-    { filePath: null, line: null, body: 'Consider splitting this MR.' }
+    { filePath: 'src/login.ts', line: 12, body: 'Check the token expiry.', blocking: true },
+    { filePath: 'src/login.ts', startLine: 20, line: 24, body: 'This block is duplicated.', blocking: false },
+    { filePath: null, line: null, body: 'Consider splitting this MR.', blocking: false }
   ])
   assert.deepEqual(parsed.warnings, [])
 })
@@ -43,7 +43,7 @@ test('bad entries are skipped with a warning naming each, good ones are kept', (
       ]
     })
   )
-  assert.deepEqual(parsed.findings, [{ filePath: 'a.ts', line: 2, body: 'kept' }])
+  assert.deepEqual(parsed.findings, [{ filePath: 'a.ts', line: 2, body: 'kept', blocking: false }])
   assert.deepEqual(parsed.warnings, [
     'Agent Finding 1 skipped: not an object.',
     'Agent Finding 2 skipped: no body.',

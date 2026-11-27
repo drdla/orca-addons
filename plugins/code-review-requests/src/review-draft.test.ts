@@ -116,6 +116,37 @@ test('checking a finding and editing its body last across a worker restart', asy
   await second.worker.deactivate()
 })
 
+test('a finding the Agent Review marks blocking joins checked; marking a note blocking checks it and outlasts an edit in Orca', async () => {
+  const fakes = arrange()
+  fakes.cli.setDiffComments(WT_ID, [note('n1')])
+  fakes.files.write(
+    FINDINGS_PATH,
+    JSON.stringify({
+      findings: [
+        { path: 'a.ts', line: 1, body: 'must fix', blocking: true },
+        { path: 'a.ts', line: 2, body: 'could fix' }
+      ]
+    })
+  )
+  const { worker } = await startWorker(fakes)
+  const imported = await worker.request('rr.draft', { url: MR_URL })
+  const [mustFix, couldFix] = imported.comments.filter((c) => c.origin === 'agent-finding')
+  assert.deepEqual([mustFix!.blocking, mustFix!.checked], [true, true])
+  assert.deepEqual([couldFix!.blocking, couldFix!.checked], [undefined, false])
+
+  await worker.request('rr.updateDraftComment', { url: MR_URL, id: 'note:n1', checked: false })
+  const marked = await worker.request('rr.updateDraftComment', { url: MR_URL, id: 'note:n1', blocking: true })
+  assert.deepEqual([byId(marked.comments, 'note:n1').blocking, byId(marked.comments, 'note:n1').checked], [true, true])
+
+  fakes.cli.setDiffComments(WT_ID, [note('n1', { body: 'reworded', updatedAt: 99 })])
+  const reimported = await worker.request('rr.draft', { url: MR_URL })
+  assert.equal(byId(reimported.comments, 'note:n1').blocking, true, 'an edit in Orca keeps it blocking')
+
+  const unmarked = await worker.request('rr.updateDraftComment', { url: MR_URL, id: 'note:n1', blocking: false })
+  assert.deepEqual([byId(unmarked.comments, 'note:n1').blocking, byId(unmarked.comments, 'note:n1').checked], [undefined, true])
+  await worker.deactivate()
+})
+
 test('a diff-view note can be unchecked but not edited: edit it in Orca', async () => {
   const fakes = arrange()
   fakes.cli.setDiffComments(WT_ID, [note('n1')])

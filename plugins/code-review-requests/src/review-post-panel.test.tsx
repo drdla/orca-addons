@@ -128,7 +128,7 @@ function posted(sent: unknown[]) {
 test('the page has the outcome, the summary and Post Review', async () => {
   const { view } = await openDraft({})
 
-  assert.equal(view.valueOf(view.find({ type: 'RadioGroup', label: 'Outcome' })!), 'requested_changes')
+  assert.equal(view.valueOf(view.find({ type: 'RadioGroup', label: 'Outcome' })!), 'approve', 'no blocking comment')
   assert.ok(view.find({ type: 'Text', text: 'Your Review' }))
   assert.ok(view.find({ type: 'Textarea', label: 'Summary' }))
   assert.ok(view.find({ text: '2 review comments included' }))
@@ -182,24 +182,42 @@ test('Post Review sends the summary and outcome, then shows the review posted wh
   await view.unmount()
 })
 
-test('the outcome follows the checked comments until I pick one: Approve with none, Request changes with some', async () => {
+test('the outcome follows the blocking comments until I pick one: Approve without, Request changes with one', async () => {
   const sent: unknown[] = []
+  let current = comment('note:n1', { checked: false })
   const { view } = await openDraft(
     {
       'rr.postReview': posted(sent),
-      'rr.updateDraftComment': (input: { checked?: boolean }) => draft([comment('note:n1', { checked: input.checked ?? false })])
+      'rr.updateDraftComment': (input: { checked?: boolean; blocking?: boolean }) => {
+        const { blocking: _was, ...rest } = current
+        if (input.blocking === true) current = { ...rest, blocking: true, checked: true }
+        else if (input.blocking === false) current = rest
+        if (input.checked !== undefined) current = { ...current, checked: input.checked }
+        return draft([current])
+      }
     },
     null,
-    [comment('note:n1', { checked: false })]
+    [current]
   )
   const radios = () => view.find({ type: 'RadioGroup', label: 'Outcome' })!
+  const blocking = () => view.find({ type: 'Switch', label: 'Blocking' })!
   assert.equal(view.valueOf(radios()), 'approve')
 
   await view.toggle(view.find({ type: 'Checkbox' })!)
-  assert.equal(view.valueOf(radios()), 'requested_changes')
+  assert.equal(view.valueOf(radios()), 'approve', 'a comment that is not blocking')
+  await view.toggle(blocking())
+  assert.equal(view.valueOf(radios()), 'requested_changes', 'a blocking one')
+
   await view.select(radios(), 'comment')
   await view.toggle(view.find({ type: 'Checkbox' })!)
-  assert.equal(view.valueOf(radios()), 'comment', 'a picked outcome stays')
+  assert.equal(view.valueOf(radios()), 'comment', 'a picked outcome stays when the comment goes out')
+  await view.toggle(view.find({ type: 'Checkbox' })!)
+  assert.equal(view.valueOf(radios()), 'requested_changes', 'a blocking comment coming in overrides it')
+
+  await view.toggle(blocking())
+  assert.equal(view.valueOf(radios()), 'approve', 'no longer blocking')
+  await view.toggle(view.find({ type: 'Checkbox' })!)
+  await view.select(radios(), 'comment')
   assert.equal(view.find(postReview)!.disabled, true, 'nothing to post: no comments, no summary, Comment')
 
   await view.select(radios(), 'approve')

@@ -176,8 +176,10 @@ export type ReviewCommentView = {
   line: number | null
   startLine?: number
   body: string
-  /** Kept for posting. Diff-view notes start checked, Agent Findings unchecked. */
+  /** Kept for posting. Diff-view notes start checked, Agent Findings unchecked unless blocking. */
   checked: boolean
+  /** Must change before merge: posts with a "Blocking:" prefix and makes Request changes the outcome. Set only when true. */
+  blocking?: true
   /** True for Agent Findings that aren't posted yet. */
   editable: boolean
   /** The commit the comment was made against, or null if unknown. */
@@ -329,9 +331,12 @@ declare module 'orca' {
      * answers the draft (#29). Import is cheap and has no side effects outside plugin storage.
      */
     'rr.draft': { input: { url: string }; output: ReviewDraftView }
-    /** Checks or unchecks a Review Comment, or edits an Agent Finding's body. */
+    /**
+     * Checks or unchecks a Review Comment, marks it blocking or not (blocking also checks it), or
+     * edits an Agent Finding's body.
+     */
     'rr.updateDraftComment': {
-      input: { url: string; id: string; checked?: boolean; body?: string }
+      input: { url: string; id: string; checked?: boolean; blocking?: boolean; body?: string }
       output: ReviewDraftView
     }
     /** Deletes an Agent Finding from the Review Draft; later imports leave it out. */

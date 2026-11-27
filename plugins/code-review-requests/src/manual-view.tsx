@@ -42,7 +42,7 @@ export const MANUAL_SECTIONS: readonly { title?: string; paragraphs: readonly st
     title: 'Write and post the review',
     paragraphs: [
       'Comments you add in Orca\'s diff view and the agent\'s findings collect under "Finish Review".',
-      'Select, edit or drop them, add a summary if you like, and press Post Review. They go to GitLab as one review. The outcome is Request changes when comments are selected and Approve when none are; pick another one if you like. Approve and Request changes both finish your part: the merge request moves to Done, and the panel shows it there. Comment keeps it in Reviewing. Whatever you left unchecked is cleared from the Review Draft once the review is posted.'
+      'Select, edit or drop them, add a summary if you like, and press Post Review. They go to GitLab as one review. Switch on Blocking for a comment that must change before the merge: it is selected, posts with a "Blocking:" prefix, and makes the outcome Request changes. With no blocking comment the outcome is Approve. You can pick another outcome either way. Approve and Request changes both finish your part: the merge request moves to Done, and the panel shows it there. Comment keeps it in Reviewing. Whatever you left unchecked is cleared from the Review Draft once the review is posted.'
     ]
   },
   {

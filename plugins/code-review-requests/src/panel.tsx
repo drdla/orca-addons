@@ -678,7 +678,7 @@ function WorkspaceActions({ card }: { card: ReviewRequestCard }) {
     : withAgent ? 'Create the Review Workspace for this merge request and start an Agent Review in it'
     : 'Create a Review Workspace for this merge request'
   return (
-    <Row gap="xs" align="center" wrap>
+    <Row gap="sm" align="center" wrap>
       <Button
         size="xs"
         icon="play"
