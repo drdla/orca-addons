@@ -30,6 +30,7 @@ stateDiagram-v2
 ```
 
 - **Done** lists only Ended Review Requests that still have their Review Workspace. Without one, an ended review drops off the list; the plugin still remembers your last outcome so a re-request can say what it was.
+- **Highlighted** is the card of the review whose Review Workspace you are in, on any tab.
 - **Approve** and **Request changes** end your part of the review. **Comment** keeps the card under Reviewing.
 - **Blocking** comments must change before the merge. Marking one selects it, posts it with a **Blocking:** prefix and makes the outcome Request changes; without one the outcome is Approve. The Agent Review marks its own with `"blocking": true` in findings.json. You can always pick another outcome.
 - **Posting** any outcome clears the Agent Findings and diff-view notes you left unchecked from the Review Draft. Posted comments stay as history.

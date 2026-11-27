@@ -23,6 +23,7 @@ import { MergeRequestLink } from './merge-request-link'
 import type { EndedCard, EndedReason, ReviewRequestsSnapshot } from './protocol'
 import { ErrorDetails } from './setup-checklist'
 import { messageOf } from './errors'
+import { cardFrame } from './focused-workspace'
 import { shortTitle } from './short-title'
 import { isRemoving, RemovalError, removeWorkspace } from './workspace-removal'
 
@@ -99,7 +100,7 @@ function EndedCardView(props: {
   const working = isRemoving(card.url)
   const error = read(errors)[card.url]
   return (
-    <Box border radius="md" padding="sm" direction="column" gap="xs">
+    <Box {...cardFrame(card.workspace)} radius="md" padding="sm" direction="column" gap="xs">
       <Row gap="sm" align="start">
         <MergeRequestLink url={card.url} iid={card.iid} onOpen={openInGitLab} />
         {/* Nudged down 2px so the title's first line sits level with the button's text; the
