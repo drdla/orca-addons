@@ -127,6 +127,7 @@ function EndedCardView(props: {
         <Button
           size="xs"
           icon="delete"
+          tone="danger"
           disabled={props.disabled || working}
           tooltip="Delete workspace"
           onPress={() => removeWorkspace(card.url, props.received)}

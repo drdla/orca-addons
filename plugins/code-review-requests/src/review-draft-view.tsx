@@ -2,8 +2,10 @@
 // the tabs; ← Back returns. Opening asks the worker to import the diff-view notes and Agent
 // Findings (`rr.draft`), and so does every AUTO_IMPORT_MS while the panel is visible, and coming
 // back into view: notes added in Orca's diff view show up without a button. Diff-view notes are
-// read-only here (edit them in Orca); Agent Findings get an editor. Every comment has a checkbox:
-// checked ones are what #30 posts.
+// read-only here (edit them in Orca). An Agent Finding shows as text; its Edit button opens an
+// editor that saves as I type (after SAVE_DELAY_MS without typing). The same button (now Done),
+// or editing another finding, saves and shows it as text again: Orca's Textarea has no blur
+// event. Every comment has a checkbox: checked ones are what #30 posts.
 // After the workspace moved to newer commits (#58), comments on changed lines say "May be
 // outdated" and Agent Findings for an older commit "Stale"; both stay curatable.
 import {
@@ -48,8 +50,16 @@ const draftFailure = atom<string | null>(null)
 const importing = atom(false)
 /** When the last import started (ms). */
 let lastImportAt = 0
-/** Unsaved Agent Finding text, by comment id. */
+/** Agent Finding text not saved yet, or still saving, by comment id. */
 const edits = atom<Record<string, string>>({})
+/** How long after the last keystroke an Agent Finding's text saves. */
+export const SAVE_DELAY_MS = 600
+/** The waiting saves, by comment id. */
+const saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
+/** The saves the worker hasn't answered yet. */
+const savesInFlight = new Set<Promise<void>>()
+/** The Agent Finding whose editor is open (its comment id); one at a time. */
+const editing = atom<string | null>(null)
 /** Per-comment errors, by comment id. */
 const commentErrors = atom<Record<string, string>>({})
 /** Which section button waits for the worker: "View changes" or "Start Agent Review". */
@@ -87,9 +97,11 @@ export function setupReviewDraft(ctx: PanelContext): void {
 }
 
 export function openReviewDraft(url: string): void {
+  void saveEditsNow()
   set(draftUrl, url)
   set(draft, null)
   set(edits, {})
+  set(editing, null)
   set(commentErrors, {})
   set(actionError, null)
   resetPosting()
@@ -97,6 +109,7 @@ export function openReviewDraft(url: string): void {
 }
 
 function closeReviewDraft(): void {
+  void saveEditsNow()
   resetPosting()
   set(draftUrl, null)
   set(draft, null)
@@ -168,15 +181,18 @@ function setCommentError(id: string, message: string | null): void {
   })
 }
 
-function changeComment(id: string, change: { checked?: boolean; body?: string }): void {
+function changeComment(id: string, change: { checked?: boolean; body?: string }): Promise<void> {
   const url = read(draftUrl)
-  if (url === null) return
+  if (url === null) return Promise.resolve()
   setCommentError(id, null)
-  plugin
+  const saving = plugin
     .request('rr.updateDraftComment', { url, id, ...change })
     .then((answer) => {
+      // The draft closed or another one opened meanwhile.
+      if (read(draftUrl) !== url) return
       set(draft, answer)
-      if (change.body !== undefined) {
+      // Typed on while it saved: the newer text stays, and its own save follows.
+      if (change.body !== undefined && read(edits)[id] === change.body) {
         update(edits, (all) => {
           const next = { ...all }
           delete next[id]
@@ -185,6 +201,29 @@ function changeComment(id: string, change: { checked?: boolean; body?: string })
       }
     })
     .catch((error: unknown) => setCommentError(id, messageOf(error)))
+  savesInFlight.add(saving)
+  void saving.finally(() => savesInFlight.delete(saving))
+  return saving
+}
+
+/** Saves an Agent Finding's typed text now, instead of after SAVE_DELAY_MS. */
+function saveEdit(id: string): Promise<void> {
+  const timer = saveTimers.get(id)
+  if (timer !== undefined) clearTimeout(timer)
+  saveTimers.delete(id)
+  const text = read(edits)[id]
+  const saved = read(draft)?.comments.find((c) => c.id === id)?.body
+  if (text === undefined || text === saved) return Promise.resolve()
+  return changeComment(id, { body: text })
+}
+
+/**
+ * Saves every waiting Agent Finding text and waits for all saves: before posting, so the post
+ * sends what I see, and before the draft closes.
+ */
+export function saveEditsNow(): Promise<void> {
+  const waiting = [...saveTimers.keys()].map(saveEdit)
+  return Promise.all([...waiting, ...savesInFlight]).then(() => undefined)
 }
 
 /** Deletes an Agent Finding (diff-view notes are deleted in Orca's diff view). */
@@ -205,8 +244,27 @@ function deleteComment(id: string): void {
     .catch((error: unknown) => setCommentError(id, messageOf(error)))
 }
 
+/** Opens an Agent Finding's editor; the one that was open saves and shows as text again. */
+function startEditing(id: string): void {
+  const open = read(editing)
+  if (open !== null && open !== id) void saveEdit(open)
+  set(editing, id)
+}
+
+/** Done: saves the finding and shows it as text again. */
+function stopEditing(id: string): void {
+  void saveEdit(id)
+  if (read(editing) === id) set(editing, null)
+}
+
 function setEdit(id: string, text: string): void {
   update(edits, (all) => ({ ...all, [id]: text }))
+  const timer = saveTimers.get(id)
+  if (timer !== undefined) clearTimeout(timer)
+  saveTimers.set(
+    id,
+    setTimeout(() => void saveEdit(id), SAVE_DELAY_MS)
+  )
 }
 
 /** A comment's checkbox label: "Lines 8–10", "Line 10", "Whole file" or "General comment". */
@@ -291,6 +349,7 @@ export function ReviewDraftScreen(props: {
               draft={current}
               onDraft={(answer) => set(draft, answer)}
               onPosted={(answer) => posted(current.url, answer, props.onDone, props.onSnapshot)}
+              beforePost={saveEditsNow}
             />
           </Stack>
           {current.warnings.length > 0 && (
@@ -331,6 +390,7 @@ export function ReviewDraftScreen(props: {
             title="Agent Findings"
             empty={<EmptyState icon="agent" title="No Agent Findings" />}
             comments={current.comments.filter((c) => c.origin === 'agent-finding')}
+            selectAll
             action={
               url !== null &&
               hasReviewPrompt() && (
@@ -417,40 +477,83 @@ function SectionButton(props: {
   )
 }
 
-function Section(props: { title: string; empty: OrcaNode; comments: ReviewCommentView[]; action?: OrcaNode }) {
+function Section(props: {
+  title: string
+  empty: OrcaNode
+  comments: ReviewCommentView[]
+  action?: OrcaNode
+  /** A Select all / Deselect all checkbox above the list. */
+  selectAll?: boolean
+}) {
   const { title, empty, comments, action } = props
-  // paddingY: more room above each section than between the draft's other parts.
+  // paddingY: more room above each section than between the draft's other parts. The action sits
+  // on the right: next to the heading it was hard to tell apart from it.
   return (
     <Box direction="column" gap="sm" paddingY="sm">
-      <Row gap="xs" align="center">
+      <Row gap="xs" align="center" justify="between">
         <Heading level={3}>{title}</Heading>
         {action}
       </Row>
+      {props.selectAll === true && <SelectAll comments={comments} />}
       {comments.length === 0 ? (
         empty
       ) : (
-        byFile(comments).map((group) => (
-          <Box key={group.filePath ?? ''} direction="column" gap="xs">
-            {group.filePath !== null && (
-              <Text size="xs" muted>
-                {truncateMiddle(group.filePath, PATH_MAX, PATH_KEEP_END)}
-              </Text>
-            )}
-            {group.comments.map((c) => (
-              <CommentCard key={c.id} comment={c} />
-            ))}
-          </Box>
-        ))
+        // More room between files than between a file's cards, so each file name heads its own.
+        <Box direction="column" gap="lg">
+          {byFile(comments).map((group) => (
+            <Box key={group.filePath ?? ''} direction="column" gap="xs">
+              {group.filePath !== null && (
+                <Text size="xs" muted>
+                  {truncateMiddle(group.filePath, PATH_MAX, PATH_KEEP_END)}
+                </Text>
+              )}
+              {group.comments.map((c) => (
+                <CommentCard key={c.id} comment={c} />
+              ))}
+            </Box>
+          ))}
+        </Box>
       )}
     </Box>
   )
 }
 
+/** Checking or unchecking every comment of a section, one request after the other. */
+const selectingAll = atom(false)
+
 /**
- * A comment's buttons. A diff-view note's way to edit or delete it: Orca has no API for either,
- * nor for opening the diff view at one note, so the button opens the workspace's changes. An
- * Agent Finding's Delete. Then, rightmost on both, a button that opens the comment's file at its
- * line; a general comment has no file.
+ * Checks every comment that isn't posted yet, or unchecks them all when they all are. Shown from
+ * two such comments on; lined up with the cards' checkboxes.
+ */
+function SelectAll({ comments }: { comments: ReviewCommentView[] }) {
+  const open = comments.filter((c) => !c.posted)
+  if (open.length < 2) return null
+  const all = open.every((c) => c.checked)
+  return (
+    <Box paddingX="sm">
+      <Checkbox
+        label={all ? 'Deselect all' : 'Select all'}
+        checked={all}
+        disabled={read(selectingAll)}
+        onChange={() => checkAll(open, !all)}
+      />
+    </Box>
+  )
+}
+
+/** One request at a time: each one rewrites the draft file. */
+function checkAll(comments: ReviewCommentView[], checked: boolean): void {
+  set(selectingAll, true)
+  comments
+    .filter((c) => c.checked !== checked)
+    .reduce((chain, c) => chain.then(() => changeComment(c.id, { checked })), Promise.resolve())
+    .finally(() => set(selectingAll, false))
+}
+
+/**
+ * A comment's buttons on the right. A diff-view note's way to edit or delete it: Orca has no API
+ * for either, nor for opening the diff view at one note, so the button opens the workspace's
+ * changes. An Agent Finding's Delete.
  */
 function CommentButtons({ comment }: { comment: ReviewCommentView }) {
   const url = read(draftUrl)
@@ -475,11 +578,24 @@ function CommentButtons({ comment }: { comment: ReviewCommentView }) {
           label="Delete Agent Finding"
           tooltip="Remove this finding from the Review Draft"
           variant="ghost"
-          tone="danger"
           size="xs"
           onPress={() => deleteComment(comment.id)}
         />
       )}
+    </>
+  )
+}
+
+/**
+ * Next to the line label: a button that opens the comment's file at its line (a general comment
+ * has no file), then an Agent Finding's Edit (Done while editing).
+ */
+function LabelButtons({ comment }: { comment: ReviewCommentView }) {
+  const url = read(draftUrl)
+  if (url === null) return null
+  const isEditing = read(editing) === comment.id
+  return (
+    <>
       {comment.filePath !== null && (
         <IconButton
           icon="code"
@@ -487,8 +603,18 @@ function CommentButtons({ comment }: { comment: ReviewCommentView }) {
           tooltip={comment.line === null ? 'Open this file in the Review Workspace' : `Open this file at line ${comment.line}`}
           variant="ghost"
           size="xs"
-          disabled={busy}
+          disabled={read(acting) !== null}
           onPress={() => openAtLine(url, comment)}
+        />
+      )}
+      {comment.editable && (
+        <IconButton
+          icon={isEditing ? 'check' : 'edit'}
+          label={isEditing ? 'Done editing' : 'Edit Agent Finding'}
+          tooltip={isEditing ? 'Done: show it as text again' : 'Edit this finding'}
+          variant="ghost"
+          size="xs"
+          onPress={() => (isEditing ? stopEditing(comment.id) : startEditing(comment.id))}
         />
       )}
     </>
@@ -505,15 +631,18 @@ function CommentCard({ comment }: { comment: ReviewCommentView }) {
   return (
     <Box border radius="md" padding="sm" direction="column" gap="xs">
       <Box direction="row" gap="xs" align="start">
-        {/* The file is the group's heading above the card, so the label is just the line.
-            minWidth 0 keeps the badges on the card. */}
-        <Box grow minWidth={0}>
-          <Checkbox
-            label={lineLabel(comment)}
-            checked={comment.checked}
-            disabled={comment.posted}
-            onChange={(checked) => changeComment(comment.id, { checked })}
-          />
+        {/* The file is the group's heading above the card, so the label is just the line, with
+            its file and Edit buttons right after it. minWidth 0 keeps the badges on the card. */}
+        <Box direction="row" gap="xs" align="center" grow minWidth={0}>
+          <Box shrink minWidth={0}>
+            <Checkbox
+              label={lineLabel(comment)}
+              checked={comment.checked}
+              disabled={comment.posted}
+              onChange={(checked) => void changeComment(comment.id, { checked })}
+            />
+          </Box>
+          <LabelButtons comment={comment} />
         </Box>
         <Box direction="row" gap="xs" align="center" shrink={false}>
           {comment.outdated === true && <Badge tone="warning">May be outdated</Badge>}
@@ -526,8 +655,8 @@ function CommentCard({ comment }: { comment: ReviewCommentView }) {
         {/* The checkbox's width and gap, so the comment lines up with its label. */}
         <Box width={CHECKBOX_INDENT} shrink={false} />
         <Box direction="column" gap="xs" grow minWidth={0}>
-          {!comment.editable && <Text>{comment.body}</Text>}
-          {comment.editable && (
+          {read(editing) !== comment.id && <Text>{text}</Text>}
+          {comment.editable && read(editing) === comment.id && (
             <Stack gap="xs">
               <Textarea
                 label="Agent Finding"
@@ -535,15 +664,10 @@ function CommentCard({ comment }: { comment: ReviewCommentView }) {
                 rows={3}
                 value={text}
                 onChange={(value) => setEdit(comment.id, value)}
-                onSubmit={(value) => changeComment(comment.id, { body: value })}
               />
-              {edit !== undefined && edit !== comment.body && (
-                <Row gap="xs">
-                  <Button size="xs" onPress={() => changeComment(comment.id, { body: edit })}>
-                    Save
-                  </Button>
-                </Row>
-              )}
+              <Text muted size="xs">
+                Saves as you type.
+              </Text>
             </Stack>
           )}
           {comment.failure !== undefined && (

@@ -29,6 +29,8 @@ type PostOutcomeView = Omit<PostResult, 'draft' | 'snapshot'>
 
 /** Called with every answer to a post: the fresh draft and lists. */
 export type OnPosted = (result: PostResult) => void
+/** Runs before checking or posting: saves the Agent Finding text I'm still typing. */
+export type BeforePost = () => Promise<void>
 
 export type PostStep =
   | { kind: 'idle' }
@@ -50,10 +52,12 @@ const outcome = atom<ReviewOutcome | null>('rr.postOutcomeChoice', null, { persi
 const failure = atom<string | null>(null)
 const deleting = atom(false)
 
+/** Two no-break spaces after each label: side by side, Orca's options sit too close to tell apart. */
+const GAP = '\u00a0\u00a0'
 const OUTCOMES: { value: ReviewOutcome; label: string }[] = [
-  { value: 'approve', label: 'Approve' },
-  { value: 'requested_changes', label: 'Request changes' },
-  { value: 'comment', label: 'Comment' }
+  { value: 'approve', label: `Approve${GAP}` },
+  { value: 'requested_changes', label: `Request changes${GAP}` },
+  { value: 'comment', label: `Comment${GAP}` }
 ]
 
 /** The outcome that posts: the one I picked, else Approve with no comments, Request changes with some. */
@@ -101,13 +105,13 @@ export function setupPosting(): void {
  * Post Review: asks GitLab what the post would publish. With nothing to warn about it posts right
  * away; otherwise the warnings show above the button, which becomes Post Anyway.
  */
-function startPost(draft: ReviewDraftView, onPosted: OnPosted): void {
+function startPost(draft: ReviewDraftView, onPosted: OnPosted, beforePost: BeforePost): void {
   set(step, { kind: 'loading' })
   set(failure, null)
-  plugin
-    .request('rr.postPreview', { url: draft.url }, { timeoutMs: 60_000 })
+  beforePost()
+    .then(() => plugin.request('rr.postPreview', { url: draft.url }, { timeoutMs: 60_000 }))
     .then((preview) => {
-      if (preview.warnings.length === 0 && preview.leftoverDrafts.length === 0) post(preview, outcomeFor(draft), onPosted)
+      if (preview.warnings.length === 0 && preview.leftoverDrafts.length === 0) post(preview, outcomeFor(draft), onPosted, beforePost)
       else set(step, { kind: 'confirm', preview, postingSince: null })
     })
     .catch((error: unknown) => {
@@ -116,11 +120,13 @@ function startPost(draft: ReviewDraftView, onPosted: OnPosted): void {
     })
 }
 
-function post(preview: PostPreview, chosen: ReviewOutcome, onPosted: OnPosted): void {
+function post(preview: PostPreview, chosen: ReviewOutcome, onPosted: OnPosted, beforePost: BeforePost): void {
   set(step, { kind: 'confirm', preview, postingSince: Date.now() })
   set(failure, null)
-  plugin
-    .request('rr.postReview', { url: preview.url, summary: read(summary), outcome: chosen }, { timeoutMs: POST_TIMEOUT_MS })
+  beforePost()
+    .then(() =>
+      plugin.request('rr.postReview', { url: preview.url, summary: read(summary), outcome: chosen }, { timeoutMs: POST_TIMEOUT_MS })
+    )
     .then((answer) => {
       const { draft: _draft, snapshot: _snapshot, ...result } = answer
       set(step, { kind: 'done', result })
@@ -151,8 +157,14 @@ function deleteFailedDrafts(url: string, onDraft: (draft: ReviewDraftView) => vo
 }
 
 /** The outcome, the summary and Post Review for the open Review Draft, and what posting did. */
-export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: ReviewDraftView) => void; onPosted: OnPosted }) {
+export function PostSection(props: {
+  draft: ReviewDraftView
+  onDraft: (draft: ReviewDraftView) => void
+  onPosted: OnPosted
+  beforePost?: BeforePost
+}) {
   const { draft, onDraft, onPosted } = props
+  const beforePost = props.beforePost ?? (() => Promise.resolve())
   const current = read(step)
   const error = read(failure)
   const posting = isPosting(current)
@@ -163,7 +175,9 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
   const blocked = canPostReviews() === false
   return (
     <Stack gap="sm">
-      {current.kind === 'done' && <Outcome result={current.result} draft={draft} onDraft={onDraft} onPosted={onPosted} />}
+      {current.kind === 'done' && (
+        <Outcome result={current.result} draft={draft} onDraft={onDraft} onPosted={onPosted} beforePost={beforePost} />
+      )}
       <Box border radius="md" padding="sm" direction="column" gap="sm">
         <Text weight="semibold">Your Review</Text>
         <RadioGroup
@@ -190,11 +204,11 @@ export function PostSection(props: { draft: ReviewDraftView; onDraft: (draft: Re
         {current.kind === 'confirm' && <Warnings preview={current.preview} />}
         <Row gap="sm">
           {current.kind === 'confirm' && confirming ? (
-            <Button icon="upload" onPress={() => post(current.preview, outcomeFor(draft), onPosted)}>
+            <Button icon="upload" onPress={() => post(current.preview, outcomeFor(draft), onPosted, beforePost)}>
               Post Anyway
             </Button>
           ) : (
-            <Button icon="upload" disabled={blocked || nothingToPost || busy} onPress={() => startPost(draft, onPosted)}>
+            <Button icon="upload" disabled={blocked || nothingToPost || busy} onPress={() => startPost(draft, onPosted, beforePost)}>
               Post Review
             </Button>
           )}
@@ -256,7 +270,13 @@ function Warnings(props: { preview: PostPreview }) {
   )
 }
 
-function Outcome(props: { result: PostOutcomeView; draft: ReviewDraftView; onDraft: (draft: ReviewDraftView) => void; onPosted: OnPosted }) {
+function Outcome(props: {
+  result: PostOutcomeView
+  draft: ReviewDraftView
+  onDraft: (draft: ReviewDraftView) => void
+  onPosted: OnPosted
+  beforePost: BeforePost
+}) {
   const { result } = props
   return (
     <Stack gap="sm">
@@ -284,7 +304,7 @@ function Outcome(props: { result: PostOutcomeView; draft: ReviewDraftView; onDra
               They stay in the Review Draft, and GitLab keeps their drafts. Retry replaces those drafts.
             </Text>
             <Row gap="sm">
-              <Button size="xs" icon="refresh" onPress={() => startPost(props.draft, props.onPosted)}>
+              <Button size="xs" icon="refresh" onPress={() => startPost(props.draft, props.onPosted, props.beforePost)}>
                 Retry
               </Button>
               <Button

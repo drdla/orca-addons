@@ -3,8 +3,10 @@
 import { assert, hostError, mockHost, test } from 'orca/testing'
 import { mount } from './testing/mount'
 import * as panel from './panel'
-import { VISIBILITY_CHECK_MS } from './review-draft-view'
+import { SAVE_DELAY_MS, VISIBILITY_CHECK_MS } from './review-draft-view'
 import type { ReviewCommentView, ReviewDraftView, ReviewRequestCard, ReviewRequestsSnapshot } from './protocol'
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const NOW = Date.UTC(2026, 10, 16, 9, 0)
 const URL = 'https://gitlab.example.com/acme/api/-/merge_requests/7'
@@ -90,7 +92,8 @@ test('an In review card opens its Review Draft; Back returns to the tabs', async
   assert.ok(boxAt(view, 'Lines 8–10'))
   assert.ok(view.find({ type: 'Text', text: 'Why not reuse the helper?' }))
   assert.ok(boxAt(view, 'General comment'))
-  assert.equal(view.valueOf(view.find({ type: 'Textarea', label: 'Agent Finding' })!), 'Split this MR.')
+  assert.ok(view.find({ type: 'Text', text: 'Split this MR.' }), 'an Agent Finding shows as text until Edit')
+  assert.equal(view.find({ type: 'Textarea', label: 'Agent Finding' }), null)
   assert.equal(view.find({ text: /checked/ }), null, 'no "N of M checked" line')
   assert.equal(view.find({ type: 'Tabs' }), null)
 
@@ -121,7 +124,7 @@ test('checking a finding asks the worker and shows its answer', async () => {
   await view.unmount()
 })
 
-test('an edited finding is saved with Save; diff-view notes have no editor', async () => {
+test('an edited finding saves by itself after a pause in typing; diff-view notes have no editor', async () => {
   const updates: unknown[] = []
   const { view } = await openDraft({
     'rr.draft': draft([comment('note:n1'), comment('finding:a', { body: 'old' })]),
@@ -131,15 +134,73 @@ test('an edited finding is saved with Save; diff-view notes have no editor', asy
     }
   })
 
-  assert.equal(view.findAll({ type: 'Textarea', label: 'Agent Finding' }).length, 1)
+  assert.equal(view.find({ type: 'Textarea', label: 'Agent Finding' }), null, 'text until Edit')
   assert.ok(view.find({ type: 'IconButton', label: 'Edit or delete in the diff view' }))
-  assert.equal(view.find({ type: 'Button', text: 'Save' }), null, 'no Save until something changed')
+  await view.press(view.find({ type: 'IconButton', label: 'Edit Agent Finding' })!)
+  assert.equal(view.findAll({ type: 'Textarea', label: 'Agent Finding' }).length, 1, 'only the finding gets an editor')
+  assert.equal(view.find({ type: 'Button', text: 'Save' }), null, 'no Save button: edits save by themselves')
   await view.type(view.find({ type: 'Textarea', label: 'Agent Finding' })!, 'new text', { replace: true })
-  await view.press(view.find({ type: 'Button', text: 'Save' })!)
+  assert.deepEqual(updates, [], 'not while I type')
 
+  await wait(SAVE_DELAY_MS * 1.5)
+  await view.settled()
   assert.deepEqual(updates, [{ url: URL, id: 'finding:a', body: 'new text' }])
   assert.equal(view.valueOf(view.find({ type: 'Textarea', label: 'Agent Finding' })!), 'new text')
-  assert.equal(view.find({ type: 'Button', text: 'Save' }), null)
+
+  await view.press(view.find({ type: 'IconButton', label: 'Done editing' })!)
+  assert.equal(view.find({ type: 'Textarea', label: 'Agent Finding' }), null, 'Done shows it as text again')
+  assert.ok(view.find({ type: 'Text', text: 'new text' }))
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('editing another finding saves the open one and shows it as text again', async () => {
+  const updates: unknown[] = []
+  const findings = (a: string) => [comment('finding:a', { body: a }), comment('finding:b', { body: 'second', line: 20 })]
+  const { view } = await openDraft({
+    'rr.draft': draft(findings('first')),
+    'rr.updateDraftComment': (input: { body?: string }) => {
+      updates.push(input)
+      return draft(findings(input.body ?? 'first'))
+    }
+  })
+
+  const edit = () => view.findAll({ type: 'IconButton', label: 'Edit Agent Finding' })
+  await view.press(edit()[0]!)
+  await view.type(view.find({ type: 'Textarea', label: 'Agent Finding' })!, 'first, edited', { replace: true })
+  await view.press(edit()[0]!)
+  await view.settled()
+
+  assert.deepEqual(updates, [{ url: URL, id: 'finding:a', body: 'first, edited' }])
+  assert.ok(view.find({ type: 'Text', text: 'first, edited' }))
+  assert.equal(view.valueOf(view.find({ type: 'Textarea', label: 'Agent Finding' })!), 'second')
+  await view.unmount()
+})
+
+test('Post Review right after typing saves the finding first', async () => {
+  const calls: string[] = []
+  const { view } = await openDraft({
+    'rr.draft': draft([comment('finding:a', { body: 'old', checked: true })]),
+    'rr.updateDraftComment': (input: { body?: string }) => {
+      calls.push(`save ${input.body}`)
+      return draft([comment('finding:a', { body: input.body ?? 'old', checked: true })])
+    },
+    'rr.postPreview': () => {
+      calls.push('preview')
+      return { url: URL, comments: 1, leftoverDrafts: [], warnings: [] }
+    },
+    'rr.postReview': () => {
+      calls.push('post')
+      return { posted: 1, failed: [], approveError: null, draft: draft([comment('finding:a', { body: 'new text', checked: true, posted: true })]), snapshot }
+    }
+  })
+
+  await view.press(view.find({ type: 'IconButton', label: 'Edit Agent Finding' })!)
+  await view.type(view.find({ type: 'Textarea', label: 'Agent Finding' })!, 'new text', { replace: true })
+  await view.press(view.find({ type: 'Button', text: 'Post Review' })!)
+  await view.settled()
+
+  assert.deepEqual(calls, ['save new text', 'preview', 'post'])
   await view.unmount()
 })
 
@@ -173,7 +234,7 @@ test('comments that may be outdated and stale Agent Findings are marked, and sta
   assert.ok(view.find({ text: /2 Review Comments may be outdated: their lines changed since they were written/ }))
   assert.ok(view.find({ text: /2 Agent Findings are from an older commit: run Agent Review for fresh ones, then import again/ }))
   // Still editable and checkable.
-  assert.equal(view.findAll({ type: 'Textarea', label: 'Agent Finding' }).length, 2)
+  assert.equal(view.findAll({ type: 'IconButton', label: 'Edit Agent Finding' }).length, 2)
   assert.notEqual(boxAt(view, 'Line 10')!.disabled, true)
   await view.toggle(boxAt(view, 'Line 10')!)
   assert.equal(view.valueOf(boxAt(view, 'Line 10')!), false)
@@ -246,7 +307,6 @@ test("when GitLab can't be opened, Finish Review says why", async () => {
   await view.unmount()
 })
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 test('an open Review Draft imports again when the panel comes back into view, not while hidden', async () => {
   let calls = 0
@@ -294,7 +354,7 @@ test('a diff-view note opens the diff view to edit or delete it; an Agent Findin
   await view.unmount()
 })
 
-test('the last button of a review comment and an Agent Finding opens its file at its line; a general comment has none', async () => {
+test('the button after the line label opens the comment\'s file at its line; a general comment has none', async () => {
   const opens: unknown[] = []
   const { view } = await openDraft({
     'rr.draft': draft([
@@ -317,17 +377,19 @@ test('the last button of a review comment and an Agent Finding opens its file at
   )
   assert.deepEqual(
     view
-      .findAll({ type: 'IconButton', label: /^(Edit or delete in the diff view|Delete Agent Finding|Open in the workspace)$/ })
+      .findAll({ type: 'IconButton', label: /^(Edit or delete in the diff view|Delete Agent Finding|Open in the workspace|Edit Agent Finding)$/ })
       .map((b) => b.props.label),
     [
+      'Open in the workspace',
       'Edit or delete in the diff view',
       'Open in the workspace',
+      'Edit Agent Finding',
+      'Delete Agent Finding',
       'Open in the workspace',
-      'Delete Agent Finding',
-      'Delete Agent Finding',
-      'Open in the workspace'
+      'Edit Agent Finding',
+      'Delete Agent Finding'
     ],
-    'the open button comes last on each card (the general finding is listed first)'
+    'after the line label the open button, then Edit; Delete on the right'
   )
   for (const button of buttons) await view.press(button)
   assert.deepEqual(opens, [
@@ -400,5 +462,54 @@ test('comments are grouped by file, each file named once above its comments, in 
   assert.deepEqual(texts, ['src/b.ts', 'src/a.ts'])
   const labels = view.findAll({ type: 'Checkbox' }).map((box) => box.label)
   assert.deepEqual(labels, ['General comment', 'Whole file', 'Line 4', 'Line 30', 'Line 5'])
+  await view.unmount()
+})
+
+test('Select all checks every Agent Finding not posted yet; then Deselect all unchecks them', async () => {
+  const updates: { id: string; checked?: boolean }[] = []
+  let comments = [
+    comment('note:n1', { checked: false }),
+    comment('finding:a', { checked: true }),
+    comment('finding:b', { line: 20 }),
+    comment('finding:c', { line: 30 }),
+    comment('finding:posted', { line: 40, posted: true, checked: false })
+  ]
+  const { view } = await openDraft({
+    'rr.draft': () => draft(comments),
+    'rr.updateDraftComment': (input: { id: string; checked?: boolean }) => {
+      updates.push(input)
+      comments = comments.map((c) => (c.id === input.id ? { ...c, checked: input.checked ?? c.checked } : c))
+      return draft(comments)
+    }
+  })
+
+  await view.toggle(boxAt(view, 'Select all')!)
+  await view.settled()
+  assert.deepEqual(
+    updates.map((u) => [u.id, u.checked]),
+    [
+      ['finding:b', true],
+      ['finding:c', true]
+    ],
+    'only the unchecked findings; not the posted one, not the review comment'
+  )
+  assert.equal(view.valueOf(boxAt(view, 'Deselect all')!), true)
+
+  updates.length = 0
+  await view.toggle(boxAt(view, 'Deselect all')!)
+  await view.settled()
+  assert.deepEqual(
+    updates.map((u) => u.id),
+    ['finding:a', 'finding:b', 'finding:c']
+  )
+  assert.ok(boxAt(view, 'Select all'))
+  assert.equal(comments.find((c) => c.id === 'note:n1')!.checked, false)
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('no Select all for a single Agent Finding', async () => {
+  const { view } = await openDraft({ 'rr.draft': draft([comment('finding:a')]) })
+  assert.equal(boxAt(view, 'Select all'), null)
   await view.unmount()
 })
