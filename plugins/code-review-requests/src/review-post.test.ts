@@ -295,6 +295,21 @@ test('a comment whose commit is no MR version posts as a general path:line comme
   await worker.deactivate()
 })
 
+test('a blocking comment posts with a Blocking: prefix, on a line and as a general comment', async () => {
+  const arranged = arrange([note('n1', { lineNumber: 4, body: 'Off by one.' })])
+  const { fakes } = arranged
+  fakes.files.write(FINDINGS_PATH, JSON.stringify([{ body: 'Add tests.', blocking: true }, { body: 'Nice.' }]))
+  const { worker } = await start(arranged)
+  const imported = await worker.request('rr.draft', { url: MR_URL })
+  await worker.request('rr.updateDraftComment', { url: MR_URL, id: 'note:n1', blocking: true })
+  await worker.request('rr.updateDraftComment', { url: MR_URL, id: imported.comments[2]!.id, checked: true })
+
+  await worker.request('rr.postReview', { url: MR_URL, summary: '', outcome: 'requested_changes' })
+
+  assert.deepEqual(fakes.gitlab.reviewsOf('acme/api', 7)[0]!.notes, ['**Blocking:** Off by one.', '**Blocking:** Add tests.', 'Nice.'])
+  await worker.deactivate()
+})
+
 test('a line comment that does not publish is retried once as a general path:line comment', async () => {
   const arranged = arrange([note('n1', { lineNumber: 99, body: 'Stale line.' }), note('n2')])
   const { fakes } = arranged

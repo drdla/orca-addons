@@ -24,6 +24,7 @@ import {
   Skeleton,
   Spinner,
   Stack,
+  Switch,
   Text,
   Textarea,
   update,
@@ -36,7 +37,7 @@ import { Button } from './button'
 import { BackButton } from './back-button'
 import { MergeRequestTitle } from './merge-request-link'
 import type { PostResult, ReviewCommentView, ReviewDraftView, ReviewRequestsSnapshot } from './protocol'
-import { isPostingNow, PostSection, resetPosting, setupPosting } from './review-post-view'
+import { followBlockingOutcome, isPostingNow, PostSection, resetPosting, setupPosting } from './review-post-view'
 import { messageOf } from './errors'
 import { plural } from './plural'
 import { hasReviewPrompt } from './settings-view'
@@ -181,10 +182,13 @@ function setCommentError(id: string, message: string | null): void {
   })
 }
 
-function changeComment(id: string, change: { checked?: boolean; body?: string }): Promise<void> {
+function changeComment(id: string, change: { checked?: boolean; blocking?: boolean; body?: string }): Promise<void> {
   const url = read(draftUrl)
   if (url === null) return Promise.resolve()
   setCommentError(id, null)
+  // A blocking comment joins the review: Request changes again, even over an outcome I picked.
+  const comment = read(draft)?.comments.find((c) => c.id === id)
+  if (change.blocking === true || (change.checked === true && comment?.blocking === true)) followBlockingOutcome()
   const saving = plugin
     .request('rr.updateDraftComment', { url, id, ...change })
     .then((answer) => {
@@ -647,7 +651,15 @@ function CommentCard({ comment }: { comment: ReviewCommentView }) {
         <Box direction="row" gap="xs" align="center" shrink={false}>
           {comment.outdated === true && <Badge tone="warning">May be outdated</Badge>}
           {comment.stale === true && <Badge tone="neutral">Stale</Badge>}
+          {comment.posted && comment.blocking === true && <Badge tone="danger">Blocking</Badge>}
           {comment.posted && <Badge tone="success">Posted</Badge>}
+          {!comment.posted && (
+            <Switch
+              label="Blocking"
+              checked={comment.blocking === true}
+              onChange={(blocking) => void changeComment(comment.id, { blocking })}
+            />
+          )}
           <CommentButtons comment={comment} />
         </Box>
       </Box>

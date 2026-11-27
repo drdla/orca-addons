@@ -280,7 +280,7 @@ function planComment(comment: ReviewComment, versions: Version[], latestHead: st
     const located = comment.filePath !== null
     return {
       comment,
-      body: located ? withLocation(comment) : comment.body,
+      body: located ? withLocation(comment) : bodyOf(comment),
       position: null,
       older: false,
       unplaced: comment.filePath !== null && comment.line !== null
@@ -288,7 +288,7 @@ function planComment(comment: ReviewComment, versions: Version[], latestHead: st
   }
   return {
     comment,
-    body: comment.body,
+    body: bodyOf(comment),
     // The top-level new_line is the range's end; a range's start isn't sent (needs line codes).
     position: {
       position_type: 'text',
@@ -310,7 +310,12 @@ function draftBody(planned: Planned): Json {
 
 /** "`src/a.ts:8–10`", then the body: a general comment that still says where. */
 function withLocation(comment: ReviewComment): string {
-  return `\`${locationOf(comment)}\`\n\n${comment.body}`
+  return `\`${locationOf(comment)}\`\n\n${bodyOf(comment)}`
+}
+
+/** What GitLab shows: a blocking comment says so first. */
+export function bodyOf(comment: ReviewComment): string {
+  return comment.blocking ? `**Blocking:** ${comment.body}` : comment.body
 }
 
 export function locationOf(comment: Pick<ReviewComment, 'filePath' | 'line' | 'startLine'>): string {

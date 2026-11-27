@@ -123,7 +123,7 @@ function EndedCardView(props: {
         {/* Why it ended, after the workspace button: in the header it squeezed the title. */}
         <ReasonPill reason={card.reason} />
       </Row>
-      <Row gap="xs" align="center" wrap>
+      <Row gap="sm" align="center" wrap>
         <Button
           size="xs"
           icon="delete"

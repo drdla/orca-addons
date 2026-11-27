@@ -38,6 +38,8 @@ export type ReviewComment = {
   startLine?: number
   body: string
   checked: boolean
+  /** Marked blocking in the Review Draft, or by the Agent Review. Absent means not. */
+  blocking?: true
   /** The commit the comment was made against (the workspace HEAD at import, or findings.json's headSha). */
   sha: string | null
   /** A diff-view note's `updatedAt ?? createdAt`; for an Agent Finding, when it was imported or edited. */

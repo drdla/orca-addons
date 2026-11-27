@@ -6,7 +6,8 @@
 //     one joins checked, with the current HEAD as its commit (or, after Update workspace, the
 //     commit the workspace moved away from, #58). Markdown-preview notes are not diff comments and
 //     are left out; notes on uncommitted changes are skipped with a warning.
-//   - Agent Findings are the plugin's own once imported: they join unchecked, keep the person's
+//   - Agent Findings are the plugin's own once imported: they join unchecked (checked when the
+//     Agent Review marked them blocking), keep the person's
 //     edits, and are never removed by an import. A finding already imported (same text) isn't added
 //     again, nor is one the person deleted (drafts.deletedFindings).
 // A failure to read either source keeps what the draft had and becomes a warning. Each import then
@@ -34,7 +35,7 @@ export type DraftTarget = {
   workspaceProblem?: string | null
 }
 
-export type CommentChange = { id: string; checked?: boolean; body?: string }
+export type CommentChange = { id: string; checked?: boolean; blocking?: boolean; body?: string }
 
 /** A refused change: the panel shows the message on the comment. */
 export class DraftChangeError extends Error {
@@ -102,7 +103,10 @@ export function createDraftImport(options: {
       return viewOf(draft, target)
     },
 
-    /** Checks or unchecks a comment, or edits an Agent Finding; answers the draft. */
+    /**
+     * Checks or unchecks a comment, marks it blocking or not, or edits an Agent Finding; answers
+     * the draft. Marking a comment blocking also checks it: blocking comments go in by default.
+     */
     async change(target: DraftTarget, change: CommentChange): Promise<ReviewDraftView> {
       const now = clock.now()
       const draft = await drafts.update(target.url, (d) => {
@@ -119,6 +123,8 @@ export function createDraftImport(options: {
           if (body !== comment.body) next = { ...next, body, updatedAt: now }
         }
         if (change.checked !== undefined) next = { ...next, checked: change.checked }
+        if (change.blocking === true) next = { ...next, blocking: true, checked: change.checked ?? true }
+        if (change.blocking === false) next = withoutBlocking(next)
         return { ...d, comments: d.comments.map((c) => (c.id === comment.id ? next : c)) }
       })
       return viewOf(draft, target)
@@ -206,7 +212,9 @@ function merge(draft: ReviewDraft, sources: Sources, now: number): ReviewDraft {
       line: finding.line,
       ...(finding.startLine === undefined ? {} : { startLine: finding.startLine }),
       body: finding.body,
-      checked: false,
+      ...(finding.blocking ? { blocking: true as const } : {}),
+      // Blocking findings go in by default; the rest wait to be picked.
+      checked: finding.blocking,
       sha: sources.findingsSha ?? sources.writtenAt,
       updatedAt: now,
       posted: null
@@ -239,12 +247,19 @@ function fromNote(
     line: note.lineNumber,
     ...(startLine === undefined ? {} : { startLine }),
     body: note.body,
+    // Marked in the Review Draft: an edit in Orca keeps it.
+    ...(before?.blocking ? { blocking: true as const } : {}),
     checked: before?.checked ?? true,
     // New to the draft: written at writtenAt; moved to other lines: at HEAD.
     sha: before === undefined ? writtenAt : samePlace ? before.sha : headSha,
     updatedAt,
     posted: before?.posted ?? null
   }
+}
+
+function withoutBlocking(comment: ReviewComment): ReviewComment {
+  const { blocking: _not, ...rest } = comment
+  return rest
 }
 
 function withoutDismissed(draft: ReviewDraft): ReviewDraft {
@@ -297,6 +312,7 @@ function commentView(
     ...(comment.startLine === undefined ? {} : { startLine: comment.startLine }),
     body: comment.body,
     checked: comment.checked,
+    ...(comment.blocking ? { blocking: true as const } : {}),
     editable: comment.origin === 'agent-finding' && !posted,
     sha: comment.sha,
     posted

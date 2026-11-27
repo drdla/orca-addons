@@ -5,6 +5,7 @@
 //     "headSha": "<git rev-parse HEAD when reviewing>",          // optional
 //     "findings": [
 //       { "path": "src/a.ts", "line": 12, "body": "…" },          // a line of the new file
+//       { "path": "src/a.ts", "line": 20, "body": "…", "blocking": true },  // must change before merge
 //       { "path": "src/a.ts", "startLine": 10, "line": 14, "body": "…" },  // a range
 //       { "body": "…" }                                           // a general comment
 //     ]
@@ -23,6 +24,8 @@ export type AgentFinding = {
   startLine?: number
   line: number | null
   body: string
+  /** `"blocking": true`: must change before merge. Anything else is not blocking. */
+  blocking: boolean
 }
 
 export type ParsedFindings = {
@@ -58,7 +61,7 @@ export function parseFindings(text: string): ParsedFindings {
 /** The finding, or why the entry is skipped. */
 function findingOf(entry: unknown): AgentFinding | string {
   if (!isObject(entry)) return 'not an object'
-  const { path, line, startLine, body } = entry
+  const { path, line, startLine, body, blocking } = entry
   if (typeof body !== 'string' || body.trim() === '') return 'no body'
   if (path !== undefined && path !== null && typeof path !== 'string') return 'path must be text'
   const filePath = typeof path === 'string' && path.trim() !== '' ? path.trim() : null
@@ -75,7 +78,8 @@ function findingOf(entry: unknown): AgentFinding | string {
     filePath,
     ...(isLineNumber(startLine) && startLine !== at ? { startLine } : {}),
     line: at,
-    body: body.trim()
+    body: body.trim(),
+    blocking: blocking === true
   }
 }
 

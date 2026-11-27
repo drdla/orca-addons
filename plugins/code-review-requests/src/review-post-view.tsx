@@ -60,11 +60,19 @@ const OUTCOMES: { value: ReviewOutcome; label: string }[] = [
   { value: 'comment', label: `Comment${GAP}` }
 ]
 
-/** The outcome that posts: the one I picked, else Approve with no comments, Request changes with some. */
+/**
+ * The outcome that posts: the one I picked, else Request changes when a blocking comment goes in
+ * and Approve when none does.
+ */
 function outcomeFor(draft: ReviewDraftView): ReviewOutcome {
   const picked = read(outcome)
   if (picked !== null) return picked
-  return draft.comments.some((c) => c.checked && !c.posted) ? 'requested_changes' : 'approve'
+  return draft.comments.some((c) => c.checked && !c.posted && c.blocking === true) ? 'requested_changes' : 'approve'
+}
+
+/** A blocking comment joined the review: the outcome follows the comments again (Request changes). */
+export function followBlockingOutcome(): void {
+  set(outcome, null)
 }
 
 /** Where Review Drafts post to: the only source so far. */
