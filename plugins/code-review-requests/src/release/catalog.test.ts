@@ -1,7 +1,7 @@
 // The catalog merge behind scripts/release.sh: an `orca plugin release-entry --json` result goes
 // into orca-catalog.json as text, so the diff shows only the release that changed.
 import { assert, test } from 'orca/testing'
-import { mergeRelease } from './catalog'
+import { MAX_RELEASES, mergeRelease } from './catalog'
 
 const CATALOG = `{
   "$schema": "https://example.com/orca-catalog.v2.schema.json",
@@ -135,4 +135,21 @@ test('refuses a plugin folder the catalog has no entry for', () => {
 test("refuses when the catalog entry's id names another plugin", () => {
   const other = { ...result('0.2.0'), pluginKey: 'local.something-else' }
   assert.throws(() => mergeRelease(CATALOG, other), /acme\.code-review-requests is not something-else/)
+})
+
+test(`keeps at most ${MAX_RELEASES} releases, dropping the oldest, which Orca would refuse the catalog over`, () => {
+  const catalog = JSON.parse(CATALOG)
+  const versions = Array.from({ length: MAX_RELEASES }, (_, i) => `0.1.${MAX_RELEASES - 1 - i}`)
+  catalog.plugins[0].releases = versions.map((version) => ({ ...result(version).entry, version }))
+  const { text, dropped } = mergeRelease(JSON.stringify(catalog), result('0.2.0'))
+
+  const releases = JSON.parse(text).plugins[0].releases as { version: string }[]
+  assert.equal(releases.length, MAX_RELEASES)
+  assert.equal(releases[0]!.version, '0.2.0')
+  assert.equal(releases.at(-1)!.version, '0.1.1')
+  assert.deepEqual(dropped.map((r) => r.version), ['0.1.0'])
+})
+
+test('drops nothing while there is room', () => {
+  assert.deepEqual(mergeRelease(CATALOG, result('0.2.0')).dropped, [])
 })
